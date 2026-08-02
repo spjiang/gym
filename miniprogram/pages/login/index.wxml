@@ -1,0 +1,9 @@
+<view class="wrap">
+  <view class="title">会员登录</view>
+  <input placeholder="手机号" bindinput="onPhone" />
+  <view class="row">
+    <input placeholder="验证码" bindinput="onCode" />
+    <button size="mini" bindtap="send">获取</button>
+  </view>
+  <button type="primary" bindtap="login">登录</button>
+</view>

@@ -1,0 +1,149 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=Sora:wght@400;500;600;700&display=swap');
+
+/* 管理后台主题：石墨侧栏 + 暖石画布 + 铜绿强调 */
+:root {
+  --admin-bg: #efeae2;
+  --admin-bg-accent: #e4ddd2;
+  --admin-surface: #fbf8f3;
+  --admin-surface-elevated: #ffffff;
+  --admin-ink: #1c1917;
+  --admin-ink-muted: #78716c;
+  --admin-line: rgba(28, 25, 23, 0.08);
+  --admin-aside: #141816;
+  --admin-aside-elevated: #1c221f;
+  --admin-aside-text: #c5cbc6;
+  --admin-aside-active: #f5f0e8;
+  --admin-accent: #3d6b5c;
+  --admin-accent-strong: #2f5549;
+  --admin-accent-soft: rgba(61, 107, 92, 0.12);
+  --admin-copper: #a67c52;
+  --admin-danger: #b42318;
+  --admin-radius: 14px;
+  --admin-shadow: 0 1px 0 rgba(28, 25, 23, 0.04), 0 18px 40px -28px rgba(28, 25, 23, 0.35);
+  --admin-font: 'Sora', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+
+  /* Element Plus 主色对齐 */
+  --el-color-primary: #3d6b5c;
+  --el-color-primary-light-3: #5f8779;
+  --el-color-primary-light-5: #8eada3;
+  --el-color-primary-light-7: #b9cdc7;
+  --el-color-primary-light-8: #d0ddd8;
+  --el-color-primary-light-9: #e8efec;
+  --el-color-primary-dark-2: #2f5549;
+  --el-border-radius-base: 10px;
+  --el-font-family: var(--admin-font);
+  --el-text-color-primary: var(--admin-ink);
+  --el-text-color-regular: #44403c;
+  --el-bg-color-page: transparent;
+  --el-fill-color-blank: var(--admin-surface-elevated);
+  --el-border-color: #e7e0d6;
+  --el-border-color-light: #efe9e0;
+  --el-box-shadow-light: var(--admin-shadow);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  min-height: 100%;
+  width: 100%;
+}
+
+body {
+  font-family: var(--admin-font);
+  color: var(--admin-ink);
+  background:
+    radial-gradient(1200px 600px at 12% -10%, rgba(166, 124, 82, 0.12), transparent 55%),
+    radial-gradient(900px 500px at 90% 0%, rgba(61, 107, 92, 0.1), transparent 50%),
+    linear-gradient(180deg, var(--admin-bg) 0%, var(--admin-bg-accent) 100%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--admin-font);
+  color: var(--admin-ink);
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+
+h3 {
+  margin: 0 0 14px;
+  font-size: 1.05rem;
+}
+
+p {
+  margin: 0;
+  color: var(--admin-ink-muted);
+}
+
+/* 内容区通用组件质感 */
+.el-main {
+  --panel-pad: 4px;
+}
+
+.el-main .el-card {
+  border: 1px solid var(--admin-line);
+  border-radius: var(--admin-radius);
+  background: var(--admin-surface-elevated);
+  box-shadow: var(--admin-shadow);
+  overflow: hidden;
+}
+
+.el-main .el-card__header {
+  border-bottom: 1px solid var(--admin-line);
+  background: linear-gradient(180deg, #fffcf8 0%, #faf6f0 100%);
+  font-weight: 600;
+  color: var(--admin-ink);
+  padding: 14px 18px;
+}
+
+.el-main .el-table {
+  --el-table-header-bg-color: #f7f2ea;
+  --el-table-header-text-color: var(--admin-ink-muted);
+  --el-table-row-hover-bg-color: #f4f7f5;
+  --el-table-border-color: #ebe4da;
+  border-radius: 12px;
+  overflow: hidden;
+  font-size: 13.5px;
+}
+
+.el-main .el-table th.el-table__cell {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.el-main .el-button--primary {
+  --el-button-bg-color: var(--admin-accent);
+  --el-button-border-color: var(--admin-accent);
+  --el-button-hover-bg-color: var(--admin-accent-strong);
+  --el-button-hover-border-color: var(--admin-accent-strong);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.el-main .el-input__wrapper,
+.el-main .el-select__wrapper {
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px #e7e0d6 inset;
+  background: #fffcf8;
+}
+
+.el-main .el-form-item__label {
+  color: var(--admin-ink-muted);
+  font-weight: 500;
+}
+
+.el-main .el-tag {
+  border-radius: 999px;
+}

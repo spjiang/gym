@@ -1,0 +1,17 @@
+{
+  "pages": [
+    "pages/login/index",
+    "pages/home/index",
+    "pages/memberships/index",
+    "pages/classes/index",
+    "pages/shop/index",
+    "pages/coupons/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "会员中心",
+    "navigationBarBackgroundColor": "#0f172a",
+    "navigationBarTextStyle": "white"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

@@ -1,0 +1,60 @@
+schema: spec-driven
+
+# 展示给 AI 的项目上下文（写入制品时遵守，勿原样粘贴进文档）
+context: |
+  项目：回龙观公园综合场地管理系统（健身房为主业态，兼容酒吧/招商多商户）。
+  产品 PRD：docs/superpowers/specs/2026-08-02-gym-prd-modules-design.md
+  架构约定：.cursor/rules/（project-architecture、frontend-vue、backend-python、docker-compose）
+
+  技术栈：
+  - 前端：Vue 3（独立工程 frontend/），Composition API
+  - 后端：Python（独立工程 backend/），PostgreSQL，迁移管理 schema
+  - 部署：根目录 Docker Compose（backend / frontend 或 nginx / postgres；按需 rabbitmq）
+  - 消息队列：仅异步/解耦场景使用 RabbitMQ（如门禁同步、通知）
+  - 端侧一期：Web 管理后台 + 会员小程序/H5 + 人脸门禁 Pad
+
+  一期范围：
+  - 完整健身房运营必须交付（会籍、课程、教练、库存、营销、报表、器材、门禁、线上线下支付、小程序）
+  - 非健身房商户一期仅组织 + 门禁；酒吧 POS 等业态包不在一期
+  - 交付方式：先牢固平台底座脚手架 change，再按切片连续交付业态，不削减一期完整性
+
+  领域模型：
+  - 平台底座 + 健身房业态包；酒吧等后续以新业态包扩展
+  - 场地级会员主档（手机号唯一）；商户级授权与数据隔离
+  - 角色：场地超管 / 商户管理员 / 前台 / 教练
+  - 门禁（人脸 Pad）与健身器材分属平台层与健身房业态层
+
+  工程约定：
+  - 前后端分离，仅通过 HTTP/WebSocket API 协作
+  - 代码注释使用中文；禁止使用过时 API
+  - 密钥与 .env 不进 Git；提供 .env.example
+  - 通行校验低延迟；重活走队列；关键写操作可审计
+
+rules:
+  proposal:
+    - 用中文撰写；引用 PRD 章节时给出路径与章节号
+    - Non-goals 必须写清「仅限本 change」还是「项目一期不做」，避免被理解成取消完整健身房运营
+    - 底座脚手架 change：范围=工程脚手架+平台底座闭环，且脚手架必须可稳定启动；完整业态用后续切片承诺列出
+  specs:
+    - 需求与场景用中文；Requirement 表述清晰可验收（SHALL）
+    - 按能力拆分目录（如 project-scaffold、organization、identity-access、member-profile、access-control、commerce-skeleton）
+    - 场景写 WHEN/THEN，避免实现细节堆砌
+  design:
+    - 用中文；写清目录结构、服务划分、关键数据模型与 API 边界
+    - 写明与 Docker Compose / PostgreSQL /（可选）RabbitMQ 的关系
+    - 门禁同步可异步；开门路径不得被批处理阻塞
+  tasks:
+    - 任务可勾选、可独立验证；优先可运行的垂直切片
+    - 后端任务落到 Python 文件、迁移、测试；前端落到 Vue 工程结构与基础路由
+    - 包含本地 Compose 启动与基础冒烟验证步骤
+
+operations:
+  apply:
+    guidance:
+      - 严格按 tasks.md 顺序推进；完成一项勾一项
+      - 底座 change 不提前实现会籍/课程等业态，但实现时必须为后续完整运营留好扩展点（商户隔离、订单类型、权限骨架）
+      - 脚手架相关任务（Compose、健康检查、配置）必须验收通过后再进入深层业务任务
+  archive:
+    guidance:
+      - 归档前确认脚手架可 Compose 启动，且底座相关主 specs 已合并
+      - 用中文总结归档结果，并列出下一刀完整运营切片建议（会籍/课程/小程序等）

@@ -1,0 +1,14 @@
+---
+description: Docker Compose 部署与本地依赖约定
+globs: "{docker-compose*.yml,Dockerfile*,**/Dockerfile*,.env.example}"
+alwaysApply: false
+---
+
+# Docker Compose 部署
+
+- 根目录 `docker-compose.yml` 编排常用服务：`frontend`（或 nginx 静态）、`backend`、`postgres`；需要异步时再加 `rabbitmq`。
+- 服务间用 Compose 网络通信；应用连接串指向服务名（如 `postgres`、`rabbitmq`），勿写死本机 IP。
+- Postgres 数据、上传文件等使用 volume 持久化。
+- 区分环境：本地开发可用 Compose 起依赖，生产注意密码、端口暴露与健康检查。
+- 新增中间件前先评估是否必须；默认栈为 Postgres，RabbitMQ 按需启用。
+- `.env` / 密钥不进 Git；提供 `.env.example` 说明变量含义。

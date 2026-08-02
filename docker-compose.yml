@@ -1,0 +1,66 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-gym}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gym_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-gym}
+    ports:
+      - "35432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gym} -d ${POSTGRES_DB:-gym}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-gym}:${POSTGRES_PASSWORD:-gym_dev_password}@postgres:5432/${POSTGRES_DB:-gym}
+    ports:
+      - "18000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: /api/v1
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  member-web:
+    build:
+      context: ./member-web
+      args:
+        VITE_API_BASE_URL: /api/v1
+    ports:
+      - "8081:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  rabbitmq:
+    profiles: ["mq"]
+    image: rabbitmq:3.13-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+volumes:
+  postgres_data:

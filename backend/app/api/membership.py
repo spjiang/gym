@@ -1,0 +1,456 @@
+"""会籍卡种与办卡/续卡/停卡 API。"""
+
+from datetime import datetime
+from decimal import Decimal
+
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.db import get_db
+from app.deps import RequestContext, get_current_context
+from app.errors import AppError
+from app.models.access import AccessPoint
+from app.models.commerce import Order, OrderStatus
+from app.models.member import Member, MerchantMember
+from app.models.membership import (
+    Membership,
+    MembershipOrderAction,
+    MembershipOrderLink,
+    MembershipProduct,
+    MembershipProductAccessPoint,
+    ProductType,
+)
+from app.models.org import Merchant
+from app.schemas.common import OrderOut
+from app.services.audit import write_audit
+from app.services.fulfillment import (
+    freeze_membership,
+    product_access_point_ids,
+    validate_product_for_sale,
+    void_membership,
+)
+from app.services.coupon import attach_coupon_to_order
+from app.services.pricing import effective_price
+
+router = APIRouter(tags=["membership"])
+
+
+class ORMModel(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProductIn(BaseModel):
+    merchant_id: int | None = None
+    name: str = Field(min_length=1, max_length=128)
+    product_type: str
+    price: Decimal
+    duration_days: int | None = None
+    session_count: int | None = None
+    stored_value: Decimal | None = None
+    access_point_ids: list[int] = Field(default_factory=list)
+    is_active: bool = True
+    is_trial: bool = False
+    promo_price: Decimal | None = None
+    promo_starts_at: datetime | None = None
+    promo_ends_at: datetime | None = None
+
+
+class ProductOut(ORMModel):
+    id: int
+    merchant_id: int
+    name: str
+    product_type: str
+    price: Decimal
+    duration_days: int | None
+    session_count: int | None
+    stored_value: Decimal | None
+    is_active: bool
+    is_trial: bool
+    promo_price: Decimal | None
+    promo_starts_at: datetime | None
+    promo_ends_at: datetime | None
+    access_point_ids: list[int] = []
+    created_at: datetime
+    effective_price: Decimal | None = None
+
+
+class MembershipOut(ORMModel):
+    id: int
+    merchant_id: int
+    member_id: int
+    product_id: int
+    product_type: str
+    status: str
+    starts_at: datetime | None
+    ends_at: datetime | None
+    remaining_sessions: int | None
+    balance: Decimal | None
+    created_at: datetime
+
+
+class PurchaseIn(BaseModel):
+    member_id: int
+    product_id: int
+    merchant_id: int | None = None
+    member_coupon_id: int | None = None
+
+
+class RenewIn(BaseModel):
+    membership_id: int
+    product_id: int | None = None
+    merchant_id: int | None = None
+
+
+def _product_out(db: Session, p: MembershipProduct) -> ProductOut:
+    return ProductOut(
+        id=p.id,
+        merchant_id=p.merchant_id,
+        name=p.name,
+        product_type=p.product_type,
+        price=p.price,
+        duration_days=p.duration_days,
+        session_count=p.session_count,
+        stored_value=p.stored_value,
+        is_active=p.is_active,
+        is_trial=p.is_trial,
+        promo_price=p.promo_price,
+        promo_starts_at=p.promo_starts_at,
+        promo_ends_at=p.promo_ends_at,
+        access_point_ids=product_access_point_ids(db, p.id),
+        created_at=p.created_at,
+        effective_price=effective_price(p.price, p.promo_price, p.promo_starts_at, p.promo_ends_at),
+    )
+
+
+def _ensure_member_in_merchant(db: Session, *, member_id: int, merchant_id: int, site_id: int) -> Member:
+    member = db.get(Member, member_id)
+    if member is None or member.site_id != site_id:
+        raise AppError("not_found", "会员不存在", status_code=404)
+    link = db.scalar(
+        select(MerchantMember).where(
+            MerchantMember.member_id == member_id, MerchantMember.merchant_id == merchant_id
+        )
+    )
+    if link is None:
+        db.add(MerchantMember(member_id=member_id, merchant_id=merchant_id))
+        db.flush()
+    return member
+
+
+def _replace_product_points(db: Session, product_id: int, access_point_ids: list[int], merchant_id: int) -> None:
+    for ap_id in access_point_ids:
+        ap = db.get(AccessPoint, ap_id)
+        if ap is None:
+            raise AppError("invalid_access_point", f"门禁点不存在: {ap_id}", status_code=400)
+        if not ap.is_public_area and ap.merchant_id != merchant_id:
+            raise AppError("invalid_access_point", f"门禁点不可用: {ap_id}", status_code=400)
+    existing = list(
+        db.scalars(
+            select(MembershipProductAccessPoint).where(MembershipProductAccessPoint.product_id == product_id)
+        ).all()
+    )
+    for row in existing:
+        db.delete(row)
+    db.flush()
+    for ap_id in access_point_ids:
+        db.add(MembershipProductAccessPoint(product_id=product_id, access_point_id=ap_id))
+    db.flush()
+
+
+@router.get("/membership-products", response_model=list[ProductOut])
+def list_products(
+    merchant_id: int | None = None,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    ctx.require_permission("membership:manage", "membership:sell")
+    mid = ctx.resolve_merchant_id(merchant_id)
+    rows = list(
+        db.scalars(
+            select(MembershipProduct).where(MembershipProduct.merchant_id == mid).order_by(MembershipProduct.id.desc())
+        ).all()
+    )
+    return [_product_out(db, p) for p in rows]
+
+
+@router.post("/membership-products", response_model=ProductOut)
+def create_product(
+    body: ProductIn,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    ctx.require_permission("membership:manage")
+    mid = ctx.resolve_merchant_id(body.merchant_id)
+    merchant = db.get(Merchant, mid)
+    if merchant is None or merchant.site_id != ctx.site_id:
+        raise AppError("not_found", "商户不存在", status_code=404)
+
+    product = MembershipProduct(
+        merchant_id=mid,
+        name=body.name,
+        product_type=body.product_type,
+        price=body.price,
+        duration_days=body.duration_days,
+        session_count=body.session_count,
+        stored_value=body.stored_value,
+        is_trial=body.is_trial,
+        promo_price=body.promo_price,
+        promo_starts_at=body.promo_starts_at,
+        promo_ends_at=body.promo_ends_at,
+        is_active=False,
+    )
+    db.add(product)
+    db.flush()
+    _replace_product_points(db, product.id, body.access_point_ids, mid)
+    if body.is_active:
+        validate_product_for_sale(product, body.access_point_ids, require_active=False)
+        product.is_active = True
+    else:
+        # 未启用时仍校验类型字段组合
+        if body.product_type == ProductType.TERM.value and (not body.duration_days or body.duration_days <= 0):
+            raise AppError("invalid_product", "期限卡必须配置有效天数", status_code=400)
+        if body.product_type == ProductType.COUNT.value and (not body.session_count or body.session_count <= 0):
+            raise AppError("invalid_product", "次卡必须配置次数", status_code=400)
+        if body.product_type == ProductType.VALUE.value and (body.stored_value is None or body.stored_value <= 0):
+            raise AppError("invalid_product", "储值卡必须配置储值额度", status_code=400)
+        if body.product_type not in {t.value for t in ProductType}:
+            raise AppError("invalid_product", "未知卡种类型", status_code=400)
+    write_audit(
+        db,
+        action="membership_product.create",
+        target_type="membership_product",
+        target_id=product.id,
+        summary=f"创建卡种 {product.name}",
+        actor_staff_id=ctx.staff.id,
+        site_id=ctx.site_id,
+        merchant_id=mid,
+    )
+    db.commit()
+    db.refresh(product)
+    return _product_out(db, product)
+
+
+@router.patch("/membership-products/{product_id}", response_model=ProductOut)
+def update_product(
+    product_id: int,
+    body: ProductIn,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    ctx.require_permission("membership:manage")
+    product = db.get(MembershipProduct, product_id)
+    if product is None:
+        raise AppError("not_found", "卡种不存在", status_code=404)
+    mid = ctx.resolve_merchant_id(body.merchant_id or product.merchant_id)
+    if product.merchant_id != mid:
+        raise AppError("forbidden", "禁止跨商户修改", status_code=403)
+
+    product.name = body.name
+    product.product_type = body.product_type
+    product.price = body.price
+    product.duration_days = body.duration_days
+    product.session_count = body.session_count
+    product.stored_value = body.stored_value
+    _replace_product_points(db, product.id, body.access_point_ids, mid)
+    if body.is_active:
+        validate_product_for_sale(product, body.access_point_ids, require_active=False)
+    product.is_active = body.is_active
+    write_audit(
+        db,
+        action="membership_product.update",
+        target_type="membership_product",
+        target_id=product.id,
+        summary=f"更新卡种 {product.name}",
+        actor_staff_id=ctx.staff.id,
+        site_id=ctx.site_id,
+        merchant_id=mid,
+    )
+    db.commit()
+    db.refresh(product)
+    return _product_out(db, product)
+
+
+@router.post("/membership-products/{product_id}/deactivate", response_model=ProductOut)
+def deactivate_product(
+    product_id: int,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    ctx.require_permission("membership:manage")
+    product = db.get(MembershipProduct, product_id)
+    if product is None:
+        raise AppError("not_found", "卡种不存在", status_code=404)
+    ctx.resolve_merchant_id(product.merchant_id)
+    product.is_active = False
+    db.commit()
+    db.refresh(product)
+    return _product_out(db, product)
+
+
+@router.get("/memberships", response_model=list[MembershipOut])
+def list_memberships(
+    merchant_id: int | None = None,
+    member_id: int | None = None,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    ctx.require_permission("membership:manage", "membership:sell", "member:read")
+    mid = ctx.resolve_merchant_id(merchant_id)
+    q = select(Membership).where(Membership.merchant_id == mid)
+    if member_id is not None:
+        q = q.where(Membership.member_id == member_id)
+    return list(db.scalars(q.order_by(Membership.id.desc())).all())
+
+
+@router.post("/memberships/purchase", response_model=OrderOut)
+def purchase_membership(
+    body: PurchaseIn,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    ctx.require_permission("membership:sell", "membership:manage")
+    product = db.get(MembershipProduct, body.product_id)
+    if product is None:
+        raise AppError("not_found", "卡种不存在", status_code=404)
+    mid = ctx.resolve_merchant_id(body.merchant_id or product.merchant_id)
+    if product.merchant_id != mid:
+        raise AppError("forbidden", "卡种不属于当前商户", status_code=403)
+    ap_ids = product_access_point_ids(db, product.id)
+    validate_product_for_sale(product, ap_ids)
+    _ensure_member_in_merchant(db, member_id=body.member_id, merchant_id=mid, site_id=ctx.site_id)
+    price = effective_price(product.price, product.promo_price, product.promo_starts_at, product.promo_ends_at)
+
+    order = Order(
+        site_id=ctx.site_id,
+        merchant_id=mid,
+        member_id=body.member_id,
+        order_type="membership",
+        title=f"办卡-{product.name}",
+        amount=price,
+        status=OrderStatus.PENDING.value,
+    )
+    db.add(order)
+    db.flush()
+    if body.member_coupon_id is not None:
+        ctx.require_permission("coupon:redeem", "coupon:manage", "membership:sell", "membership:manage")
+        payable = attach_coupon_to_order(
+            db,
+            order=order,
+            member_coupon_id=body.member_coupon_id,
+            original_amount=price,
+            member_id=body.member_id,
+        )
+        order.amount = payable
+    db.add(
+        MembershipOrderLink(
+            order_id=order.id,
+            member_id=body.member_id,
+            product_id=product.id,
+            action=MembershipOrderAction.PURCHASE.value,
+        )
+    )
+    write_audit(
+        db,
+        action="membership.purchase_order",
+        target_type="order",
+        target_id=order.id,
+        summary=f"办卡下单 product={product.id} member={body.member_id}",
+        actor_staff_id=ctx.staff.id,
+        site_id=ctx.site_id,
+        merchant_id=mid,
+    )
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+@router.post("/memberships/renew", response_model=OrderOut)
+def renew_membership(
+    body: RenewIn,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    ctx.require_permission("membership:sell", "membership:manage")
+    membership = db.get(Membership, body.membership_id)
+    if membership is None:
+        raise AppError("not_found", "会籍不存在", status_code=404)
+    mid = ctx.resolve_merchant_id(body.merchant_id or membership.merchant_id)
+    if membership.merchant_id != mid:
+        raise AppError("forbidden", "禁止跨商户续卡", status_code=403)
+    product_id = body.product_id or membership.product_id
+    product = db.get(MembershipProduct, product_id)
+    if product is None or product.merchant_id != mid:
+        raise AppError("not_found", "卡种不存在", status_code=404)
+    ap_ids = product_access_point_ids(db, product.id)
+    validate_product_for_sale(product, ap_ids)
+    price = effective_price(product.price, product.promo_price, product.promo_starts_at, product.promo_ends_at)
+
+    order = Order(
+        site_id=ctx.site_id,
+        merchant_id=mid,
+        member_id=membership.member_id,
+        order_type="membership",
+        title=f"续卡-{product.name}",
+        amount=price,
+        status=OrderStatus.PENDING.value,
+    )
+    db.add(order)
+    db.flush()
+    db.add(
+        MembershipOrderLink(
+            order_id=order.id,
+            member_id=membership.member_id,
+            product_id=product.id,
+            action=MembershipOrderAction.RENEW.value,
+            target_membership_id=membership.id,
+        )
+    )
+    write_audit(
+        db,
+        action="membership.renew_order",
+        target_type="order",
+        target_id=order.id,
+        summary=f"续卡下单 membership={membership.id}",
+        actor_staff_id=ctx.staff.id,
+        site_id=ctx.site_id,
+        merchant_id=mid,
+    )
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+@router.post("/memberships/{membership_id}/freeze", response_model=MembershipOut)
+def api_freeze(
+    membership_id: int,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    ctx.require_permission("membership:manage", "membership:sell")
+    membership = db.get(Membership, membership_id)
+    if membership is None:
+        raise AppError("not_found", "会籍不存在", status_code=404)
+    ctx.resolve_merchant_id(membership.merchant_id)
+    freeze_membership(db, membership, actor_staff_id=ctx.staff.id, site_id=ctx.site_id)
+    db.commit()
+    db.refresh(membership)
+    return membership
+
+
+@router.post("/memberships/{membership_id}/void", response_model=MembershipOut)
+def api_void(
+    membership_id: int,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    ctx.require_permission("membership:manage")
+    membership = db.get(Membership, membership_id)
+    if membership is None:
+        raise AppError("not_found", "会籍不存在", status_code=404)
+    ctx.resolve_merchant_id(membership.merchant_id)
+    void_membership(db, membership, actor_staff_id=ctx.staff.id, site_id=ctx.site_id)
+    db.commit()
+    db.refresh(membership)
+    return membership

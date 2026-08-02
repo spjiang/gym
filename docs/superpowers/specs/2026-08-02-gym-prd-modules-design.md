@@ -4,6 +4,7 @@
 |----|------|
 | 日期 | 2026-08-02 |
 | 状态 | 待文件审阅 |
+| 实现进度 | 见本文 **§10 一期交付对照表**（随切片归档更新） |
 | 组织方式 | 平台底座 + 健身房业态包 |
 | 技术约束 | 前后端分离；Vue；Python；PostgreSQL；Docker Compose；按需 RabbitMQ |
 
@@ -264,7 +265,45 @@
 - 分销裂变、物联网器械采集、会员约器械
 - 多场地连锁集团财务（当前：单场地多商户；模型保留扩展空间）
 
-## 10. 文档与后续
+## 10. 一期交付对照表
 
-- 本文件为 PRD 功能模块设计规格，供实现计划拆解。
-- 批准后下一步：编写实现计划（writing-plans），再进入脚手架与开发。
+本表对齐 §1.2 成功标准与 §3 模块架构，用于查看 **PRD 还剩什么没做**。  
+标记约定：`✅` 已交付 · `🚧` 部分交付 · `⬜` 未开始 · `—` 一期不做。  
+工程契约以 `openspec/specs/` 与已归档 change 为准；每完成一切片并 `/opsx-archive` 后应更新本表。
+
+| 能力 | PRD | 状态 | OpenSpec / 归档 | 备注 |
+|------|-----|------|-----------------|------|
+| 工程脚手架（Compose / 前后端） | §4 / 部署 | ✅ | `project-scaffold` · `2026-08-02-platform-foundation-scaffold` | |
+| 组织（商户类型 / 商户） | §4.1 | ✅ | `organization` · 同上 | |
+| 账号权限（RBAC） | §2.2 / §4.2 | ✅ | `identity-access` · 菜单细裁于 `2026-08-02-phase1-closing-ops` | 角色权限 + Web 菜单/路由按 permissions 裁剪 |
+| 会员主档 | §4.3 | ✅ | `member-profile` · 同上 | |
+| 门禁与 Pad | §4.4 / §6.3 | ✅ | `access-control` · 同上 | 通行校验闭环可用 |
+| 交易与支付骨架 | §4.5 | ✅ | `commerce-skeleton` · `2026-08-02-phase1-closing-ops` | 线下 + mock + wechat（凭证/DRY_RUN）；真实商户 SDK 联调按凭证另行开启 |
+| 会籍与卡种 / 办卡续卡 / 门禁联动 | §5.1 | ✅ | `membership-catalog` · `membership-lifecycle` · `membership-access-link` · `2026-08-02-membership-card-enrollment` | 后台闭环已交付 |
+| 私教 / 团课 / 教练 / 排课核销 | §5.2 | ✅ | `coach-profile` / `pt-package` / `group-class-schedule` / `group-class-booking` · `2026-08-02-pt-group-class-ops` | Web 后台闭环；小程序约课见原生工程 |
+| 前台运营（临访、今日接待等） | §5.3 | ✅ | `walk-in-visit` · `2026-08-02-walk-in-visit-ops` | 临访登记/撤销 + 临时授权；今日接待看板仍可增强 |
+| 商品与库存 / 零售 | §5.4 | ✅ | `retail-catalog` / `inventory-stock` / `retail-checkout` · `2026-08-02-retail-inventory-ops` | Web 后台；小程序商城见原生工程 |
+| 营销（券 / 活动 / 体验卡） | §5.5 | ✅ | `coupon-*` / `promo-pricing` / `coupon-member-claim` · `2026-08-02-coupon-marketing-ops` · `2026-08-02-marketing-claim-trial-ops` · `2026-08-02-phase1-closing-ops` | 券+领券+体验卡+活动价 |
+| 报表与财务看板 | §5.6 | ✅ | `commerce-report` · `2026-08-02-commerce-report-ops` · `2026-08-02-report-ops-extend` | 收款汇总+CSV ✅；会籍/课程/库存看板 ✅；不做总账 |
+| 器材台账与报修 | §5.8 | ✅ | `equipment-catalog` / `equipment-repair` · `2026-08-02-equipment-ops` | Web 台账+报修；无 IoT |
+| 会员小程序 / H5 | §6.2 | ✅ | `member-auth` / `member-portal` / `member-miniprogram` · `2026-08-02-member-h5-mvp` · `2026-08-02-phase1-closing-ops` | H5 MVP + 原生小程序工程；短信/微信通道可配 |
+| 通知与消息 | §4.6 | ✅ | `notification-inbox` · `2026-08-02-notification-ops` | 站内通知；短信/订阅走生产通道配置 |
+| 酒吧 POS 等非健身业态 | §9 | — | — | 一期明确不做 |
+
+### 10.1 对照 §1.2 成功标准
+
+| 成功标准 | 状态 |
+|----------|------|
+| 可配置商户类型并添加健身房/非健身商户；非健身仅组织 + 门禁 | ✅ |
+| 超管 / 商户管理员 / 前台 / 教练权限可用，且商户数据隔离正确 | ✅ |
+| 会员一人一档；办卡后 Pad 可放行；过期/停卡拒绝 | ✅ |
+| 团课预约、私教核销、零售与线上线下支付闭环 | ✅（微信生产凭凭证/DRY_RUN 切换） |
+| 营销券与经营报表可按商户查看；器材台账与报修可用 | ✅ |
+| 小程序可完成：查卡、约团课、购卡/买课、支付 | ✅（H5 + 原生工程；支付依赖通道配置） |
+
+建议：用真实微信商户号关闭 `WECHAT_DRY_RUN` 并接入正式 SDK；配置 `MEMBER_OTP_MODE=http` 对接短信网关；微信开发者工具打开 `miniprogram/` 做提审前联调。
+
+## 11. 文档与后续
+
+- 本文件为 PRD 功能模块设计规格；**实现进度以 §10 为准**。
+- 切片流程见 `docs/openspec-superpowers-workflow.md`：propose → apply → archive，归档后回写 §10。
