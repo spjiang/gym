@@ -22,6 +22,20 @@ const memberships = ref<Membership[]>([])
 const packages = ref<PtPackage[]>([])
 const err = ref('')
 
+const statusLabel: Record<string, string> = {
+  active: '有效',
+  frozen: '冻结',
+  expired: '已过期',
+  void: '作废',
+  exhausted: '已用尽',
+}
+
+function statusClass(status: string) {
+  if (status === 'active') return 'mw-status mw-status--ok'
+  if (status === 'expired' || status === 'void' || status === 'exhausted') return 'mw-status mw-status--danger'
+  return 'mw-status mw-status--neutral'
+}
+
 async function load() {
   err.value = ''
   try {
@@ -41,20 +55,37 @@ onMounted(load)
 </script>
 
 <template>
-  <section>
-    <h2>会籍与课包</h2>
-    <p v-if="err" class="err">{{ err }}</p>
-    <h3>会籍</h3>
-    <div v-for="m in memberships" :key="m.id" class="card">
-      <div>#{{ m.id }} · {{ m.status }}</div>
-      <div class="muted">到期 {{ m.ends_at?.slice(0, 10) || '-' }} · 剩余次 {{ m.remaining_sessions ?? '-' }}</div>
+  <section class="mw-page">
+    <h1 class="mw-page__title">会籍与课包</h1>
+    <p class="mw-page__desc">展示当前商户下的会籍与私教课包状态</p>
+    <p v-if="err" class="mw-msg mw-msg--error">{{ err }}</p>
+
+    <h2 class="mw-section-title">会籍</h2>
+    <div v-for="m in memberships" :key="m.id" class="mw-card">
+      <div class="mw-list-row">
+        <div class="mw-list-row__main">
+          <div class="mw-list-row__title">会籍 #{{ m.id }}</div>
+          <div class="mw-list-row__meta">
+            到期 {{ m.ends_at?.slice(0, 10) || '—' }} · 剩余次 {{ m.remaining_sessions ?? '—' }}
+          </div>
+        </div>
+        <span :class="statusClass(m.status)">{{ statusLabel[m.status] || m.status }}</span>
+      </div>
     </div>
-    <p v-if="!memberships.length" class="muted">暂无会籍</p>
-    <h3>私教课包</h3>
-    <div v-for="p in packages" :key="p.id" class="card">
-      <div>#{{ p.id }} · {{ p.status }}</div>
-      <div class="muted">剩余课时 {{ p.remaining_sessions }} · 到期 {{ p.ends_at?.slice(0, 10) || '-' }}</div>
+    <div v-if="!memberships.length" class="mw-empty">暂无会籍</div>
+
+    <h2 class="mw-section-title">私教课包</h2>
+    <div v-for="p in packages" :key="p.id" class="mw-card">
+      <div class="mw-list-row">
+        <div class="mw-list-row__main">
+          <div class="mw-list-row__title">课包 #{{ p.id }}</div>
+          <div class="mw-list-row__meta">
+            剩余课时 {{ p.remaining_sessions }} · 到期 {{ p.ends_at?.slice(0, 10) || '—' }}
+          </div>
+        </div>
+        <span :class="statusClass(p.status)">{{ statusLabel[p.status] || p.status }}</span>
+      </div>
     </div>
-    <p v-if="!packages.length" class="muted">暂无课包</p>
+    <div v-if="!packages.length" class="mw-empty">暂无课包</div>
   </section>
 </template>

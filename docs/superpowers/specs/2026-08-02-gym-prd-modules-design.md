@@ -274,8 +274,8 @@
 | 能力 | PRD | 状态 | OpenSpec / 归档 | 备注 |
 |------|-----|------|-----------------|------|
 | 工程脚手架（Compose / 前后端） | §4 / 部署 | ✅ | `project-scaffold` · `2026-08-02-platform-foundation-scaffold` | |
-| 组织（商户类型 / 商户） | §4.1 | ✅ | `organization` · 同上 | |
-| 账号权限（RBAC） | §2.2 / §4.2 | ✅ | `identity-access` · 菜单细裁于 `2026-08-02-phase1-closing-ops` | 角色权限 + Web 菜单/路由按 permissions 裁剪 |
+| 组织（商户类型 / 商户） | §4.1 | ✅ | `organization` · 同上 | 商户可关联多业态子系统（gym/catering） |
+| 账号权限（RBAC） | §2.2 / §4.2 | ✅ | `identity-access` · 菜单细裁于 `2026-08-02-phase1-closing-ops` | 含 `system:*` / `catering:*`；菜单按子系统+权限裁剪 |
 | 会员主档 | §4.3 | ✅ | `member-profile` · 同上 | |
 | 门禁与 Pad | §4.4 / §6.3 | ✅ | `access-control` · 同上 | 通行校验闭环可用 |
 | 交易与支付骨架 | §4.5 | ✅ | `commerce-skeleton` · `2026-08-02-phase1-closing-ops` | 线下 + mock + wechat（凭证/DRY_RUN）；真实商户 SDK 联调按凭证另行开启 |
@@ -288,14 +288,14 @@
 | 器材台账与报修 | §5.8 | ✅ | `equipment-catalog` / `equipment-repair` · `2026-08-02-equipment-ops` | Web 台账+报修；无 IoT |
 | 会员小程序 / H5 | §6.2 | ✅ | `member-auth` / `member-portal` / `member-miniprogram` · `2026-08-02-member-h5-mvp` · `2026-08-02-phase1-closing-ops` | H5 MVP + 原生小程序工程；短信/微信通道可配 |
 | 通知与消息 | §4.6 | ✅ | `notification-inbox` · `2026-08-02-notification-ops` | 站内通知；短信/订阅走生产通道配置 |
-| 酒吧 POS 等非健身业态 | §9 | — | — | 一期明确不做 |
+| 酒吧 POS 等非健身业态 | §9 | 🚧 | 餐饮子系统最小闭环 | 菜单+点单+线下收款/退款；非完整桌台 POS |
 
 ### 10.1 对照 §1.2 成功标准
 
 | 成功标准 | 状态 |
 |----------|------|
-| 可配置商户类型并添加健身房/非健身商户；非健身仅组织 + 门禁 | ✅ |
-| 超管 / 商户管理员 / 前台 / 教练权限可用，且商户数据隔离正确 | ✅ |
+| 可配置商户类型并添加健身房/非健身商户；非健身仅组织 + 门禁 | ✅（清吧走餐饮子系统；订单类型按业态隔离） |
+| 超管 / 商户管理员 / 前台 / 教练权限可用，且商户数据隔离正确 | ✅（含清吧 `bar_admin`；门户/菜单按商户子系统裁剪） |
 | 会员一人一档；办卡后 Pad 可放行；过期/停卡拒绝 | ✅ |
 | 团课预约、私教核销、零售与线上线下支付闭环 | ✅（微信生产凭凭证/DRY_RUN 切换） |
 | 营销券与经营报表可按商户查看；器材台账与报修可用 | ✅ |

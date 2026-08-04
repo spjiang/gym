@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import RequestContext, get_current_context
+from app.domain.subsystems import assert_order_type_allowed
 from app.errors import AppError
 from app.models.commerce import Order, OrderStatus, Payment, PaymentChannel, PaymentKind
 from app.schemas.common import OfflinePayIn, OnlinePayIn, OrderCreateIn, OrderOut
@@ -25,11 +26,20 @@ router = APIRouter(prefix="/orders", tags=["commerce"])
 
 
 @router.get("", response_model=list[OrderOut])
-def list_orders(db: Session = Depends(get_db), ctx: RequestContext = Depends(get_current_context)):
+def list_orders(
+    merchant_id: int | None = None,
+    order_type: str | None = None,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
     ctx.require_permission("order:read", "order:write")
     q = select(Order).where(Order.site_id == ctx.site_id)
     if not ctx.is_site_admin:
         q = q.where(Order.merchant_id == ctx.resolve_merchant_id())
+    elif merchant_id is not None:
+        q = q.where(Order.merchant_id == merchant_id)
+    if order_type:
+        q = q.where(Order.order_type == order_type)
     return list(db.scalars(q.order_by(Order.id.desc())).all())
 
 
@@ -41,12 +51,17 @@ def create_order(
 ):
     ctx.require_permission("order:write")
     merchant_id = ctx.resolve_merchant_id(body.merchant_id)
+    assert_order_type_allowed(db, merchant_id, body.order_type)
+    if body.amount <= 0:
+        raise AppError("validation_error", "订单金额必须大于 0", status_code=422)
+    if not body.title.strip():
+        raise AppError("validation_error", "订单标题不能为空", status_code=422)
     order = Order(
         site_id=ctx.site_id,
         merchant_id=merchant_id,
         member_id=body.member_id,
         order_type=body.order_type,
-        title=body.title,
+        title=body.title.strip(),
         amount=body.amount,
         status=OrderStatus.PENDING.value,
     )

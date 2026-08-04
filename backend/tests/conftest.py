@@ -14,6 +14,7 @@ os.environ["SECRET_KEY"] = "test-secret"
 os.environ["ONLINE_PAYMENT_MODE"] = "unconfigured"
 os.environ["SEED_ADMIN_USERNAME"] = "admin"
 os.environ["SEED_ADMIN_PASSWORD"] = "Admin@123456"
+os.environ["SEED_DEMO"] = "false"
 
 import app.models  # noqa: F401
 from app import db as db_module

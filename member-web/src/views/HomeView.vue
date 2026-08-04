@@ -1,39 +1,36 @@
 <script setup lang="ts">
-import { useAuthStore } from '../stores/auth'
 import { RouterLink } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
+
+const menus = [
+  { to: '/memberships', title: '会籍与课包', desc: '查看有效期、剩余次数与课时' },
+  { to: '/classes', title: '团课预约', desc: '浏览场次并预约 / 取消' },
+  { to: '/shop', title: '在线商城', desc: '购买会籍卡种与私教课包' },
+  { to: '/coupons', title: '优惠卡券', desc: '领取优惠券并查看我的券' },
+  { to: '/access', title: '通行记录', desc: '门禁进出记录查询' },
+  { to: '/notifications', title: '消息中心', desc: '系统通知与业务提醒' },
+]
 </script>
 
 <template>
-  <section>
-    <h2>你好，{{ auth.me?.name }}</h2>
-    <p class="muted">当前商户 #{{ auth.merchantId }}</p>
-    <div class="card">
-      <RouterLink to="/memberships">查看会籍与课包 →</RouterLink>
-    </div>
-    <div class="card">
-      <RouterLink to="/classes">预约团课 →</RouterLink>
-    </div>
-    <div class="card">
-      <RouterLink to="/shop">购卡 / 买课包 →</RouterLink>
-    </div>
-    <div class="card">
-      <RouterLink to="/coupons">领券中心 →</RouterLink>
-    </div>
-    <div class="card">
-      <RouterLink to="/access">通行记录 →</RouterLink>
-    </div>
-    <div class="card">
-      <RouterLink to="/notifications">消息通知 →</RouterLink>
+  <section class="mw-page">
+    <h1 class="mw-page__title">你好，{{ auth.me?.name }}</h1>
+    <p class="mw-page__desc">当前商户 #{{ auth.merchantId }} · 选择下方功能继续操作</p>
+
+    <div class="menu">
+      <RouterLink v-for="m in menus" :key="m.to" :to="m.to" class="mw-card mw-link-card">
+        <div class="mw-link-card__title">{{ m.title }}</div>
+        <div class="mw-link-card__desc">{{ m.desc }}</div>
+      </RouterLink>
     </div>
   </section>
 </template>
 
 <style scoped>
-a {
-  color: var(--accent);
-  text-decoration: none;
-  font-weight: 600;
+.menu {
+  display: flex;
+  flex-direction: column;
 }
 </style>

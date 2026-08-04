@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import RequestContext, get_current_context
+from app.domain.subsystems import assert_merchant_has_system
 from app.errors import AppError
 from app.models.commerce import Order, OrderStatus
 from app.models.member import Member
@@ -135,6 +136,7 @@ def create_category(
 ):
     ctx.require_permission("retail:manage")
     mid = ctx.resolve_merchant_id(body.merchant_id)
+    assert_merchant_has_system(db, mid, "gym")
     cat = ProductCategory(merchant_id=mid, name=body.name, sort_order=body.sort_order, is_active=True)
     db.add(cat)
     db.commit()
@@ -166,6 +168,7 @@ def create_sku(
 ):
     ctx.require_permission("retail:manage")
     mid = ctx.resolve_merchant_id(body.merchant_id)
+    assert_merchant_has_system(db, mid, "gym")
     if body.category_id is not None:
         cat = db.get(ProductCategory, body.category_id)
         if cat is None or cat.merchant_id != mid:
@@ -295,6 +298,7 @@ def create_retail_order(
 ):
     ctx.require_permission("retail:sell", "retail:manage")
     mid = ctx.resolve_merchant_id(body.merchant_id)
+    assert_merchant_has_system(db, mid, "gym")
     if not body.items:
         raise AppError("empty_order", "请至少添加一行商品", status_code=400)
     if body.member_id is not None:

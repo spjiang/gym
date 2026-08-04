@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import RequestContext, get_current_context
+from app.domain.subsystems import assert_merchant_has_system
 from app.errors import AppError
 from app.models.coupon import (
     ApplicableTo,
@@ -121,6 +122,7 @@ def create_template(
     ctx.require_permission("coupon:manage")
     _validate_template_body(body)
     mid = ctx.resolve_merchant_id(body.merchant_id)
+    assert_merchant_has_system(db, mid, "gym")
     t = CouponTemplate(
         merchant_id=mid,
         name=body.name,
@@ -179,6 +181,7 @@ def issue_coupon(
 ):
     ctx.require_permission("coupon:manage")
     mid = ctx.resolve_merchant_id(body.merchant_id)
+    assert_merchant_has_system(db, mid, "gym")
     t = db.get(CouponTemplate, body.template_id)
     if t is None or t.merchant_id != mid:
         raise AppError("not_found", "券模板不存在", status_code=404)

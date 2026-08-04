@@ -14,39 +14,61 @@ type Merchant = { id: number; name: string }
 
 const members = ref<Member[]>([])
 const merchants = ref<Merchant[]>([])
+const loading = ref(false)
+
+const createDialog = ref(false)
+const linkDialog = ref(false)
+const submitting = ref(false)
 const formRef = ref<FormInstance>()
+const linkFormRef = ref<FormInstance>()
+
 const form = reactive({ phone: '', name: '', merchant_id: undefined as number | undefined })
-const linkMerchantId = ref<number | undefined>()
-const creating = ref(false)
+const linkForm = reactive({ merchant_id: undefined as number | undefined })
+const linkTarget = ref<Member | null>(null)
 
 const rules: FormRules = {
-  phone: [
-    { required: true, message: '请填写手机号', trigger: 'blur' },
-    { min: 1, message: '手机号不能为空', trigger: 'blur' },
-  ],
-  name: [
-    { required: true, message: '请填写姓名', trigger: 'blur' },
-    { min: 1, message: '姓名不能为空', trigger: 'blur' },
-  ],
+  phone: [{ required: true, message: '请填写手机号', trigger: 'blur' }],
+  name: [{ required: true, message: '请填写姓名', trigger: 'blur' }],
   merchant_id: [{ required: true, message: '请选择商户', trigger: 'change' }],
+}
+
+const linkRules: FormRules = {
+  merchant_id: [{ required: true, message: '请选择目标商户', trigger: 'change' }],
 }
 
 function merchantName(id: number) {
   return merchants.value.find((m) => m.id === id)?.name || `#${id}`
 }
 
+function faceLabel(status: string) {
+  return { enrolled: '已录入', not_enrolled: '未录入', pending: '待审核' }[status] || status
+}
+
 async function load() {
-  const [m, ms] = await Promise.all([http.get('/members'), http.get('/merchants')])
-  members.value = m.data
-  merchants.value = ms.data
-  if (!form.merchant_id && merchants.value[0]) form.merchant_id = merchants.value[0].id
-  if (!linkMerchantId.value && merchants.value[0]) linkMerchantId.value = merchants.value[0].id
+  loading.value = true
+  try {
+    const [m, ms] = await Promise.all([http.get('/members'), http.get('/merchants')])
+    members.value = m.data
+    merchants.value = ms.data
+  } catch (e: unknown) {
+    ElMessage.error(e instanceof Error ? e.message : '加载失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+function openCreate() {
+  form.phone = ''
+  form.name = ''
+  form.merchant_id = merchants.value[0]?.id
+  formRef.value?.clearValidate()
+  createDialog.value = true
 }
 
 async function create() {
   const ok = await formRef.value?.validate().catch(() => false)
   if (!ok) return
-  creating.value = true
+  submitting.value = true
   try {
     await http.post('/members', {
       phone: form.phone.trim(),
@@ -54,27 +76,37 @@ async function create() {
       merchant_id: form.merchant_id,
     })
     ElMessage.success('会员已创建')
-    form.phone = ''
-    form.name = ''
-    formRef.value?.clearValidate()
+    createDialog.value = false
     await load()
+  } catch (e: unknown) {
+    ElMessage.error(e instanceof Error ? e.message : '创建失败')
   } finally {
-    creating.value = false
+    submitting.value = false
   }
 }
 
-async function link(row: Member) {
-  if (!linkMerchantId.value) {
-    ElMessage.warning('请先选择上方的「关联目标商户」')
-    return
+function openLink(row: Member) {
+  linkTarget.value = row
+  linkForm.merchant_id = merchants.value.find((m) => !row.merchant_ids.includes(m.id))?.id
+  linkFormRef.value?.clearValidate()
+  linkDialog.value = true
+}
+
+async function link() {
+  if (!linkTarget.value) return
+  const ok = await linkFormRef.value?.validate().catch(() => false)
+  if (!ok) return
+  submitting.value = true
+  try {
+    await http.post(`/members/${linkTarget.value.id}/merchants`, { merchant_id: linkForm.merchant_id })
+    ElMessage.success(`已关联到「${merchantName(linkForm.merchant_id!)}」`)
+    linkDialog.value = false
+    await load()
+  } catch (e: unknown) {
+    ElMessage.error(e instanceof Error ? e.message : '关联失败')
+  } finally {
+    submitting.value = false
   }
-  if (row.merchant_ids.includes(linkMerchantId.value)) {
-    ElMessage.info('该会员已关联此商户')
-    return
-  }
-  await http.post(`/members/${row.id}/merchants`, { merchant_id: linkMerchantId.value })
-  ElMessage.success(`已关联到「${merchantName(linkMerchantId.value)}」`)
-  await load()
 }
 
 async function remove(row: Member) {
@@ -101,73 +133,109 @@ onMounted(load)
 
 <template>
   <div>
-    <h3>创建会员</h3>
-    <el-form ref="formRef" :model="form" :rules="rules" inline>
-      <el-form-item label="手机号" prop="phone">
-        <el-input v-model="form.phone" placeholder="必填" maxlength="32" />
-      </el-form-item>
-      <el-form-item label="姓名" prop="name">
-        <el-input v-model="form.name" placeholder="必填" maxlength="128" />
-      </el-form-item>
-      <el-form-item label="商户" prop="merchant_id">
-        <el-select v-model="form.merchant_id" style="width: 180px">
-          <el-option v-for="m in merchants" :key="m.id" :label="m.name" :value="m.id" />
-        </el-select>
-      </el-form-item>
-      <el-button type="primary" :loading="creating" @click="create">创建</el-button>
-    </el-form>
-
-    <div class="link-bar">
-      <span class="label">关联目标商户</span>
-      <el-select
-        v-model="linkMerchantId"
-        placeholder="请选择要关联到的商户"
-        style="width: 240px"
-        clearable
-      >
-        <el-option v-for="m in merchants" :key="m.id" :label="m.name" :value="m.id" />
-      </el-select>
-      <span class="hint">先选商户，再点表格中的「关联」</span>
+    <div class="toolbar">
+      <h3>会员主档</h3>
+      <el-button type="primary" @click="openCreate">创建会员</el-button>
     </div>
 
-    <el-table :data="members" stripe>
+    <el-table :data="members" v-loading="loading" stripe>
       <el-table-column prop="id" label="ID" width="70" />
       <el-table-column prop="phone" label="手机号" />
       <el-table-column prop="name" label="姓名" />
-      <el-table-column prop="face_status" label="人脸状态" />
+      <el-table-column label="人脸状态" width="120">
+        <template #default="{ row }">
+          <el-tag
+            size="small"
+            :type="row.face_status === 'enrolled' ? 'success' : row.face_status === 'pending' ? 'warning' : 'info'"
+          >
+            {{ faceLabel(row.face_status) }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="关联商户">
         <template #default="{ row }">
-          {{ row.merchant_ids.map(merchantName).join('、') || '—' }}
+          <el-tag
+            v-for="id in row.merchant_ids"
+            :key="id"
+            size="small"
+            effect="plain"
+            style="margin-right: 6px"
+          >
+            {{ merchantName(id) }}
+          </el-tag>
+          <span v-if="!row.merchant_ids.length">—</span>
         </template>
       </el-table-column>
       <el-table-column label="操作" width="160">
         <template #default="{ row }">
-          <el-button link type="primary" @click="link(row)">关联</el-button>
+          <el-button link type="primary" @click="openLink(row)">关联商户</el-button>
           <el-button link type="danger" @click="remove(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
+
+    <!-- 创建会员弹窗 -->
+    <el-dialog v-model="createDialog" title="创建会员" width="480px" destroy-on-close>
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
+        <el-form-item label="手机号" prop="phone">
+          <el-input v-model="form.phone" placeholder="会员手机号，必填" maxlength="32" />
+        </el-form-item>
+        <el-form-item label="姓名" prop="name">
+          <el-input v-model="form.name" placeholder="会员姓名，必填" maxlength="128" />
+        </el-form-item>
+        <el-form-item label="商户" prop="merchant_id">
+          <el-select v-model="form.merchant_id" style="width: 100%">
+            <el-option v-for="m in merchants" :key="m.id" :label="m.name" :value="m.id" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="createDialog = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="create">创建</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 关联商户弹窗 -->
+    <el-dialog
+      v-model="linkDialog"
+      :title="`关联商户 · ${linkTarget ? linkTarget.name || linkTarget.phone : ''}`"
+      width="460px"
+      destroy-on-close
+    >
+      <el-alert
+        v-if="linkTarget"
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 14px"
+        title="关联后该会员可访问对应商户的权益与门禁授权"
+      />
+      <el-form ref="linkFormRef" :model="linkForm" :rules="linkRules" label-width="80px">
+        <el-form-item label="目标商户" prop="merchant_id">
+          <el-select v-model="linkForm.merchant_id" style="width: 100%" placeholder="请选择要关联到的商户">
+            <el-option v-for="m in merchants" :key="m.id" :label="m.name" :value="m.id" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="linkDialog = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="link">确认关联</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <style scoped>
-.link-bar {
+.toolbar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin: 18px 0 14px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: rgba(61, 107, 92, 0.06);
-  border: 1px solid rgba(61, 107, 92, 0.12);
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
 }
-.label {
-  font-weight: 600;
-  color: var(--admin-ink);
-  white-space: nowrap;
-}
-.hint {
-  font-size: 0.82rem;
-  color: var(--admin-ink-muted);
+
+.toolbar h3 {
+  margin: 0;
+  font-size: 1.1rem;
 }
 </style>

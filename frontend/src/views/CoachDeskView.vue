@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import http from '../api/http'
+import { merchantsWithSystem } from '../nav/systems'
 
 type Session = {
   id: number
@@ -20,7 +21,8 @@ const merchantId = ref<number | undefined>()
 
 async function refresh() {
   const m = await http.get('/merchants')
-  merchantId.value = m.data[0]?.id
+  const gyms = merchantsWithSystem(m.data, 'gym')
+  merchantId.value = gyms[0]?.id
   if (!merchantId.value) return
   const [s, p] = await Promise.all([
     http.get('/group-sessions', { params: { merchant_id: merchantId.value } }),

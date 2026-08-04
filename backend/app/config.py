@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     seed_admin_username: str = Field(default="admin", alias="SEED_ADMIN_USERNAME")
     seed_admin_password: str = Field(default="Admin@123456", alias="SEED_ADMIN_PASSWORD")
     seed_admin_display_name: str = Field(default="场地超管", alias="SEED_ADMIN_DISPLAY_NAME")
+    # 目录级体验数据：员工/会员/卡种/课程/零售等（幂等，可反复执行）
+    seed_demo: bool = Field(default=True, alias="SEED_DEMO")
 
     @property
     def cors_origin_list(self) -> list[str]:

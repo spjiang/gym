@@ -33,9 +33,11 @@ class MerchantTypeOut(ORMModel):
 
 class MerchantIn(BaseModel):
     merchant_type_id: int
-    name: str
+    name: str = Field(min_length=1, max_length=128)
     status: str = "preparing"
     site_id: int | None = None
+    # 关联业态子系统：gym / catering（可多选）；空则按商户类型默认
+    subsystem_codes: list[str] | None = None
 
 
 class MerchantOut(ORMModel):
@@ -45,7 +47,11 @@ class MerchantOut(ORMModel):
     name: str
     status: str
     created_at: datetime
+    subsystem_codes: list[str] = []
 
+
+class MerchantSubsystemsIn(BaseModel):
+    subsystem_codes: list[str] = Field(min_length=1)
 
 class StaffCreateIn(BaseModel):
     username: str

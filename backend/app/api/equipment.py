@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import RequestContext, get_current_context
+from app.domain.subsystems import assert_merchant_has_system
 from app.errors import AppError
 from app.models.equipment import (
     EquipmentAsset,
@@ -108,6 +109,7 @@ def create_asset(
     if body.status not in _VALID_ASSET_STATUS:
         raise AppError("invalid_status", "器材状态无效", status_code=400)
     mid = ctx.resolve_merchant_id(body.merchant_id)
+    assert_merchant_has_system(db, mid, "gym")
     exists = db.scalar(
         select(EquipmentAsset).where(
             EquipmentAsset.merchant_id == mid,
@@ -188,6 +190,7 @@ def create_repair(
 ):
     ctx.require_permission("equipment:repair", "equipment:manage")
     mid = ctx.resolve_merchant_id(body.merchant_id)
+    assert_merchant_has_system(db, mid, "gym")
     asset = db.get(EquipmentAsset, body.asset_id)
     if asset is None or asset.merchant_id != mid:
         raise AppError("not_found", "器材不存在", status_code=404)

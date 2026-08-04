@@ -27,13 +27,15 @@ const menus = computed(() => {
   return menusForSystem(currentSystem.value, auth.me?.permissions || [])
 })
 
+const isPortal = computed(() => currentSystem.value === 'portal')
+
 const pageTitle = computed(() => {
-  if (currentSystem.value === 'portal') return '子系统入口'
+  if (isPortal.value) return '工作台'
   return findMenu(route.path)?.label || systemMeta.value?.shortName || '工作台'
 })
 
 const eyebrow = computed(() => {
-  if (currentSystem.value === 'portal') return '综合经营管理系统'
+  if (isPortal.value) return '回龙观公园综合场地'
   return systemMeta.value?.name || '运营工作台'
 })
 
@@ -48,23 +50,20 @@ function logout() {
 </script>
 
 <template>
-  <el-container class="layout">
-    <el-aside width="248px" class="aside">
+  <el-container class="layout" :class="{ 'layout--portal': isPortal }">
+    <!-- 工作台首页不展示侧栏，避免大块空区；进入业务系统后再显示菜单 -->
+    <el-aside v-if="!isPortal" width="248px" class="aside">
       <div class="brand">
         <div class="brand-mark" aria-hidden="true" />
         <div>
           <div class="brand-name">回龙观场地</div>
-          <div class="brand-sub">
-            {{ currentSystem === 'portal' ? '综合经营管理系统' : systemMeta?.shortName }}
-          </div>
+          <div class="brand-sub">{{ systemMeta?.shortName }}</div>
         </div>
       </div>
 
-      <button class="portal-link" type="button" @click="goPortal">
-        ← 子系统入口
-      </button>
+      <button class="portal-link" type="button" @click="goPortal">← 工作台</button>
 
-      <div v-if="currentSystem !== 'portal'" class="system-label">{{ systemMeta?.name }}</div>
+      <div class="system-label">{{ systemMeta?.name }}</div>
 
       <el-menu
         v-if="menus.length"
@@ -79,11 +78,8 @@ function logout() {
           <span>{{ m.label }}</span>
         </el-menu-item>
       </el-menu>
-
-      <div v-else class="aside-hint">
-        请选择子系统进入对应业务模块。综合经营负责组织、权限与整体数据；健身能力在健身管理平台。
-      </div>
     </el-aside>
+
     <el-container class="workspace">
       <el-header class="header" height="72px">
         <div class="header-left">
@@ -102,7 +98,7 @@ function logout() {
         </div>
       </el-header>
       <el-main class="main">
-        <div class="main-panel">
+        <div class="main-panel" :class="{ 'main-panel--portal': isPortal }">
           <router-view />
         </div>
       </el-main>
@@ -229,18 +225,6 @@ function logout() {
   font-weight: 600;
 }
 
-.aside-hint {
-  position: relative;
-  z-index: 1;
-  margin: 8px 18px 24px;
-  padding: 14px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(197, 203, 198, 0.78);
-  font-size: 0.8rem;
-  line-height: 1.55;
-}
-
 .workspace {
   min-width: 0;
 }
@@ -339,6 +323,18 @@ function logout() {
   border: 1px solid rgba(28, 25, 23, 0.06);
   box-shadow: var(--admin-shadow);
   animation: panel-in 0.45s ease both;
+}
+
+.layout--portal .main {
+  padding-top: 18px;
+}
+
+.main-panel--portal {
+  /* 工作台全宽展示，减少多余边框压迫感 */
+  padding: 8px 4px 12px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 
 @keyframes panel-in {

@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import (
     access,
     auth,
+    catering,
     commerce,
     course,
     coupons,
@@ -60,6 +61,7 @@ def create_app() -> FastAPI:
     app.include_router(access.router, prefix="/api/v1")
     app.include_router(device.router, prefix="/api/v1")
     app.include_router(commerce.router, prefix="/api/v1")
+    app.include_router(catering.router, prefix="/api/v1")
     app.include_router(reports.router, prefix="/api/v1")
     app.include_router(membership.router, prefix="/api/v1")
     app.include_router(course.router, prefix="/api/v1")

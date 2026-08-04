@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import ROLE_COACH, RequestContext, get_current_context
+from app.domain.subsystems import assert_merchant_has_system
 from app.errors import AppError
 from app.models.commerce import Order, OrderStatus
 from app.models.course import (
@@ -245,6 +246,7 @@ def create_coach(
 ):
     ctx.require_permission("coach:manage")
     mid = ctx.resolve_merchant_id(body.merchant_id)
+    assert_merchant_has_system(db, mid, "gym")
     staff = db.get(StaffUser, body.staff_user_id)
     if staff is None or staff.site_id != ctx.site_id:
         raise AppError("invalid_staff", "员工不存在", status_code=400)
@@ -327,6 +329,7 @@ def create_pt_product(
 ):
     ctx.require_permission("course:manage")
     mid = ctx.resolve_merchant_id(body.merchant_id)
+    assert_merchant_has_system(db, mid, "gym")
     product = PtPackageProduct(
         merchant_id=mid,
         name=body.name,
@@ -399,6 +402,7 @@ def purchase_pt_package(
 ):
     ctx.require_permission("pt:sell", "course:manage")
     mid = ctx.resolve_merchant_id(body.merchant_id)
+    assert_merchant_has_system(db, mid, "gym")
     product = db.get(PtPackageProduct, body.product_id)
     if product is None or product.merchant_id != mid:
         raise AppError("not_found", "课包商品不存在", status_code=404)
@@ -479,6 +483,7 @@ def create_group_course(
 ):
     ctx.require_permission("course:manage")
     mid = ctx.resolve_merchant_id(body.merchant_id)
+    assert_merchant_has_system(db, mid, "gym")
     course = GroupCourse(
         merchant_id=mid,
         name=body.name,
@@ -531,6 +536,7 @@ def create_group_session(
 ):
     ctx.require_permission("course:manage")
     mid = ctx.resolve_merchant_id(body.merchant_id)
+    assert_merchant_has_system(db, mid, "gym")
     course = db.get(GroupCourse, body.course_id)
     if course is None or course.merchant_id != mid:
         raise AppError("not_found", "课程不存在", status_code=404)
@@ -618,6 +624,7 @@ def create_booking(
 ):
     ctx.require_permission("course:book", "course:manage")
     mid = ctx.resolve_merchant_id(body.merchant_id)
+    assert_merchant_has_system(db, mid, "gym")
     session = db.get(GroupSession, body.session_id)
     if session is None or session.merchant_id != mid:
         raise AppError("not_found", "场次不存在", status_code=404)

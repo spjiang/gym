@@ -27,14 +27,28 @@ onMounted(refresh)
 </script>
 
 <template>
-  <section>
-    <h2>消息</h2>
-    <p v-if="error" class="muted">{{ error }}</p>
-    <div v-for="n in notes" :key="n.id" class="card">
-      <strong>{{ n.title }}</strong>
-      <p>{{ n.body }}</p>
-      <p class="muted">{{ n.event_type }} · {{ n.created_at }}</p>
+  <section class="mw-page">
+    <h1 class="mw-page__title">消息中心</h1>
+    <p class="mw-page__desc">系统通知与业务提醒</p>
+    <p v-if="error" class="mw-msg mw-msg--error">{{ error }}</p>
+
+    <div v-for="n in notes" :key="n.id" class="mw-card">
+      <div class="mw-list-row__title">{{ n.title }}</div>
+      <p class="body">{{ n.body }}</p>
+      <div class="mw-list-row__meta">
+        {{ n.event_type }} · {{ n.created_at?.slice(0, 19).replace('T', ' ') }}
+      </div>
     </div>
-    <p v-if="!notes.length && !error" class="muted">暂无消息</p>
+    <div v-if="!notes.length && !error" class="mw-empty">暂无消息</div>
   </section>
 </template>
+
+<style scoped>
+.body {
+  margin: var(--mw-space-2) 0;
+  font-size: 14px;
+  color: var(--mw-text);
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+</style>

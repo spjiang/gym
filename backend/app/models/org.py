@@ -50,3 +50,18 @@ class Merchant(Base):
 
     site: Mapped[Site] = relationship(back_populates="merchants")
     merchant_type: Mapped[MerchantType] = relationship(back_populates="merchants")
+    subsystems: Mapped[list["MerchantSubsystem"]] = relationship(back_populates="merchant")
+
+
+class MerchantSubsystem(Base):
+    """商户关联的业态子系统（可多选，数据仍按 merchant_id 隔离）。"""
+
+    __tablename__ = "merchant_subsystems"
+    __table_args__ = (UniqueConstraint("merchant_id", "system_code", name="uq_merchant_subsystem"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    merchant_id: Mapped[int] = mapped_column(ForeignKey("merchants.id"), nullable=False, index=True)
+    system_code: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    merchant: Mapped[Merchant] = relationship(back_populates="subsystems")

@@ -21,6 +21,8 @@ import ReportsView from '../views/ReportsView.vue'
 import EquipmentView from '../views/EquipmentView.vue'
 import VisitsView from '../views/VisitsView.vue'
 import NotificationsView from '../views/NotificationsView.vue'
+import CateringMenuView from '../views/CateringMenuView.vue'
+import CateringOrdersView from '../views/CateringOrdersView.vue'
 
 const children: RouteRecordRaw[] = [
   { path: '', redirect: '/portal' },
@@ -88,6 +90,18 @@ const children: RouteRecordRaw[] = [
     name: 'equipment',
     component: EquipmentView,
     meta: { system: 'gym', anyOf: ['equipment:read', 'equipment:manage', 'equipment:repair', '*'] },
+  },
+  {
+    path: 'catering/menu',
+    name: 'catering-menu',
+    component: CateringMenuView,
+    meta: { system: 'catering', anyOf: ['catering:menu', 'order:write', '*'] },
+  },
+  {
+    path: 'catering/orders',
+    name: 'catering-orders',
+    component: CateringOrdersView,
+    meta: { system: 'catering', anyOf: ['catering:order', 'order:read', 'order:write', '*'] },
   },
 ]
 

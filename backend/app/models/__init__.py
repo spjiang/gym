@@ -33,12 +33,16 @@ from app.models.otp import MemberOtpChallenge
 from app.models.equipment import EquipmentAsset, EquipmentRepairTicket
 from app.models.visit import VisitPass
 from app.models.notification import Notification
-from app.models.org import Merchant, MerchantType, Site
+from app.models.org import Merchant, MerchantSubsystem, MerchantType, Site
+from app.models.catering import CateringMenuItem, CateringOrderItem
 
 __all__ = [
     "Site",
     "MerchantType",
     "Merchant",
+    "MerchantSubsystem",
+    "CateringMenuItem",
+    "CateringOrderItem",
     "StaffUser",
     "Role",
     "StaffRole",

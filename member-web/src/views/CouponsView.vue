@@ -19,6 +19,7 @@ const claimable = ref<Claimable[]>([])
 const mine = ref<Mine[]>([])
 const msg = ref('')
 const err = ref('')
+const busyId = ref<number | null>(null)
 
 async function load() {
   const mid = auth.merchantId
@@ -33,6 +34,7 @@ async function load() {
 async function claim(id: number) {
   msg.value = ''
   err.value = ''
+  busyId.value = id
   try {
     await http.post('/member/coupons/claim', {
       merchant_id: auth.merchantId,
@@ -42,6 +44,8 @@ async function claim(id: number) {
     await load()
   } catch (e: unknown) {
     err.value = e instanceof Error ? e.message : '领取失败'
+  } finally {
+    busyId.value = null
   }
 }
 
@@ -53,35 +57,38 @@ onMounted(load)
 </script>
 
 <template>
-  <section>
-    <h2>领券</h2>
-    <p v-if="msg" class="muted">{{ msg }}</p>
-    <p v-if="err" class="err">{{ err }}</p>
-    <h3>可领取</h3>
-    <div v-for="c in claimable" :key="c.id" class="card row">
-      <div>
-        <div>{{ c.name }}</div>
-        <div class="muted">{{ face(c) }} · 门槛 ¥{{ c.threshold_amount }}</div>
+  <section class="mw-page">
+    <h1 class="mw-page__title">优惠卡券</h1>
+    <p class="mw-page__desc">领取可用优惠券，并在购卡或消费时使用</p>
+    <p v-if="msg" class="mw-msg mw-msg--ok">{{ msg }}</p>
+    <p v-if="err" class="mw-msg mw-msg--error">{{ err }}</p>
+
+    <h2 class="mw-section-title">可领取</h2>
+    <div v-for="c in claimable" :key="c.id" class="mw-card mw-list-row">
+      <div class="mw-list-row__main">
+        <div class="mw-list-row__title">{{ c.name }}</div>
+        <div class="mw-price">{{ face(c) }}</div>
+        <div class="mw-list-row__meta">满 ¥{{ c.threshold_amount }} 可用</div>
       </div>
-      <button @click="claim(c.id)">领取</button>
+      <button
+        class="mw-btn mw-btn--sm mw-list-row__action"
+        type="button"
+        :disabled="busyId === c.id"
+        @click="claim(c.id)"
+      >
+        {{ busyId === c.id ? '领取中' : '领取' }}
+      </button>
     </div>
-    <p v-if="!claimable.length" class="muted">暂无可领券</p>
-    <h3>我的券</h3>
-    <div v-for="c in mine" :key="c.id" class="card">
-      <strong>#{{ c.id }}</strong>
-      <span class="muted"> 模板 {{ c.template_id }} · {{ c.status }} · 至 {{ c.ends_at?.slice(0, 10) }}</span>
+    <div v-if="!claimable.length" class="mw-empty">暂无可领券</div>
+
+    <h2 class="mw-section-title">我的券</h2>
+    <div v-for="c in mine" :key="c.id" class="mw-card mw-list-row">
+      <div class="mw-list-row__main">
+        <div class="mw-list-row__title">券 #{{ c.id }}</div>
+        <div class="mw-list-row__meta">模板 {{ c.template_id }} · 至 {{ c.ends_at?.slice(0, 10) }}</div>
+      </div>
+      <span class="mw-status mw-status--neutral">{{ c.status }}</span>
     </div>
+    <div v-if="!mine.length" class="mw-empty">暂无卡券</div>
   </section>
 </template>
-
-<style scoped>
-.row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.75rem;
-}
-.err {
-  color: #b91c1c;
-}
-</style>

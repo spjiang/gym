@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import RequestContext, get_current_context
+from app.domain.subsystems import assert_merchant_has_system
 from app.errors import AppError
 from app.models.access import AccessPoint
 from app.models.commerce import Order, OrderStatus
@@ -186,6 +187,7 @@ def create_product(
     merchant = db.get(Merchant, mid)
     if merchant is None or merchant.site_id != ctx.site_id:
         raise AppError("not_found", "商户不存在", status_code=404)
+    assert_merchant_has_system(db, mid, "gym")
 
     product = MembershipProduct(
         merchant_id=mid,
@@ -317,6 +319,7 @@ def purchase_membership(
     mid = ctx.resolve_merchant_id(body.merchant_id or product.merchant_id)
     if product.merchant_id != mid:
         raise AppError("forbidden", "卡种不属于当前商户", status_code=403)
+    assert_merchant_has_system(db, mid, "gym")
     ap_ids = product_access_point_ids(db, product.id)
     validate_product_for_sale(product, ap_ids)
     _ensure_member_in_merchant(db, member_id=body.member_id, merchant_id=mid, site_id=ctx.site_id)
@@ -379,6 +382,7 @@ def renew_membership(
     mid = ctx.resolve_merchant_id(body.merchant_id or membership.merchant_id)
     if membership.merchant_id != mid:
         raise AppError("forbidden", "禁止跨商户续卡", status_code=403)
+    assert_merchant_has_system(db, mid, "gym")
     product_id = body.product_id or membership.product_id
     product = db.get(MembershipProduct, product_id)
     if product is None or product.merchant_id != mid:
