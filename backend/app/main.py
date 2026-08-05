@@ -5,29 +5,27 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import (
+from app.core.config import get_settings
+from app.core.errors import register_exception_handlers
+from app.systems.catering.api import catering, member_catering
+from app.systems.gym.api import coupons, course, equipment, membership, retail
+from app.systems.platform.api import (
     access,
     auth,
-    catering,
     commerce,
-    course,
-    coupons,
     device,
-    equipment,
     member_auth,
     member_portal,
     members,
-    membership,
     notifications,
     org,
     reports,
-    retail,
     staff,
     visits,
 )
-from app.config import get_settings
-from app.errors import register_exception_handlers
-from app.services.sync_queue import ensure_worker
+from app.systems.platform.api import navigation as platform_navigation
+from app.systems.platform.api import rbac as platform_rbac
+from app.systems.platform.services.sync_queue import ensure_worker
 
 
 @asynccontextmanager
@@ -62,6 +60,7 @@ def create_app() -> FastAPI:
     app.include_router(device.router, prefix="/api/v1")
     app.include_router(commerce.router, prefix="/api/v1")
     app.include_router(catering.router, prefix="/api/v1")
+    app.include_router(member_catering.router, prefix="/api/v1")
     app.include_router(reports.router, prefix="/api/v1")
     app.include_router(membership.router, prefix="/api/v1")
     app.include_router(course.router, prefix="/api/v1")
@@ -71,6 +70,8 @@ def create_app() -> FastAPI:
     app.include_router(visits.router, prefix="/api/v1")
     app.include_router(notifications.router, prefix="/api/v1")
     app.include_router(notifications.member_router, prefix="/api/v1")
+    app.include_router(platform_rbac.router, prefix="/api/v1")
+    app.include_router(platform_navigation.router, prefix="/api/v1")
     return app
 
 

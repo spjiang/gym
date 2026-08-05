@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import http from '../api/http'
-import { useAuthStore } from '../stores/auth'
+import { pathForMerchant, useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -14,6 +14,12 @@ const err = ref('')
 const sending = ref(false)
 const logging = ref(false)
 
+const merchantId = computed(() => {
+  const raw = route.query.merchant_id
+  const n = Number(Array.isArray(raw) ? raw[0] : raw)
+  return n && !Number.isNaN(n) ? n : undefined
+})
+
 async function send() {
   err.value = ''
   tip.value = ''
@@ -23,7 +29,10 @@ async function send() {
   }
   sending.value = true
   try {
-    await http.post('/member/auth/otp/send', { phone: phone.value.trim() })
+    await http.post('/member/auth/otp/send', {
+      phone: phone.value.trim(),
+      merchant_id: merchantId.value ?? null,
+    })
     tip.value = '验证码已发送，请查收短信'
   } catch (e: unknown) {
     err.value = e instanceof Error ? e.message : '发送失败'
@@ -43,10 +52,24 @@ async function login() {
     const { data } = await http.post('/member/auth/otp/verify', {
       phone: phone.value.trim(),
       code: code.value.trim(),
+      merchant_id: merchantId.value ?? null,
     })
     auth.setToken(data.access_token)
-    await auth.fetchMe()
-    router.replace((route.query.redirect as string) || '/')
+    const me = await auth.fetchMe()
+    const redirect = (route.query.redirect as string) || ''
+    if (redirect.startsWith('/m/') || redirect === '/stores' || redirect === '/me') {
+      router.replace(redirect)
+      return
+    }
+    if (merchantId.value) {
+      const m = me.merchants.find((x) => x.id === merchantId.value)
+      if (m) {
+        auth.setMerchantId(m.id)
+        router.replace(pathForMerchant(m))
+        return
+      }
+    }
+    router.replace('/stores')
   } catch (e: unknown) {
     err.value = e instanceof Error ? e.message : '登录失败'
   } finally {
@@ -60,7 +83,10 @@ async function login() {
     <header class="login__brand">
       <p class="login__site">回龙观公园综合场地</p>
       <h1 class="login__title">会员中心</h1>
-      <p class="login__desc">使用建档手机号登录，查看会籍、预约团课与在线购卡。</p>
+      <p class="login__desc">
+        <template v-if="merchantId">扫码加入门店 · 手机号验证码登录后自动关联</template>
+        <template v-else>使用手机号登录；未注册将自动开通（综合运营平台入口）</template>
+      </p>
     </header>
 
     <form class="login__form" @submit.prevent="login">

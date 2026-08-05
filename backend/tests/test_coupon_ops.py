@@ -114,7 +114,7 @@ def test_coupon_retail_discount_redeem_and_refund(client: TestClient, admin_head
     coupons = client.get(
         f"/api/v1/coupons/member-coupons?merchant_id={gym_id}&member_id={member['id']}",
         headers=admin_headers,
-    ).json()
+    ).json()["items"]
     assert coupons[0]["status"] == "unused"
 
     paid = client.post(
@@ -126,7 +126,7 @@ def test_coupon_retail_discount_redeem_and_refund(client: TestClient, admin_head
     coupons = client.get(
         f"/api/v1/coupons/member-coupons?merchant_id={gym_id}&member_id={member['id']}",
         headers=admin_headers,
-    ).json()
+    ).json()["items"]
     assert coupons[0]["status"] == "used"
     assert coupons[0]["used_order_id"] == order_id
 
@@ -135,7 +135,7 @@ def test_coupon_retail_discount_redeem_and_refund(client: TestClient, admin_head
     coupons = client.get(
         f"/api/v1/coupons/member-coupons?merchant_id={gym_id}&member_id={member['id']}",
         headers=admin_headers,
-    ).json()
+    ).json()["items"]
     assert coupons[0]["status"] == "unused"
     assert coupons[0]["used_order_id"] is None
 

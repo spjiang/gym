@@ -50,7 +50,7 @@ def test_pt_purchase_fulfill_and_consume(client: TestClient, admin_headers: dict
             "password": "Coach@123456",
             "display_name": "私教甲",
             "merchant_id": gym_id,
-            "role_codes": ["coach"],
+            "role_codes": ["gym_coach"],
         },
     ).json()
     coach = client.post(
@@ -103,7 +103,7 @@ def test_pt_purchase_fulfill_and_consume(client: TestClient, admin_headers: dict
     packages = client.get(
         f"/api/v1/pt-packages?merchant_id={gym_id}&member_id={member['id']}",
         headers=admin_headers,
-    ).json()
+    ).json()["items"]
     assert len(packages) == 1
     assert packages[0]["status"] == "active"
     assert packages[0]["remaining_sessions"] == 2
@@ -129,7 +129,7 @@ def test_group_booking_membership_full_cancel(client: TestClient, admin_headers:
             "password": "Coach@123456",
             "display_name": "团课教练",
             "merchant_id": gym_id,
-            "role_codes": ["coach"],
+            "role_codes": ["gym_coach"],
         },
     ).json()
     coach = client.post(
@@ -177,7 +177,7 @@ def test_group_booking_membership_full_cancel(client: TestClient, admin_headers:
             "password": "Coach@123456",
             "display_name": "团课教练2",
             "merchant_id": gym_id,
-            "role_codes": ["coach"],
+            "role_codes": ["gym_coach"],
         },
     ).json()
     coach2 = client.post(

@@ -47,7 +47,7 @@ def test_equipment_lifecycle(client: TestClient, admin_headers: dict):
     assets = client.get(
         f"/api/v1/equipment/assets?merchant_id={gym_id}&status=repair",
         headers=admin_headers,
-    ).json()
+    ).json()["items"]
     assert any(a["id"] == asset_id for a in assets)
 
     done = client.post(
@@ -61,5 +61,5 @@ def test_equipment_lifecycle(client: TestClient, admin_headers: dict):
     refreshed = client.get(
         f"/api/v1/equipment/assets?merchant_id={gym_id}&status=in_use",
         headers=admin_headers,
-    ).json()
+    ).json()["items"]
     assert any(a["id"] == asset_id for a in refreshed)

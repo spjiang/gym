@@ -94,8 +94,8 @@ def test_stock_and_retail_flow(client: TestClient, admin_headers: dict):
     )
     assert deny_pay.status_code == 400
     assert deny_pay.json()["code"] == "insufficient_stock"
-    assert client.get(f"/api/v1/orders", headers=admin_headers).json()
-    still = next(o for o in client.get("/api/v1/orders", headers=admin_headers).json() if o["id"] == order_id)
+    assert client.get("/api/v1/orders", headers=admin_headers).json()["items"]
+    still = next(o for o in client.get("/api/v1/orders", headers=admin_headers).json()["items"] if o["id"] == order_id)
     assert still["status"] == "pending"
 
     # 补货后再付

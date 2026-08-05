@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
-from app.config import get_settings
+from app.core.config import get_settings
 
 
 def _gym_id(client: TestClient, headers: dict) -> int:
@@ -36,8 +36,18 @@ def test_member_otp_and_staff_token_rejected(client: TestClient, admin_headers: 
     assert bad.status_code == 401
 
     missing = client.post("/api/v1/member/auth/otp/send", json={"phone": "19999999999"})
-    assert missing.status_code == 404
-    assert missing.json()["code"] == "member_not_found"
+    assert missing.status_code == 200
+    # 未注册也可发码；校验后自动注册为平台来源
+    code = get_settings().member_otp_mock_code
+    reg = client.post(
+        "/api/v1/member/auth/otp/verify",
+        json={"phone": "19999999999", "code": code},
+    )
+    assert reg.status_code == 200, reg.text
+    mheaders_new = {"Authorization": f"Bearer {reg.json()['access_token']}"}
+    me_new = client.get("/api/v1/member/me", headers=mheaders_new)
+    assert me_new.status_code == 200
+    assert me_new.json()["acquisition_source"] == "platform"
 
     mheaders = _member_login(client, member["phone"])
     me = client.get("/api/v1/member/me", headers=mheaders)
@@ -104,7 +114,7 @@ def test_member_portal_book_and_purchase(client: TestClient, admin_headers: dict
             "password": "Coach@123456",
             "display_name": "H5教练",
             "merchant_id": gym_id,
-            "role_codes": ["coach"],
+            "role_codes": ["gym_coach"],
         },
     ).json()
     coach = client.post(

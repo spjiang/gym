@@ -211,7 +211,9 @@
 ### 6.2 会员小程序 / H5
 
 - 登录绑定与资料；人脸采集状态展示（采集可在店内 Pad 完成）
+- 多商户选店与业态分流（健身 / 餐饮）
 - 我的会籍/课包、到期提醒
+- 清吧：菜单点餐、线上支付、取餐号、会员退款
 - 团课预约/取消
 - 私教：一期以查看剩余课时为主，预约默认由前台/教练处理（若后续开放小程序约私教，单独加需求）
 - 在线购卡/买课包/领券与支付结果
@@ -274,8 +276,8 @@
 | 能力 | PRD | 状态 | OpenSpec / 归档 | 备注 |
 |------|-----|------|-----------------|------|
 | 工程脚手架（Compose / 前后端） | §4 / 部署 | ✅ | `project-scaffold` · `2026-08-02-platform-foundation-scaffold` | |
-| 组织（商户类型 / 商户） | §4.1 | ✅ | `organization` · 同上 | 商户可关联多业态子系统（gym/catering） |
-| 账号权限（RBAC） | §2.2 / §4.2 | ✅ | `identity-access` · 菜单细裁于 `2026-08-02-phase1-closing-ops` | 含 `system:*` / `catering:*`；菜单按子系统+权限裁剪 |
+| 组织（商户类型 / 商户） | §4.1 | ✅ | `organization` · 同上 | 商户可关联多业态；子系统源码按 `systems/*` 隔离 |
+| 账号权限（RBAC） | §2.2 / §4.2 | ✅ | `identity-access` · `2026-08-04-subsystem-rbac-config` | 配置台 `/platform/roles`·`/platform/subsystems`；菜单读库 `/me/navigation` |
 | 会员主档 | §4.3 | ✅ | `member-profile` · 同上 | |
 | 门禁与 Pad | §4.4 / §6.3 | ✅ | `access-control` · 同上 | 通行校验闭环可用 |
 | 交易与支付骨架 | §4.5 | ✅ | `commerce-skeleton` · `2026-08-02-phase1-closing-ops` | 线下 + mock + wechat（凭证/DRY_RUN）；真实商户 SDK 联调按凭证另行开启 |
@@ -286,9 +288,11 @@
 | 营销（券 / 活动 / 体验卡） | §5.5 | ✅ | `coupon-*` / `promo-pricing` / `coupon-member-claim` · `2026-08-02-coupon-marketing-ops` · `2026-08-02-marketing-claim-trial-ops` · `2026-08-02-phase1-closing-ops` | 券+领券+体验卡+活动价 |
 | 报表与财务看板 | §5.6 | ✅ | `commerce-report` · `2026-08-02-commerce-report-ops` · `2026-08-02-report-ops-extend` | 收款汇总+CSV ✅；会籍/课程/库存看板 ✅；不做总账 |
 | 器材台账与报修 | §5.8 | ✅ | `equipment-catalog` / `equipment-repair` · `2026-08-02-equipment-ops` | Web 台账+报修；无 IoT |
-| 会员小程序 / H5 | §6.2 | ✅ | `member-auth` / `member-portal` / `member-miniprogram` · `2026-08-02-member-h5-mvp` · `2026-08-02-phase1-closing-ops` | H5 MVP + 原生小程序工程；短信/微信通道可配 |
+| 会员小程序 / H5 | §6.2 | ✅ | `member-auth` / `member-portal` / `member-miniprogram` · `2026-08-02-member-h5-mvp` · `2026-08-04-member-h5-multistore-catering` | 选店+业态分流；清吧点餐支付取餐号退款；短信/微信通道可配 |
 | 通知与消息 | §4.6 | ✅ | `notification-inbox` · `2026-08-02-notification-ops` | 站内通知；短信/订阅走生产通道配置 |
-| 酒吧 POS 等非健身业态 | §9 | 🚧 | 餐饮子系统最小闭环 | 菜单+点单+线下收款/退款；非完整桌台 POS |
+| 酒吧 POS 等非健身业态 | §9 | 🚧 | 餐饮子系统 + 会员端点餐闭环 | 后台菜单点单收款；H5 选店点餐支付退款；非完整桌台 POS |
+| 管理端列表规范 | 后台 UX | ✅ | `2026-08-05-admin-list-conventions` | A1–A4：检索/分页/详情·用户列；目录型小表全量例外 |
+| 商户二维码获客 | §6.2 | ✅ | `2026-08-05-merchant-qr-acquisition` | 获客码 + OTP 自动注册挂靠 + 首次来源 |
 
 ### 10.1 对照 §1.2 成功标准
 

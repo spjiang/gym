@@ -12,17 +12,18 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.access import AccessDevice, AccessPoint
-from app.models.coupon import ApplicableTo, CouponTemplate, DiscountType
-from app.models.course import Coach, GroupCourse, GroupSession, GroupSessionStatus, PtPackageProduct
-from app.models.equipment import EquipmentAsset, EquipmentStatus
-from app.models.identity import Role, StaffRole, StaffUser
-from app.models.member import FaceStatus, Member, MerchantMember
-from app.models.membership import MembershipProduct, MembershipProductAccessPoint, ProductType
-from app.models.notification import Notification
-from app.models.org import Merchant, MerchantStatus, MerchantType, Site
-from app.models.retail import ProductCategory, RetailSku, StockMovement, StockMovementType
-from app.security import hash_device_api_key, hash_password
+from app.systems.platform.models.access import AccessDevice, AccessPoint
+from app.systems.gym.models.coupon import ApplicableTo, CouponTemplate, DiscountType
+from app.systems.gym.models.course import Coach, GroupCourse, GroupSession, GroupSessionStatus, PtPackageProduct
+from app.systems.gym.models.equipment import EquipmentAsset, EquipmentStatus
+from app.systems.platform.models.identity import Role, StaffRole, StaffUser
+from app.systems.platform.models.member import FaceStatus, Member, MerchantMember
+from app.systems.gym.models.membership import MembershipProduct, MembershipProductAccessPoint, ProductType
+from app.systems.platform.models.notification import Notification
+from app.systems.platform.models.org import Merchant, MerchantStatus, MerchantType, Site
+from app.systems.gym.models.retail import ProductCategory, RetailSku, StockMovement, StockMovementType
+from app.systems.catering.models.catering import CateringMenuItem
+from app.core.security import hash_device_api_key, hash_password
 
 UTC = timezone.utc
 
@@ -55,6 +56,21 @@ def _get_or_create_staff(
         db.flush()
         db.add(StaffRole(staff_id=staff.id, role_id=role.id))
     return staff
+
+
+def _ensure_staff_role(db: Session, staff: StaffUser, role: Role) -> None:
+    """确保员工仅绑定指定角色（幂等）。"""
+    existing = list(db.scalars(select(StaffRole).where(StaffRole.staff_id == staff.id)).all())
+    for sr in existing:
+        if sr.role_id != role.id:
+            db.delete(sr)
+    db.flush()
+    linked = db.scalar(
+        select(StaffRole).where(StaffRole.staff_id == staff.id, StaffRole.role_id == role.id)
+    )
+    if linked is None:
+        db.add(StaffRole(staff_id=staff.id, role_id=role.id))
+        db.flush()
 
 
 def _ensure_member(
@@ -188,60 +204,156 @@ def seed_demo_catalog(db: Session, *, site: Site, gym: Merchant, role_map: dict[
         db.add(bar)
         db.flush()
     if bar is not None:
-        from app.domain.subsystems import replace_merchant_subsystems
-        from app.models.org import MerchantSubsystem
+        from app.core.domain.subsystems import replace_merchant_subsystems
+        from app.systems.platform.models.org import MerchantSubsystem
+        from app.systems.platform.services.role_packs import ensure_merchant_role_packs
 
         if db.scalar(select(MerchantSubsystem).where(MerchantSubsystem.merchant_id == bar.id)) is None:
             replace_merchant_subsystems(db, bar.id, ["catering"])
+        ensure_merchant_role_packs(db, bar.id)
 
-    # —— 员工 ——
-    gym_admin = _get_or_create_staff(
-        db,
-        site_id=site.id,
-        merchant_id=gym.id,
-        username="gym_admin",
-        password="Demo@123456",
-        display_name="健身房店长",
-        role=role_map["merchant_admin"],
-    )
-    front = _get_or_create_staff(
-        db,
-        site_id=site.id,
-        merchant_id=gym.id,
-        username="front01",
-        password="Demo@123456",
-        display_name="前台小王",
-        role=role_map["front_desk"],
-    )
-    coach_staff_1 = _get_or_create_staff(
-        db,
-        site_id=site.id,
-        merchant_id=gym.id,
-        username="coach01",
-        password="Demo@123456",
-        display_name="教练阿强",
-        role=role_map["coach"],
-    )
-    coach_staff_2 = _get_or_create_staff(
-        db,
-        site_id=site.id,
-        merchant_id=gym.id,
-        username="coach02",
-        password="Demo@123456",
-        display_name="教练小雅",
-        role=role_map["coach"],
-    )
-    if bar is not None and "bar_admin" in role_map:
+    from app.systems.platform.services.role_packs import ensure_merchant_role_packs
+
+    ensure_merchant_role_packs(db, gym.id)
+
+    def merchant_role(merchant_id: int, code: str) -> Role | None:
+        return db.scalar(select(Role).where(Role.merchant_id == merchant_id, Role.code == code))
+
+    # —— 组织角色演示账号 ——
+    if "site_ops" in role_map:
         _get_or_create_staff(
             db,
             site_id=site.id,
-            merchant_id=bar.id,
-            username="bar_admin",
+            merchant_id=None,
+            username="site_ops",
             password="Demo@123456",
-            display_name="清吧店长",
-            role=role_map["bar_admin"],
+            display_name="场地运营",
+            role=role_map["site_ops"],
         )
-    _ = (gym_admin, front)  # 保留引用，便于后续扩展关联
+        # 兼容旧账号名
+        _get_or_create_staff(
+            db,
+            site_id=site.id,
+            merchant_id=None,
+            username="platform_admin",
+            password="Demo@123456",
+            display_name="场地运营",
+            role=role_map["site_ops"],
+        )
+
+    gym_admin_role = merchant_role(gym.id, "gym_admin")
+    gym_ops_role = merchant_role(gym.id, "gym_ops")
+    gym_coach_role = merchant_role(gym.id, "gym_coach")
+
+    if gym_admin_role is not None:
+        gym_admin = _get_or_create_staff(
+            db,
+            site_id=site.id,
+            merchant_id=gym.id,
+            username="gym_admin",
+            password="Demo@123456",
+            display_name="健身房管理员",
+            role=gym_admin_role,
+        )
+        _ensure_staff_role(db, gym_admin, gym_admin_role)
+    else:
+        gym_admin = None
+
+    if gym_ops_role is not None:
+        gym_ops = _get_or_create_staff(
+            db,
+            site_id=site.id,
+            merchant_id=gym.id,
+            username="gym_ops",
+            password="Demo@123456",
+            display_name="健身房运营·小王",
+            role=gym_ops_role,
+        )
+        _ensure_staff_role(db, gym_ops, gym_ops_role)
+        # 兼容旧前台账号
+        front = _get_or_create_staff(
+            db,
+            site_id=site.id,
+            merchant_id=gym.id,
+            username="front01",
+            password="Demo@123456",
+            display_name="健身房运营·小王",
+            role=gym_ops_role,
+        )
+        _ensure_staff_role(db, front, gym_ops_role)
+    else:
+        front = None
+
+    if gym_coach_role is not None:
+        coach_staff_1 = _get_or_create_staff(
+            db,
+            site_id=site.id,
+            merchant_id=gym.id,
+            username="coach01",
+            password="Demo@123456",
+            display_name="教练阿强",
+            role=gym_coach_role,
+        )
+        _ensure_staff_role(db, coach_staff_1, gym_coach_role)
+        coach_staff_2 = _get_or_create_staff(
+            db,
+            site_id=site.id,
+            merchant_id=gym.id,
+            username="coach02",
+            password="Demo@123456",
+            display_name="教练小雅",
+            role=gym_coach_role,
+        )
+        _ensure_staff_role(db, coach_staff_2, gym_coach_role)
+    else:
+        coach_staff_1 = coach_staff_2 = None
+
+    if bar is not None:
+        bar_admin_role = merchant_role(bar.id, "bar_admin")
+        bar_ops_role = merchant_role(bar.id, "bar_ops")
+        bar_cashier_role = merchant_role(bar.id, "bar_cashier")
+        if bar_admin_role is not None:
+            bar_admin = _get_or_create_staff(
+                db,
+                site_id=site.id,
+                merchant_id=bar.id,
+                username="bar_admin",
+                password="Demo@123456",
+                display_name="清吧管理人员",
+                role=bar_admin_role,
+            )
+            _ensure_staff_role(db, bar_admin, bar_admin_role)
+            _get_or_create_staff(
+                db,
+                site_id=site.id,
+                merchant_id=bar.id,
+                username="catering_admin",
+                password="Demo@123456",
+                display_name="清吧管理人员",
+                role=bar_admin_role,
+            )
+        if bar_ops_role is not None:
+            _get_or_create_staff(
+                db,
+                site_id=site.id,
+                merchant_id=bar.id,
+                username="bar_ops",
+                password="Demo@123456",
+                display_name="清吧运营",
+                role=bar_ops_role,
+            )
+        if bar_cashier_role is not None:
+            _get_or_create_staff(
+                db,
+                site_id=site.id,
+                merchant_id=bar.id,
+                username="bar_cashier",
+                password="Demo@123456",
+                display_name="清吧收银",
+                role=bar_cashier_role,
+            )
+
+    _ = (gym_admin, front, coach_staff_1, coach_staff_2)
 
     # —— 门禁 ——
     main_door = _ensure_point(db, site_id=site.id, merchant_id=gym.id, name="健身房正门")
@@ -588,6 +700,31 @@ def seed_demo_catalog(db: Session, *, site: Site, gym: Merchant, role_map: dict[
     ensure_asset("EQ-DB-001", "哑铃架", "strength", "力量区")
     ensure_asset("EQ-SG-001", "史密斯机", "strength", "力量区")
     db.flush()
+
+    # —— 清吧 Demo 菜单 ——
+    if bar is not None:
+        for name, category, price in (
+            ("特调气泡水", "饮品", "28.00"),
+            ("经典莫吉托", "鸡尾酒", "48.00"),
+            ("炸薯条", "小食", "22.00"),
+        ):
+            exists = db.scalar(
+                select(CateringMenuItem).where(
+                    CateringMenuItem.merchant_id == bar.id,
+                    CateringMenuItem.name == name,
+                )
+            )
+            if exists is None:
+                db.add(
+                    CateringMenuItem(
+                        merchant_id=bar.id,
+                        name=name,
+                        category=category,
+                        price=Decimal(price),
+                        is_active=True,
+                    )
+                )
+        db.flush()
 
     # —— 站内通知 ——
     notice_title = "【Demo】欢迎体验综合场地管理系统"

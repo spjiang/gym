@@ -17,9 +17,9 @@ os.environ["SEED_ADMIN_PASSWORD"] = "Admin@123456"
 os.environ["SEED_DEMO"] = "false"
 
 import app.models  # noqa: F401
-from app import db as db_module
-from app.config import get_settings
-from app.db import Base, get_db
+from app.core import db as db_module
+from app.core.config import get_settings
+from app.core.db import Base, get_db
 from app.main import create_app
 from app.seed import run_seed
 

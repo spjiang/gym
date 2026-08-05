@@ -1,46 +1,55 @@
 <script setup lang="ts">
-import { RouterLink, RouterView, useRouter } from 'vue-router'
+import { computed } from 'vue'
+import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
+const route = useRoute()
 const router = useRouter()
 
-const tabs = [
-  { to: '/', label: '首页' },
-  { to: '/memberships', label: '会籍' },
-  { to: '/classes', label: '团课' },
-  { to: '/shop', label: '商城' },
-  { to: '/coupons', label: '卡券' },
-  { to: '/access', label: '通行' },
-]
+const mid = computed(() => Number(route.params.merchantId))
+const isCatering = computed(() => route.path.includes('/catering'))
 
-function logout() {
-  auth.logout()
-  router.push({ name: 'login' })
+const gymTabs = computed(() => [
+  { to: `/m/${mid.value}/gym`, label: '首页' },
+  { to: `/m/${mid.value}/gym/memberships`, label: '会籍' },
+  { to: `/m/${mid.value}/gym/classes`, label: '团课' },
+  { to: `/m/${mid.value}/gym/shop`, label: '商城' },
+  { to: `/m/${mid.value}/gym/coupons`, label: '卡券' },
+  { to: `/m/${mid.value}/gym/access`, label: '通行' },
+])
+
+const cateringTabs = computed(() => [
+  { to: `/m/${mid.value}/catering`, label: '点餐' },
+  { to: `/m/${mid.value}/catering/orders`, label: '订单' },
+  { to: '/me', label: '我的' },
+])
+
+const tabs = computed(() => (isCatering.value ? cateringTabs.value : gymTabs.value))
+const systemLabel = computed(() => (isCatering.value ? '餐饮' : '健身'))
+
+function switchStore() {
+  router.push({ name: 'stores' })
+}
+
+function goMe() {
+  router.push({ name: 'me' })
 }
 </script>
 
 <template>
   <div class="shell">
     <header class="topbar">
-      <div class="topbar__user">
+      <button class="topbar__user" type="button" @click="goMe" title="个人中心">
         <div class="topbar__avatar" aria-hidden="true">{{ auth.me?.name?.slice(0, 1) || '会' }}</div>
         <div class="topbar__meta">
-          <div class="topbar__name">{{ auth.me?.name }}</div>
-          <div class="topbar__phone">{{ auth.me?.phone }}</div>
+          <div class="topbar__name">{{ auth.currentMerchant?.name || '门店' }}</div>
+          <div class="topbar__phone">{{ systemLabel }} · {{ auth.me?.name }}</div>
         </div>
-      </div>
+      </button>
       <div class="topbar__actions">
-        <select
-          v-if="(auth.me?.merchant_ids.length || 0) > 1"
-          class="mw-input mw-select topbar__merchant"
-          :value="auth.merchantId"
-          aria-label="切换商户"
-          @change="auth.setMerchantId(Number(($event.target as HTMLSelectElement).value))"
-        >
-          <option v-for="id in auth.me?.merchant_ids || []" :key="id" :value="id">商户 #{{ id }}</option>
-        </select>
-        <button class="mw-btn mw-btn--ghost mw-btn--sm" type="button" @click="logout">退出</button>
+        <button class="mw-btn mw-btn--ghost mw-btn--sm" type="button" @click="switchStore">切换</button>
+        <button class="mw-btn mw-btn--ghost mw-btn--sm" type="button" @click="goMe">我的</button>
       </div>
     </header>
 
@@ -81,49 +90,47 @@ function logout() {
 .topbar__user {
   display: flex;
   align-items: center;
-  gap: var(--mw-space-3);
+  gap: 10px;
   min-width: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .topbar__avatar {
   width: 36px;
   height: 36px;
-  border-radius: var(--mw-radius-sm);
+  border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--mw-brand-ink);
   background: var(--mw-brand);
+  color: var(--mw-brand-ink);
+  font-weight: 700;
   flex-shrink: 0;
 }
 
 .topbar__name {
-  font-size: 14px;
-  font-weight: 600;
-  white-space: nowrap;
+  font-weight: 700;
+  font-size: 0.92rem;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 8.5rem;
+  white-space: nowrap;
+  max-width: 42vw;
 }
 
 .topbar__phone {
-  font-size: 12px;
+  font-size: 0.72rem;
   color: var(--mw-text-secondary);
 }
 
 .topbar__actions {
   display: flex;
-  align-items: center;
-  gap: var(--mw-space-2);
-}
-
-.topbar__merchant {
-  width: auto;
-  min-width: 6.5rem;
-  min-height: 32px;
-  font-size: 12px;
-  padding: 0 24px 0 8px;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .content {
@@ -135,31 +142,26 @@ function logout() {
   left: 50%;
   transform: translateX(-50%);
   bottom: 0;
-  width: min(var(--mw-shell-max), 100%);
+  width: min(100%, var(--mw-shell-max));
   height: calc(var(--mw-tab-h) + var(--mw-safe-bottom));
   padding-bottom: var(--mw-safe-bottom);
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  display: flex;
   background: var(--mw-bg-elevated);
   border-top: 1px solid var(--mw-border);
   z-index: 30;
 }
 
 .tabbar__item {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
+  flex: 1;
+  display: grid;
+  place-items: center;
+  font-size: 0.78rem;
   color: var(--mw-text-tertiary);
-  font-size: 12px;
-  font-weight: 500;
-  border-top: 2px solid transparent;
-  margin-top: -1px;
+  text-decoration: none;
 }
 
 .tabbar__item.router-link-active {
   color: var(--mw-brand);
-  font-weight: 600;
-  border-top-color: var(--mw-brand);
+  font-weight: 700;
 }
 </style>

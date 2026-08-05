@@ -76,7 +76,7 @@ def test_report_permission_and_merchant_isolation(client: TestClient, admin_head
             "password": "Report@123456",
             "display_name": "报表商管",
             "merchant_id": gym_id,
-            "role_codes": ["merchant_admin"],
+            "role_codes": ["gym_admin"],
         },
     ).json()
     login = client.post(
@@ -108,7 +108,7 @@ def test_report_permission_and_merchant_isolation(client: TestClient, admin_head
             "password": "Front@123456",
             "display_name": "报表前台",
             "merchant_id": gym_id,
-            "role_codes": ["front_desk"],
+            "role_codes": ["gym_ops"],
         },
     )
     flogin = client.post(
@@ -187,7 +187,7 @@ def test_membership_course_inventory_summaries(client: TestClient, admin_headers
             "password": "Coach@123456",
             "display_name": "报表教练",
             "merchant_id": gym_id,
-            "role_codes": ["coach"],
+            "role_codes": ["gym_coach"],
         },
     ).json()
     coach = client.post(

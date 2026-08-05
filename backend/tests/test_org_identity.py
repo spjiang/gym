@@ -40,7 +40,7 @@ def test_merchant_isolation_and_role_audit(client: TestClient, admin_headers: di
     merchants = client.get("/api/v1/merchants", headers=admin_headers).json()
     gym_id = merchants[0]["id"]
 
-    # 创建商户管理员
+    # 创建商户管理员（健身房商户角色实例）
     r = client.post(
         "/api/v1/staff",
         headers=admin_headers,
@@ -49,7 +49,7 @@ def test_merchant_isolation_and_role_audit(client: TestClient, admin_headers: di
             "password": "Merchant@123",
             "display_name": "商户管理员",
             "merchant_id": gym_id,
-            "role_codes": ["merchant_admin"],
+            "role_codes": ["gym_admin"],
         },
     )
     assert r.status_code == 200, r.text
@@ -61,7 +61,12 @@ def test_merchant_isolation_and_role_audit(client: TestClient, admin_headers: di
     other = client.post(
         "/api/v1/merchants",
         headers=admin_headers,
-        json={"merchant_type_id": bar["id"], "name": "酒吧A", "status": "active"},
+        json={
+            "merchant_type_id": bar["id"],
+            "name": "酒吧A",
+            "status": "active",
+            "subsystem_codes": ["catering"],
+        },
     ).json()
 
     token = client.post(
@@ -89,7 +94,7 @@ def test_merchant_isolation_and_role_audit(client: TestClient, admin_headers: di
     r = client.put(
         f"/api/v1/staff/{staff_id}/roles",
         headers=admin_headers,
-        json={"role_codes": ["front_desk"]},
+        json={"role_codes": ["gym_ops"]},
     )
     assert r.status_code == 200
-    assert r.json()["role_codes"] == ["front_desk"]
+    assert r.json()["role_codes"] == ["gym_ops"]

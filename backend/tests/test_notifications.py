@@ -32,7 +32,7 @@ def test_order_paid_writes_notification(client: TestClient, admin_headers: dict)
     )
     assert paid.status_code == 200, paid.text
 
-    notes = client.get(f"/api/v1/notifications?merchant_id={gym_id}", headers=admin_headers).json()
+    notes = client.get(f"/api/v1/notifications?merchant_id={gym_id}", headers=admin_headers).json()["items"]
     assert any(n["event_type"] == "order.paid" and n["member_id"] == member["id"] for n in notes)
 
 
@@ -79,7 +79,7 @@ def test_membership_fulfill_writes_notification(client: TestClient, admin_header
     )
     assert paid.status_code == 200, paid.text
 
-    notes = client.get(f"/api/v1/notifications?merchant_id={gym_id}", headers=admin_headers).json()
+    notes = client.get(f"/api/v1/notifications?merchant_id={gym_id}", headers=admin_headers).json()["items"]
     assert any(
         n["event_type"] == "membership.fulfilled" and n["member_id"] == member["id"] for n in notes
     )

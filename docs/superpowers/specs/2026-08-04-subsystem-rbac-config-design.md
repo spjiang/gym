@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |----|------|
 | 日期 | 2026-08-04 |
-| 状态 | 待用户审阅 |
+| 状态 | 已落地（实现计划 `2026-08-04-subsystem-rbac-config.md`） |
 | 关联 | PRD `2026-08-02-gym-prd-modules-design.md`；既有商户业态挂接 `merchant_subsystems` |
 | 范围 | 管理端 Web + 后端；**不含**会员 H5 / 小程序目录改造 |
 
@@ -41,36 +41,18 @@
 
 ```
 backend/app/
-├── core/                         # db、auth、errors、中间件、manifest 同步
+├── core/                         # db、auth、errors、config、manifest 同步、共享 schemas
+├── models/__init__.py            # 仅元数据门面（Alembic/测试注册）
 ├── systems/
-│   ├── platform/                 # 综合经营
-│   │   ├── manifest.py
-│   │   ├── api/
-│   │   ├── models/               # 以迁入为主；共享模型可暂留 core 或逐步迁
-│   │   └── services/
+│   ├── platform/                 # api / models / services / manifest
 │   ├── gym/
-│   │   ├── manifest.py
-│   │   ├── api/
-│   │   └── …
 │   └── catering/
-│       ├── manifest.py
-│       └── …
-└── main.py                       # 发现系统、挂载 router、sync_manifests()
+└── main.py                       # 直连 systems.*.api 挂载
 
 frontend/src/
-├── core/                         # http、auth、Layout、Portal 壳
-├── systems/
-│   ├── platform/
-│   │   ├── manifest.ts           # path → 组件注册（非菜单权威源）
-│   │   ├── routes.ts
-│   │   └── views/
-│   ├── gym/
-│   │   ├── manifest.ts
-│   │   ├── routes.ts
-│   │   └── views/
-│   └── catering/
-│       ├── …
-└── router/index.ts               # 聚合 routes；守卫结合 navigation
+├── core/                         # api/http、stores/auth、nav、Login/Layout/Portal
+├── systems/{platform,gym,catering}/views/
+└── router/index.ts
 ```
 
 ### 2.1 约定

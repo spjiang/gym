@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
-from app.config import get_settings
+from app.core.config import get_settings
 
 
 def _gym_id(client: TestClient, headers: dict) -> int:

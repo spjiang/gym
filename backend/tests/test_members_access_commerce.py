@@ -64,7 +64,7 @@ def test_member_delete(client: TestClient, admin_headers: dict):
     assert deleted.status_code == 200
     assert deleted.json()["ok"] is True
 
-    listed = client.get("/api/v1/members", headers=admin_headers).json()
+    listed = client.get("/api/v1/members", headers=admin_headers).json()["items"]
     assert all(m["id"] != mid for m in listed)
 
 

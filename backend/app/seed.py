@@ -2,34 +2,50 @@
 
 from sqlalchemy import select
 
-from app import db as db_module
-from app.config import get_settings
-from app.models.access import AccessPoint
-from app.models.catering import CateringMenuItem
-from app.models.identity import Role, StaffRole, StaffUser
-from app.models.org import Merchant, MerchantStatus, MerchantSubsystem, MerchantType, Site
-from app.security import hash_password
-from app.domain.subsystems import replace_merchant_subsystems
+from app.core import db as db_module
+from app.core.config import get_settings
+from app.core.domain.subsystems import replace_merchant_subsystems
+from app.core.manifest_sync import sync_manifests, sync_role_permissions_from_json
+from app.core.security import hash_password
 from app.seed_demo import seed_demo_catalog
-from decimal import Decimal
+from app.systems.platform.models.access import AccessPoint
+from app.systems.platform.models.identity import Role, StaffRole, StaffUser
+from app.systems.platform.models.org import Merchant, MerchantStatus, MerchantType, Site
+from app.systems.platform.services.role_packs import ensure_merchant_role_packs
 
 ROLE_DEFS = [
     {
         "code": "site_admin",
-        "name": "场地超管",
+        "name": "场地管理员",
         "is_site_scope": True,
         "permissions": ["*"],
     },
     {
-        "code": "merchant_admin",
-        "name": "商户管理员",
+        "code": "site_ops",
+        "name": "场地运营人员",
+        "is_site_scope": True,
+        "permissions": [
+            "system:platform",
+            "org:read",
+            "member:read",
+            "member:write",
+            "access:read",
+            "access:manage",
+            "order:read",
+            "order:write",
+            "report:read",
+        ],
+    },
+    {
+        "code": "tpl_gym_admin",
+        "name": "健身房管理员",
         "is_site_scope": False,
         "permissions": [
             "system:platform",
             "system:gym",
-            "system:catering",
             "org:read",
             "staff:manage",
+            "rbac:manage",
             "member:read",
             "member:write",
             "access:read",
@@ -53,18 +69,15 @@ ROLE_DEFS = [
             "equipment:manage",
             "equipment:repair",
             "equipment:read",
-            "catering:menu",
-            "catering:order",
         ],
     },
     {
-        "code": "front_desk",
-        "name": "前台",
+        "code": "tpl_gym_ops",
+        "name": "健身房运营人员",
         "is_site_scope": False,
         "permissions": [
             "system:platform",
             "system:gym",
-            "system:catering",
             "member:read",
             "member:write",
             "access:read",
@@ -75,41 +88,36 @@ ROLE_DEFS = [
             "course:book",
             "course:checkin",
             "pt:sell",
-            "retail:manage",
             "retail:sell",
             "retail:read",
-            "coupon:manage",
             "coupon:redeem",
             "coupon:read",
             "equipment:repair",
             "equipment:read",
-            "catering:menu",
-            "catering:order",
         ],
     },
     {
-        "code": "coach",
-        "name": "教练",
+        "code": "tpl_gym_coach",
+        "name": "健身房教练",
         "is_site_scope": False,
         "permissions": [
             "system:gym",
             "member:read",
-            "access:read",
-            "order:read",
             "course:checkin",
-            "equipment:repair",
             "equipment:read",
+            "equipment:repair",
         ],
     },
     {
-        "code": "bar_admin",
-        "name": "清吧管理员",
+        "code": "tpl_bar_admin",
+        "name": "清吧管理人员",
         "is_site_scope": False,
         "permissions": [
             "system:platform",
             "system:catering",
             "org:read",
             "staff:manage",
+            "rbac:manage",
             "member:read",
             "member:write",
             "access:read",
@@ -121,11 +129,36 @@ ROLE_DEFS = [
             "catering:order",
         ],
     },
+    {
+        "code": "tpl_bar_ops",
+        "name": "清吧运营人员",
+        "is_site_scope": False,
+        "permissions": [
+            "system:catering",
+            "member:read",
+            "order:read",
+            "order:write",
+            "catering:menu",
+            "catering:order",
+        ],
+    },
+    {
+        "code": "tpl_bar_cashier",
+        "name": "清吧收银人员",
+        "is_site_scope": False,
+        "permissions": [
+            "system:catering",
+            "member:read",
+            "order:read",
+            "order:write",
+            "catering:order",
+        ],
+    },
 ]
+
 
 def run_seed() -> None:
     settings = get_settings()
-    # 动态取 SessionLocal，便于测试替换引擎
     db = db_module.SessionLocal()
     try:
         site = db.scalar(select(Site).order_by(Site.id))
@@ -135,10 +168,11 @@ def run_seed() -> None:
             db.flush()
 
         for code, name in (("gym", "健身房"), ("bar", "酒吧")):
-            if db.scalar(select(MerchantType).where(MerchantType.code == code)) is None:
-                db.add(MerchantType(code=code, name=name, description=f"{name}业态"))
+            mt = db.scalar(select(MerchantType).where(MerchantType.code == code))
+            if mt is None:
+                db.add(MerchantType(code=code, name=name))
+                db.flush()
 
-        db.flush()
         gym_type = db.scalar(select(MerchantType).where(MerchantType.code == "gym"))
         bar_type = db.scalar(select(MerchantType).where(MerchantType.code == "bar"))
         gym = db.scalar(select(Merchant).where(Merchant.name == "回龙观自营健身房"))
@@ -151,7 +185,6 @@ def run_seed() -> None:
             )
             db.add(gym)
             db.flush()
-
         bar = db.scalar(select(Merchant).where(Merchant.name == "回龙观清吧"))
         if bar is None and bar_type is not None:
             bar = Merchant(
@@ -163,33 +196,11 @@ def run_seed() -> None:
             db.add(bar)
             db.flush()
 
-        # 商户业态子系统（产品级隔离）
         if gym is not None:
-            if db.scalar(select(MerchantSubsystem).where(MerchantSubsystem.merchant_id == gym.id)) is None:
-                replace_merchant_subsystems(db, gym.id, ["gym"])
+            replace_merchant_subsystems(db, gym.id, ["gym"])
         if bar is not None:
-            if db.scalar(select(MerchantSubsystem).where(MerchantSubsystem.merchant_id == bar.id)) is None:
-                replace_merchant_subsystems(db, bar.id, ["catering"])
-            # 清吧默认菜单，支撑点单闭环
-            if db.scalar(select(CateringMenuItem).where(CateringMenuItem.merchant_id == bar.id)) is None:
-                for item_name, cat, price in (
-                    ("精酿啤酒", "酒水", "38.00"),
-                    ("莫吉托", "鸡尾酒", "48.00"),
-                    ("薯条拼盘", "小食", "28.00"),
-                    ("今日特调", "鸡尾酒", "58.00"),
-                ):
-                    db.add(
-                        CateringMenuItem(
-                            merchant_id=bar.id,
-                            name=item_name,
-                            category=cat,
-                            price=Decimal(price),
-                            is_active=True,
-                        )
-                    )
-                db.flush()
+            replace_merchant_subsystems(db, bar.id, ["catering"])
 
-        # 基础门禁点（无 Demo 时也保证卡种可绑）
         if gym is not None:
             existing_point = db.scalar(
                 select(AccessPoint).where(
@@ -211,23 +222,37 @@ def run_seed() -> None:
 
         role_map: dict[str, Role] = {}
         for defn in ROLE_DEFS:
-            role = db.scalar(select(Role).where(Role.code == defn["code"]))
+            role = db.scalar(
+                select(Role).where(Role.code == defn["code"], Role.merchant_id.is_(None))
+            )
             if role is None:
                 role = Role(
                     code=defn["code"],
                     name=defn["name"],
                     permissions=defn["permissions"],
                     is_site_scope=defn["is_site_scope"],
+                    merchant_id=None,
+                    is_system=defn["code"] == "site_admin",
                 )
                 db.add(role)
                 db.flush()
             else:
-                # 合并权限点，支持后续切片增量
-                merged = list(dict.fromkeys([*(role.permissions or []), *defn["permissions"]]))
-                role.permissions = merged
+                role.permissions = list(defn["permissions"])
                 role.name = defn["name"]
                 role.is_site_scope = defn["is_site_scope"]
+                if defn["code"] == "site_admin":
+                    role.is_system = True
+            sync_role_permissions_from_json(db, role)
             role_map[defn["code"]] = role
+
+        db.flush()
+        sync_manifests(db, ensure_role_menus=True)
+
+        # 模板菜单就绪后再复制商户实例
+        if gym is not None:
+            ensure_merchant_role_packs(db, gym.id)
+        if bar is not None:
+            ensure_merchant_role_packs(db, bar.id)
 
         admin = db.scalar(select(StaffUser).where(StaffUser.username == settings.seed_admin_username))
         if admin is None:
@@ -250,7 +275,7 @@ def run_seed() -> None:
             print("[seed] 跳过 Demo 目录数据（SEED_DEMO=false）")
 
         db.commit()
-        print("[seed] 完成：场地/类型/商户/角色/超管已就绪")
+        print("[seed] 完成：场地/类型/商户/角色包/超管已就绪")
     finally:
         db.close()
 

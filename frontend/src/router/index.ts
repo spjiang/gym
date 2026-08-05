@@ -1,33 +1,46 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
-import { useAuthStore } from '../stores/auth'
-import { canAny, firstAllowedPath } from '../nav/systems'
-import LoginView from '../views/LoginView.vue'
-import LayoutView from '../views/LayoutView.vue'
-import PortalView from '../views/PortalView.vue'
-import MerchantsView from '../views/MerchantsView.vue'
-import StaffView from '../views/StaffView.vue'
-import MembersView from '../views/MembersView.vue'
-import AccessView from '../views/AccessView.vue'
-import OrdersView from '../views/OrdersView.vue'
-import ProductsView from '../views/ProductsView.vue'
-import MembershipsView from '../views/MembershipsView.vue'
-import CoachesView from '../views/CoachesView.vue'
-import PtPackagesView from '../views/PtPackagesView.vue'
-import GroupCoursesView from '../views/GroupCoursesView.vue'
-import CoachDeskView from '../views/CoachDeskView.vue'
-import RetailView from '../views/RetailView.vue'
-import CouponsView from '../views/CouponsView.vue'
-import ReportsView from '../views/ReportsView.vue'
-import EquipmentView from '../views/EquipmentView.vue'
-import VisitsView from '../views/VisitsView.vue'
-import NotificationsView from '../views/NotificationsView.vue'
-import CateringMenuView from '../views/CateringMenuView.vue'
-import CateringOrdersView from '../views/CateringOrdersView.vue'
+import { useAuthStore } from '../core/stores/auth'
+import { canAny, firstAllowedPathFromNav } from '../core/nav/systems'
+import LoginView from '../core/views/LoginView.vue'
+import LayoutView from '../core/views/LayoutView.vue'
+import PortalView from '../core/views/PortalView.vue'
+import MerchantsView from '../systems/platform/views/MerchantsView.vue'
+import StaffView from '../systems/platform/views/StaffView.vue'
+import MembersView from '../systems/platform/views/MembersView.vue'
+import AccessView from '../systems/platform/views/AccessView.vue'
+import OrdersView from '../systems/platform/views/OrdersView.vue'
+import ReportsView from '../systems/platform/views/ReportsView.vue'
+import VisitsView from '../systems/platform/views/VisitsView.vue'
+import NotificationsView from '../systems/platform/views/NotificationsView.vue'
+import SubsystemsView from '../systems/platform/views/SubsystemsView.vue'
+import RolesView from '../systems/platform/views/RolesView.vue'
+import ProductsView from '../systems/gym/views/ProductsView.vue'
+import MembershipsView from '../systems/gym/views/MembershipsView.vue'
+import CoachesView from '../systems/gym/views/CoachesView.vue'
+import PtPackagesView from '../systems/gym/views/PtPackagesView.vue'
+import GroupCoursesView from '../systems/gym/views/GroupCoursesView.vue'
+import CoachDeskView from '../systems/gym/views/CoachDeskView.vue'
+import RetailView from '../systems/gym/views/RetailView.vue'
+import CouponsView from '../systems/gym/views/CouponsView.vue'
+import EquipmentView from '../systems/gym/views/EquipmentView.vue'
+import CateringMenuView from '../systems/catering/views/CateringMenuView.vue'
+import CateringOrdersView from '../systems/catering/views/CateringOrdersView.vue'
 
 const children: RouteRecordRaw[] = [
   { path: '', redirect: '/portal' },
   { path: 'portal', name: 'portal', component: PortalView, meta: { system: 'portal' } },
-  // 综合经营管理系统
+  {
+    path: 'platform/subsystems',
+    name: 'platform-subsystems',
+    component: SubsystemsView,
+    meta: { system: 'platform', anyOf: ['rbac:manage', '*'] },
+  },
+  {
+    path: 'platform/roles',
+    name: 'platform-roles',
+    component: RolesView,
+    meta: { system: 'platform', anyOf: ['rbac:manage', 'staff:manage', '*'] },
+  },
   { path: 'merchants', name: 'merchants', component: MerchantsView, meta: { system: 'platform', anyOf: ['org:read', '*'] } },
   { path: 'staff', name: 'staff', component: StaffView, meta: { system: 'platform', anyOf: ['staff:manage', '*'] } },
   { path: 'members', name: 'members', component: MembersView, meta: { system: 'platform', anyOf: ['member:read', '*'] } },
@@ -46,7 +59,6 @@ const children: RouteRecordRaw[] = [
     component: NotificationsView,
     meta: { system: 'platform', anyOf: ['order:read', 'member:read', 'access:read', '*'] },
   },
-  // 健身管理平台
   {
     path: 'products',
     name: 'products',
@@ -127,7 +139,7 @@ router.beforeEach(async (to) => {
   }
   const need = (to.meta.anyOf as string[] | undefined) || []
   if (need.length && !canAny(auth.me?.permissions || [], need)) {
-    return { path: firstAllowedPath(auth.me?.permissions || []) }
+    return { path: firstAllowedPathFromNav(auth) }
   }
   return true
 })

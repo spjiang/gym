@@ -87,7 +87,7 @@ def test_create_product_and_purchase_flow(client: TestClient, admin_headers: dic
     memberships = client.get(
         f"/api/v1/memberships?merchant_id={gym_id}&member_id={member['id']}",
         headers=admin_headers,
-    ).json()
+    ).json()["items"]
     assert len(memberships) == 1
     assert memberships[0]["status"] == "active"
     membership_id = memberships[0]["id"]
@@ -116,7 +116,7 @@ def test_create_product_and_purchase_flow(client: TestClient, admin_headers: dic
     after = client.get(
         f"/api/v1/memberships?merchant_id={gym_id}&member_id={member['id']}",
         headers=admin_headers,
-    ).json()[0]
+    ).json()["items"][0]
     assert after["ends_at"] > ends_before
 
     # 停卡后拒绝

@@ -1,17 +1,17 @@
-"""导出全部模型，供 Alembic 与应用导入。"""
+"""模型门面：统一导出各子系统模型，供 Alembic / 测试注册元数据。"""
 
-from app.models.access import AccessDevice, AccessEvent, AccessGrant, AccessPoint
-from app.models.audit import AuditLog
-from app.models.commerce import Order, Payment
-from app.models.identity import Role, StaffRole, StaffUser
-from app.models.member import Member, MerchantMember
-from app.models.membership import (
-    Membership,
-    MembershipOrderLink,
-    MembershipProduct,
-    MembershipProductAccessPoint,
-)
-from app.models.course import (
+from app.systems.platform.models.access import AccessDevice, AccessEvent, AccessGrant, AccessPoint
+from app.systems.platform.models.audit import AuditLog
+from app.systems.platform.models.commerce import Order, Payment
+from app.systems.platform.models.identity import Role, StaffRole, StaffUser
+from app.systems.platform.models.member import Member, MerchantMember
+from app.systems.platform.models.notification import Notification
+from app.systems.platform.models.org import Merchant, MerchantSubsystem, MerchantType, Site
+from app.systems.platform.models.otp import MemberOtpChallenge
+from app.systems.platform.models.rbac_catalog import MenuDef, PermissionDef, RoleMenu, RolePermission, Subsystem
+from app.systems.platform.models.visit import VisitPass
+from app.systems.gym.models.coupon import CouponTemplate, MemberCoupon, OrderCouponLink
+from app.systems.gym.models.course import (
     Coach,
     GroupBooking,
     GroupCourse,
@@ -21,20 +21,21 @@ from app.models.course import (
     PtPackageProduct,
     PtPackageProductCoach,
 )
-from app.models.retail import (
+from app.systems.gym.models.equipment import EquipmentAsset, EquipmentRepairTicket
+from app.systems.gym.models.membership import (
+    Membership,
+    MembershipOrderLink,
+    MembershipProduct,
+    MembershipProductAccessPoint,
+)
+from app.systems.gym.models.retail import (
     ProductCategory,
     RetailOrderItem,
     RetailOrderLink,
     RetailSku,
     StockMovement,
 )
-from app.models.coupon import CouponTemplate, MemberCoupon, OrderCouponLink
-from app.models.otp import MemberOtpChallenge
-from app.models.equipment import EquipmentAsset, EquipmentRepairTicket
-from app.models.visit import VisitPass
-from app.models.notification import Notification
-from app.models.org import Merchant, MerchantSubsystem, MerchantType, Site
-from app.models.catering import CateringMenuItem, CateringOrderItem
+from app.systems.catering.models.catering import CateringMenuItem, CateringOrderItem
 
 __all__ = [
     "Site",
@@ -43,6 +44,11 @@ __all__ = [
     "MerchantSubsystem",
     "CateringMenuItem",
     "CateringOrderItem",
+    "Subsystem",
+    "PermissionDef",
+    "MenuDef",
+    "RolePermission",
+    "RoleMenu",
     "StaffUser",
     "Role",
     "StaffRole",
