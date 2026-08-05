@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
+import { orderTypeLabel as mapOrderType } from '../../../core/labels'
 
 type MemberBrief = { id: number; name: string; phone: string }
 type Order = {
@@ -93,9 +94,7 @@ function statusMeta(status: string) {
 }
 
 function orderTypeLabel(t: string) {
-  return allowedTypes.value.find((o) => o.value === t)?.label
-    || { retail: '零售', membership: '会籍办卡', pt: '私教', group: '团课', dining: '餐饮消费' }[t]
-    || t
+  return allowedTypes.value.find((o) => o.value === t)?.label || mapOrderType(t)
 }
 
 async function loadOrderTypes(merchantId: number) {
@@ -216,19 +215,27 @@ async function payOffline(row: Order) {
 
 async function refund(row: Order) {
   try {
+    const { data: preview } = await http.get<{
+      suggested_amount: string
+      refundable_balance: string
+      basis: string
+      unused?: boolean
+    }>(`/orders/${row.id}/refund/preview`)
+    const amount = preview.suggested_amount || preview.refundable_balance
     await ElMessageBox.confirm(
-      `确认对订单「${row.title}」（¥${row.amount}）发起退款？`,
+      `建议退 ¥${amount}（${preview.basis}${preview.unused ? '·未使用' : ''}）。确认退款？`,
       '订单退款',
       { type: 'warning', confirmButtonText: '退款', cancelButtonText: '取消' },
     )
-  } catch {
-    return
-  }
-  try {
-    await http.post(`/orders/${row.id}/refund`)
+    await http.post(`/orders/${row.id}/refund`, {
+      amount,
+      channel: 'wechat_original',
+      reason: '管理端退款',
+    })
     ElMessage.success('已退款')
     await load()
   } catch (e: unknown) {
+    if (e === 'cancel') return
     ElMessage.error(e instanceof Error ? e.message : '退款失败')
   }
 }

@@ -16,6 +16,7 @@ import {
 import { useAuthStore } from '../stores/auth'
 import { canAny } from '../nav/systems'
 import http from '../api/http'
+import { orderStatusLabel, orderTypeLabel as mapOrderType } from '../labels'
 
 type Merchant = { id: number; name: string; subsystem_codes?: string[] }
 type Member = { id: number; name: string; phone: string }
@@ -81,15 +82,7 @@ const sectionState = reactive({
 
 const perms = computed(() => auth.me?.permissions || [])
 
-const orderTypeLabel: Record<string, string> = {
-  membership: '会籍办卡',
-  retail: '零售',
-  pt: '私教',
-  group: '团课',
-  coupon: '优惠券',
-  dining: '餐饮消费',
-  course_pack: '课程包',
-}
+const orderTypeLabel = mapOrderType
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10)
@@ -127,7 +120,7 @@ function statusType(status: string) {
 }
 
 function statusLabel(status: string) {
-  return { paid: '已收款', pending: '待支付', refunded: '已退款', cancelled: '已取消' }[status] || status
+  return orderStatusLabel(status)
 }
 
 function go(path: string) {
@@ -415,7 +408,7 @@ function maxCharge() {
           <div v-if="commerceTypes.length" class="type-bars">
             <div v-for="row in commerceTypes" :key="row.order_type" class="type-bar">
               <div class="type-bar-top">
-                <span class="type-name">{{ orderTypeLabel[row.order_type] || row.order_type }}</span>
+                <span class="type-name">{{ orderTypeLabel(row.order_type) }}</span>
                 <span class="type-amount">¥{{ Number(row.charge_total).toFixed(2) }}</span>
               </div>
               <el-progress
@@ -434,7 +427,7 @@ function maxCharge() {
           <div v-if="orders.length" class="order-list">
             <div v-for="o in orders.slice(0, 6)" :key="o.id" class="order-row" @click="go('/orders')">
               <span class="order-title">{{ o.title }}</span>
-              <span class="order-type">{{ orderTypeLabel[o.order_type] || o.order_type }}</span>
+              <span class="order-type">{{ orderTypeLabel(o.order_type) }}</span>
               <el-tag size="small" :type="statusType(o.status)">{{ statusLabel(o.status) }}</el-tag>
               <span class="order-amount">¥{{ o.amount }}</span>
             </div>

@@ -29,6 +29,9 @@ get_settings.cache_clear()
 @pytest.fixture()
 def client(tmp_path: Path):
     get_settings.cache_clear()
+    os.environ["ONLINE_PAYMENT_MODE"] = "unconfigured"
+    os.environ["WECHAT_DRY_RUN"] = "true"
+    get_settings.cache_clear()
     db_path = tmp_path / "test.db"
     url = f"sqlite+pysqlite:///{db_path}"
     os.environ["DATABASE_URL"] = url

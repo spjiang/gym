@@ -1,6 +1,9 @@
 """订单与支付骨架。"""
 
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -10,13 +13,12 @@ from app.core.domain.subsystems import assert_order_type_allowed
 from app.core.errors import AppError
 from app.core.schemas.common import MemberBrief, OfflinePayIn, OnlinePayIn, OrderCreateIn, OrderOut
 from app.core.schemas.paging import PageOut
-from app.systems.gym.services.coupon import redeem_coupon_for_order, restore_coupon_for_order
+from app.systems.gym.services.coupon import redeem_coupon_for_order
 from app.systems.gym.services.fulfillment import fulfill_membership_order
 from app.systems.gym.services.pt_fulfillment import fulfill_pt_package_order
 from app.systems.gym.services.retail_fulfillment import (
     assert_retail_stock_available,
     fulfill_retail_order,
-    restock_retail_order,
 )
 from app.systems.platform.models.commerce import Order, OrderStatus, Payment, PaymentChannel, PaymentKind
 from app.systems.platform.models.member import Member
@@ -41,6 +43,7 @@ def _order_out(db: Session, order: Order) -> OrderOut:
         order_type=order.order_type,
         title=order.title,
         amount=order.amount,
+        refunded_amount=getattr(order, "refunded_amount", None) or Decimal("0"),
         status=order.status,
         pickup_code=order.pickup_code,
         customer_note=order.customer_note,
@@ -203,46 +206,78 @@ def pay_online(
     if order.status != OrderStatus.PENDING.value:
         raise AppError("invalid_state", "仅待支付订单可发起线上支付", status_code=400)
 
-    result = get_online_provider().create_payment(
-        order_id=order.id, amount=str(order.amount), title=order.title
+    result = get_online_provider(db, ctx.site_id).create_payment(
+        order_id=order.id,
+        amount=str(order.amount),
+        title=order.title,
+        out_trade_no=f"staff-{order.id}-{int(__import__('time').time())}",
+        pay_scene=getattr(body, "pay_scene", None) or "miniprogram",
+        staff_capture=True,
     )
     if not result.ok:
         raise AppError("online_pay_failed", result.message, status_code=400)
 
-    assert_retail_stock_available(db, order)
+    from app.systems.platform.services.order_fulfill import fulfill_paid_order
 
-    order.status = OrderStatus.PAID.value
-    db.add(
-        Payment(
-            order_id=order.id,
-            kind=PaymentKind.CHARGE.value,
-            channel=PaymentChannel.ONLINE.value,
-            amount=order.amount,
-            note=result.provider_ref,
-        )
+    fulfill_paid_order(db, order, provider_ref=result.provider_ref, actor_staff_id=ctx.staff.id)
+    write_audit(
+        db,
+        action="order.pay_online",
+        target_type="order",
+        target_id=order.id,
+        summary=f"线上支付 {result.provider_ref}",
+        actor_staff_id=ctx.staff.id,
+        site_id=ctx.site_id,
+        merchant_id=order.merchant_id,
     )
-    fulfill_membership_order(db, order, actor_staff_id=ctx.staff.id)
-    fulfill_pt_package_order(db, order, actor_staff_id=ctx.staff.id)
-    fulfill_retail_order(db, order, actor_staff_id=ctx.staff.id)
-    redeem_coupon_for_order(db, order, actor_staff_id=ctx.staff.id)
-    if order.member_id is not None:
-        write_notification(
-            db,
-            site_id=order.site_id,
-            merchant_id=order.merchant_id,
-            member_id=order.member_id,
-            event_type="order.paid",
-            title="支付成功",
-            body=f"订单 #{order.id} {order.title} 已支付 ¥{order.amount}",
-        )
     db.commit()
     db.refresh(order)
     return _order_out(db, order)
 
 
+class RefundIn(BaseModel):
+    amount: Decimal | None = None
+    channel: str = Field(default="wechat_original")
+    reason: str | None = None
+    force: bool = False
+
+
+@router.get("/{order_id}/refund/preview")
+def refund_preview(
+    order_id: int,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    ctx.require_permission("order:write", "order:read")
+    order = db.get(Order, order_id)
+    if order is None or order.site_id != ctx.site_id:
+        raise AppError("not_found", "订单不存在", status_code=404)
+    if not ctx.is_site_admin and order.merchant_id != ctx.merchant_id:
+        raise AppError("forbidden", "禁止跨商户操作", status_code=403)
+    from app.systems.platform.services.refunds import preview_refund
+
+    return preview_refund(db, order)
+
+
+@router.post("/{order_id}/pay/query")
+def pay_query(
+    order_id: int,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    ctx.require_permission("order:write", "payment:reconcile")
+    order = db.get(Order, order_id)
+    if order is None or order.site_id != ctx.site_id:
+        raise AppError("not_found", "订单不存在", status_code=404)
+    from app.systems.platform.api.payment_notify import sync_pay_query
+
+    return sync_pay_query(db, order)
+
+
 @router.post("/{order_id}/refund", response_model=OrderOut)
 def refund_order(
     order_id: int,
+    body: RefundIn | None = None,
     db: Session = Depends(get_db),
     ctx: RequestContext = Depends(get_current_context),
 ):
@@ -252,31 +287,36 @@ def refund_order(
         raise AppError("not_found", "订单不存在", status_code=404)
     if not ctx.is_site_admin and order.merchant_id != ctx.merchant_id:
         raise AppError("forbidden", "禁止跨商户操作", status_code=403)
-    if order.status != OrderStatus.PAID.value:
-        raise AppError("invalid_state", "仅已支付订单可退款", status_code=400)
 
-    restock_retail_order(db, order, actor_staff_id=ctx.staff.id)
-    restore_coupon_for_order(db, order, actor_staff_id=ctx.staff.id)
+    body = body or RefundIn()
+    from app.systems.platform.services.refunds import create_refund, preview_refund, refundable_balance
 
-    order.status = OrderStatus.REFUNDED.value
-    db.add(
-        Payment(
-            order_id=order.id,
-            kind=PaymentKind.REFUND.value,
-            channel=PaymentChannel.OFFLINE_CASH.value,
-            amount=order.amount,
-            note="全额退款",
-        )
+    amount = body.amount
+    if amount is None:
+        amount = Decimal(preview_refund(db, order)["suggested_amount"])
+        if amount <= 0:
+            amount = refundable_balance(order)
+
+    # 原支付渠道推断默认 channel
+    channel = body.channel
+    pay = db.scalar(
+        select(Payment)
+        .where(Payment.order_id == order.id, Payment.kind == PaymentKind.CHARGE.value)
+        .order_by(Payment.id.desc())
     )
-    write_audit(
+    if pay and pay.channel in (PaymentChannel.OFFLINE_CASH.value, PaymentChannel.OFFLINE_TRANSFER.value):
+        if channel == PaymentChannel.WECHAT_ORIGINAL.value:
+            channel = pay.channel
+
+    create_refund(
         db,
-        action="order.refund",
-        target_type="order",
-        target_id=order.id,
-        summary="全额退款",
+        order,
+        amount=Decimal(str(amount)),
+        channel=channel,
+        reason=body.reason,
+        force=body.force,
         actor_staff_id=ctx.staff.id,
-        site_id=ctx.site_id,
-        merchant_id=order.merchant_id,
+        is_site_admin=ctx.is_site_admin,
     )
     db.commit()
     db.refresh(order)

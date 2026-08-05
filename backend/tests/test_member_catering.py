@@ -130,9 +130,17 @@ def test_member_dining_checkout_pay_refund(client: TestClient, admin_headers: di
     assert detail.status_code == 200
     assert len(detail.json()["items"]) == 1
 
-    refunded = client.post(
+    # 会员不可自助退；管理端退款
+    member_refund = client.post(
         f"/api/v1/member/catering/orders/{order_body['id']}/refund",
         headers=mheaders,
+    )
+    assert member_refund.status_code == 404
+
+    refunded = client.post(
+        f"/api/v1/orders/{order_body['id']}/refund",
+        headers=admin_headers,
+        json={"channel": "wechat_original", "reason": "测试退款"},
     )
     assert refunded.status_code == 200, refunded.text
     assert refunded.json()["status"] == "refunded"

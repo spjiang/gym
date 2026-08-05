@@ -26,6 +26,13 @@ Page({
       })
       app.globalData.token = data.access_token
       wx.setStorageSync('member_token', data.access_token)
+      // 登录后绑定小程序 openid（支付 JSAPI 需要）
+      try {
+        const { ensureMpOpenid } = require('../../utils/pay')
+        await ensureMpOpenid()
+      } catch (bindErr) {
+        console.warn('openid bind skipped', bindErr)
+      }
       const me = await request({ url: '/member/me' })
       if (me.merchant_ids && me.merchant_ids.length) {
         app.globalData.merchantId = me.merchant_ids[0]

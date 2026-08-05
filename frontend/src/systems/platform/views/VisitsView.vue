@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
+import { visitStatusLabel } from '../../../core/labels'
 
 type Merchant = { id: number; name: string }
 type Member = { id: number; name: string; phone: string }
@@ -133,7 +134,7 @@ onMounted(refresh)
       <el-table-column label="状态" width="110">
         <template #default="{ row }">
           <el-tag :type="row.status === 'active' ? 'success' : 'info'" size="small">
-            {{ row.status === 'active' ? '有效' : row.status }}
+            {{ visitStatusLabel(row.status) }}
           </el-tag>
         </template>
       </el-table-column>

@@ -32,7 +32,7 @@ from app.systems.gym.models.membership import (
     MembershipOrderLink,
     MembershipProduct,
 )
-from app.core.schemas.common import OrderOut
+from app.core.schemas.common import OrderOut, OnlinePayIn
 from app.systems.platform.services.audit import write_audit
 from app.systems.gym.services.course_booking import book_group_session, cancel_group_booking
 from app.systems.gym.services.fulfillment import fulfill_membership_order, product_access_point_ids, validate_product_for_sale
@@ -619,50 +619,112 @@ def get_my_order(
     return order
 
 
-@router.post("/orders/{order_id}/pay/online", response_model=OrderOut)
+@router.post("/orders/{order_id}/pay/online")
 def pay_my_order_online(
     order_id: int,
+    body: OnlinePayIn | None = None,
     db: Session = Depends(get_db),
     mctx: MemberContext = Depends(get_current_member),
 ):
+    """会员线上支付：mock 可立即入账；微信返回预下单参数，待回调/dry-run 确认。"""
+    from app.systems.platform.models.payment_settings import MemberWechatBinding, PaymentIntent
+    from app.systems.platform.services.order_fulfill import fulfill_paid_order
+
+    body = body or OnlinePayIn()
     order = db.get(Order, order_id)
     if order is None or order.member_id != mctx.member.id:
         raise AppError("not_found", "订单不存在", status_code=404)
     if order.status != OrderStatus.PENDING.value:
         raise AppError("invalid_state", "仅待支付订单可发起线上支付", status_code=400)
 
-    result = get_online_provider().create_payment(
-        order_id=order.id, amount=str(order.amount), title=order.title
+    pay_scene = (body.pay_scene or "miniprogram").strip()
+    openid = None
+    if pay_scene in ("miniprogram", "jsapi_h5"):
+        binding = db.scalar(
+            select(MemberWechatBinding).where(MemberWechatBinding.member_id == mctx.member.id)
+        )
+        openid = (binding.mp_openid if pay_scene == "miniprogram" else binding.oa_openid) if binding else None
+
+    out_trade_no = f"o{order.id}t{int(__import__('time').time())}"
+    # 关闭同订单未完成的旧支付意图
+    for old in db.scalars(
+        select(PaymentIntent).where(
+            PaymentIntent.order_id == order.id,
+            PaymentIntent.status == "created",
+        )
+    ).all():
+        old.status = "closed"
+
+    provider = get_online_provider(db, mctx.site_id)
+    result = provider.create_payment(
+        order_id=order.id,
+        amount=str(order.amount),
+        title=order.title,
+        out_trade_no=out_trade_no,
+        pay_scene=pay_scene,
+        openid=openid,
+        client_ip=body.client_ip,
+        return_url=body.return_url,
+        staff_capture=False,
     )
     if not result.ok:
         raise AppError("online_pay_failed", result.message, status_code=400)
 
-    order.status = OrderStatus.PAID.value
-    if order.order_type == "dining" and not order.pickup_code:
-        from app.systems.catering.api.member_catering import assign_pickup_code
-
-        order.pickup_code = assign_pickup_code(order.id)
-    db.add(
-        Payment(
-            order_id=order.id,
-            kind=PaymentKind.CHARGE.value,
-            channel=PaymentChannel.ONLINE.value,
-            amount=order.amount,
-            note=result.provider_ref,
-        )
+    intent = PaymentIntent(
+        site_id=order.site_id,
+        order_id=order.id,
+        out_trade_no=out_trade_no,
+        scene=pay_scene,
+        status="created",
+        amount=order.amount,
+        provider_prepay_id=(result.jsapi_params or {}).get("package", "").replace("prepay_id=", "")
+        if result.jsapi_params
+        else None,
+        provider_ref=result.provider_ref,
     )
+    db.add(intent)
     write_audit(
         db,
         action="member.pay_online",
         target_type="order",
         target_id=order.id,
-        summary="会员线上支付",
+        summary=f"会员预下单 scene={pay_scene}",
         site_id=mctx.site_id,
         merchant_id=order.merchant_id,
     )
-    fulfill_membership_order(db, order, actor_staff_id=None)
-    fulfill_pt_package_order(db, order, actor_staff_id=None)
-    redeem_coupon_for_order(db, order, actor_staff_id=None)
+
+    if result.immediate_capture:
+        fulfill_paid_order(db, order, provider_ref=result.provider_ref)
+        intent.status = "succeeded"
+        db.commit()
+        db.refresh(order)
+        return {
+            "id": order.id,
+            "order_id": order.id,
+            "status": order.status,
+            "amount": str(order.amount),
+            "pay_scene": pay_scene,
+            "dry_run": result.dry_run,
+            "immediate_capture": True,
+            "jsapi_params": None,
+            "mweb_url": None,
+            "provider_ref": result.provider_ref,
+            "out_trade_no": out_trade_no,
+            "pickup_code": order.pickup_code,
+        }
+
     db.commit()
-    db.refresh(order)
-    return order
+    return {
+        "id": order.id,
+        "order_id": order.id,
+        "status": order.status,
+        "amount": str(order.amount),
+        "pay_scene": pay_scene,
+        "dry_run": result.dry_run,
+        "immediate_capture": False,
+        "jsapi_params": result.jsapi_params,
+        "mweb_url": result.mweb_url,
+        "provider_ref": result.provider_ref,
+        "out_trade_no": out_trade_no,
+        "pickup_code": order.pickup_code,
+    }

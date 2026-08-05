@@ -1,6 +1,7 @@
 <view class="wrap">
   <view class="title">你好，{{name}}</view>
   <view class="muted">{{phone}}</view>
+  <button bindtap="go" data-url="/pages/stores/index">选店</button>
   <button bindtap="go" data-url="/pages/memberships/index">会籍</button>
   <button bindtap="go" data-url="/pages/classes/index">团课</button>
   <button bindtap="go" data-url="/pages/shop/index">商城</button>

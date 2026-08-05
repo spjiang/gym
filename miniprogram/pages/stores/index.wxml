@@ -1,0 +1,14 @@
+<view class="wrap">
+  <view class="title">选择门店</view>
+  <block wx:for="{{merchants}}" wx:key="id">
+    <view
+      class="card {{currentId === item.id ? 'active' : ''}}"
+      bindtap="select"
+      data-id="{{item.id}}"
+    >
+      <view class="name">{{item.name}}</view>
+      <view class="muted">{{item.merchant_type || item.type_code || ''}}</view>
+    </view>
+  </block>
+  <view wx:if="{{!merchants.length}}" class="muted">暂无门店</view>
+</view>

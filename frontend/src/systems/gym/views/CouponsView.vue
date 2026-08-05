@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
+import { couponApplicableLabel, couponStatusLabel } from '../../../core/labels'
 import { merchantsWithSystem } from '../../../core/nav/systems'
 
 type Merchant = { id: number; name: string; subsystem_codes?: string[] }
@@ -235,7 +236,9 @@ onMounted(refresh)
         <template #default="{ row }">{{ discountLabel(row) }}</template>
       </el-table-column>
       <el-table-column prop="threshold_amount" label="门槛" width="100" />
-      <el-table-column prop="applicable_to" label="适用" width="120" />
+      <el-table-column label="适用" width="120">
+        <template #default="{ row }">{{ couponApplicableLabel(row.applicable_to) }}</template>
+      </el-table-column>
       <el-table-column label="已发/库存" width="110">
         <template #default="{ row }">
           {{ row.issued_count }} / {{ row.total_limit ?? '∞' }}
@@ -282,7 +285,7 @@ onMounted(refresh)
             size="small"
             :type="row.status === 'used' ? 'info' : row.status === 'expired' ? 'danger' : 'success'"
           >
-            {{ row.status === 'unused' ? '未使用' : row.status }}
+            {{ couponStatusLabel(row.status) }}
           </el-tag>
         </template>
       </el-table-column>

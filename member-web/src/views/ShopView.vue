@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import http from '../api/http'
+import { payMemberOrder } from '../api/pay'
 import { useAuthStore } from '../stores/auth'
 
 type Product = {
@@ -37,8 +38,8 @@ async function buyCard(productId: number) {
       merchant_id: auth.merchantId,
       product_id: productId,
     })
-    const { data: paid } = await http.post(`/member/orders/${order.id}/pay/online`)
-    msg.value = `购卡成功，订单 #${paid.id}，实付 ¥${paid.amount}`
+    const paid = await payMemberOrder(order.id)
+    msg.value = `购卡成功，订单 #${paid.id || paid.order_id}，实付 ¥${paid.amount || order.amount}`
   } catch (e: unknown) {
     err.value = e instanceof Error ? e.message : '购买失败'
   } finally {
@@ -55,8 +56,8 @@ async function buyPt(productId: number) {
       merchant_id: auth.merchantId,
       product_id: productId,
     })
-    const { data: paid } = await http.post(`/member/orders/${order.id}/pay/online`)
-    msg.value = `购买成功，订单 #${paid.id}，实付 ¥${paid.amount}`
+    const paid = await payMemberOrder(order.id)
+    msg.value = `购买成功，订单 #${paid.id || paid.order_id}，实付 ¥${paid.amount || order.amount}`
   } catch (e: unknown) {
     err.value = e instanceof Error ? e.message : '购买失败'
   } finally {

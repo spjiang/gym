@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import http from '../../api/http'
+import { orderStatusLabel } from '../../utils/labels'
 
 type OrderDetail = {
   id: number
@@ -23,7 +24,6 @@ const merchantId = computed(() => Number(route.params.merchantId))
 const orderId = computed(() => Number(route.params.orderId))
 const order = ref<OrderDetail | null>(null)
 const err = ref('')
-const busy = ref(false)
 
 async function load() {
   try {
@@ -31,21 +31,6 @@ async function load() {
     order.value = data
   } catch (e: unknown) {
     err.value = e instanceof Error ? e.message : '加载失败'
-  }
-}
-
-async function refund() {
-  if (!order.value || order.value.status !== 'paid') return
-  if (!confirm('确认申请退款？')) return
-  busy.value = true
-  err.value = ''
-  try {
-    const { data } = await http.post<OrderDetail>(`/member/catering/orders/${orderId.value}/refund`)
-    order.value = { ...order.value, ...data }
-  } catch (e: unknown) {
-    err.value = e instanceof Error ? e.message : '退款失败'
-  } finally {
-    busy.value = false
   }
 }
 
@@ -63,12 +48,12 @@ onMounted(load)
       <div class="mw-card hero" v-if="order.pickup_code">
         <div class="hero__label">取餐号</div>
         <div class="hero__code">{{ order.pickup_code }}</div>
-        <div class="hero__status">{{ order.status }}</div>
+        <div class="hero__status">{{ orderStatusLabel(order.status) }}</div>
       </div>
 
       <div class="mw-card">
         <div class="row"><span>订单</span><span>#{{ order.id }}</span></div>
-        <div class="row"><span>状态</span><span>{{ order.status }}</span></div>
+        <div class="row"><span>状态</span><span>{{ orderStatusLabel(order.status) }}</span></div>
         <div class="row"><span>金额</span><span>¥{{ order.amount }}</span></div>
         <div v-if="order.customer_note" class="row"><span>备注</span><span>{{ order.customer_note }}</span></div>
       </div>
@@ -81,15 +66,7 @@ onMounted(load)
         </div>
       </div>
 
-      <button
-        v-if="order.status === 'paid'"
-        class="mw-btn mw-btn--ghost"
-        type="button"
-        :disabled="busy"
-        @click="refund"
-      >
-        {{ busy ? '处理中…' : '申请退款' }}
-      </button>
+      <p v-if="order.status === 'paid'" class="hint">如需退款请联系门店前台。</p>
     </template>
   </section>
 </template>

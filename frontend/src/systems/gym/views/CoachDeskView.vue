@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import http from '../../../core/api/http'
+import { bookingStatusLabel, sessionStatusLabel } from '../../../core/labels'
 import { merchantsWithSystem } from '../../../core/nav/systems'
 
 type Session = {
@@ -69,7 +70,9 @@ onMounted(refresh)
       <el-table-column prop="course_id" label="课程" width="90" />
       <el-table-column prop="starts_at" label="开始" />
       <el-table-column prop="room" label="教室" width="100" />
-      <el-table-column prop="status" label="状态" width="90" />
+      <el-table-column label="状态" width="90">
+        <template #default="{ row }">{{ sessionStatusLabel(row.status) }}</template>
+      </el-table-column>
     </el-table>
 
     <h3 style="margin-top: 24px">待核销私教课包</h3>
@@ -88,7 +91,9 @@ onMounted(refresh)
     <el-table :data="bookings" stripe>
       <el-table-column prop="id" label="预约" width="80" />
       <el-table-column prop="member_id" label="会员" width="90" />
-      <el-table-column prop="status" label="状态" width="100" />
+      <el-table-column label="状态" width="100">
+        <template #default="{ row }">{{ bookingStatusLabel(row.status) }}</template>
+      </el-table-column>
       <el-table-column label="操作" width="120">
         <template #default="{ row }">
           <el-button link type="success" @click="checkin(row.id)">出席</el-button>

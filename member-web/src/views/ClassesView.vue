@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import http from '../api/http'
 import { useAuthStore } from '../stores/auth'
+import { bookingStatusLabel } from '../utils/labels'
 
 type Session = {
   id: number
@@ -99,7 +100,7 @@ onMounted(load)
     <div v-for="b in bookings" :key="b.id" class="mw-card mw-list-row">
       <div class="mw-list-row__main">
         <div class="mw-list-row__title">预约 #{{ b.id }}</div>
-        <div class="mw-list-row__meta">场次 {{ b.session_id }} · {{ b.status }}</div>
+        <div class="mw-list-row__meta">场次 {{ b.session_id }} · {{ bookingStatusLabel(b.status) }}</div>
       </div>
       <button
         v-if="b.status === 'booked'"

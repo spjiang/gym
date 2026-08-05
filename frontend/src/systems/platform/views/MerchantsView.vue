@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
 import { BUSINESS_SYSTEM_OPTIONS, defaultSubsystemsForTypeCode } from '../../../core/nav/systems'
+import { merchantStatusLabel } from '../../../core/labels'
 
 type MerchantType = { id: number; code: string; name: string }
 type Merchant = {
@@ -254,7 +255,13 @@ onMounted(load)
           <span v-if="!(row.subsystem_codes || []).length">—</span>
         </template>
       </el-table-column>
-      <el-table-column prop="status" label="状态" width="100" />
+      <el-table-column label="状态" width="100">
+        <template #default="{ row }">
+          <el-tag :type="row.status === 'active' ? 'success' : row.status === 'preparing' ? 'warning' : 'info'" size="small">
+            {{ merchantStatusLabel(row.status) }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="操作" width="320" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openQr(row)">获客码</el-button>

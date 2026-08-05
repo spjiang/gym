@@ -14,6 +14,8 @@ import VisitsView from '../systems/platform/views/VisitsView.vue'
 import NotificationsView from '../systems/platform/views/NotificationsView.vue'
 import SubsystemsView from '../systems/platform/views/SubsystemsView.vue'
 import RolesView from '../systems/platform/views/RolesView.vue'
+import PaymentSettingsView from '../systems/platform/views/PaymentSettingsView.vue'
+import PaymentReconcileView from '../systems/platform/views/PaymentReconcileView.vue'
 import ProductsView from '../systems/gym/views/ProductsView.vue'
 import MembershipsView from '../systems/gym/views/MembershipsView.vue'
 import CoachesView from '../systems/gym/views/CoachesView.vue'
@@ -40,6 +42,18 @@ const children: RouteRecordRaw[] = [
     name: 'platform-roles',
     component: RolesView,
     meta: { system: 'platform', anyOf: ['rbac:manage', 'staff:manage', '*'] },
+  },
+  {
+    path: 'platform/payment-settings',
+    name: 'platform-payment',
+    component: PaymentSettingsView,
+    meta: { system: 'platform', anyOf: ['payment:config', '*'] },
+  },
+  {
+    path: 'platform/payment-reconcile',
+    name: 'platform-payment-reconcile',
+    component: PaymentReconcileView,
+    meta: { system: 'platform', anyOf: ['payment:reconcile', '*'] },
   },
   { path: 'merchants', name: 'merchants', component: MerchantsView, meta: { system: 'platform', anyOf: ['org:read', '*'] } },
   { path: 'staff', name: 'staff', component: StaffView, meta: { system: 'platform', anyOf: ['staff:manage', '*'] } },

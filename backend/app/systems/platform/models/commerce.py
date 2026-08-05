@@ -21,6 +21,7 @@ class PaymentChannel(str, Enum):
     OFFLINE_CASH = "offline_cash"
     OFFLINE_TRANSFER = "offline_transfer"
     ONLINE = "online"
+    WECHAT_ORIGINAL = "wechat_original"
 
 
 class PaymentKind(str, Enum):
@@ -39,6 +40,7 @@ class Order(Base):
     order_type: Mapped[str] = mapped_column(String(64), nullable=False, default="retail")
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    refunded_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"))
     status: Mapped[str] = mapped_column(String(32), default=OrderStatus.PENDING.value, nullable=False)
     pickup_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
     customer_note: Mapped[str | None] = mapped_column(String(255), nullable=True)

@@ -1,1 +1,26 @@
-<view class="wrap"><view class="title">{{title}}</view><block wx:for="{{items}}" wx:key="id"><view class="card">{{item.name || item.title || ('#' + item.id)}}</view></block></view>
+<view class="wrap">
+  <view class="title">{{title}}</view>
+  <view class="section">会籍卡种</view>
+  <block wx:for="{{cards}}" wx:key="id">
+    <view class="card row">
+      <view class="main">
+        <view>{{item.name}}{{item.is_trial ? '（体验）' : ''}}</view>
+        <view class="price">¥{{item.effective_price || item.price}}</view>
+      </view>
+      <button size="mini" data-id="{{item.id}}" bindtap="buyCard">购买</button>
+    </view>
+  </block>
+  <view wx:if="{{!cards.length}}" class="muted">暂无卡种</view>
+
+  <view class="section">私教课包</view>
+  <block wx:for="{{pts}}" wx:key="id">
+    <view class="card row">
+      <view class="main">
+        <view>{{item.name}}</view>
+        <view class="price">¥{{item.price}} · {{item.session_count}} 次</view>
+      </view>
+      <button size="mini" data-id="{{item.id}}" bindtap="buyPt">购买</button>
+    </view>
+  </block>
+  <view wx:if="{{!pts.length}}" class="muted">暂无课包</view>
+</view>

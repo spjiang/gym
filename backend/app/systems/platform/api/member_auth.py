@@ -7,13 +7,17 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.db import get_db
+from app.core.deps import MemberContext, get_current_member
 from app.core.errors import AppError
 from app.core.schemas.common import TokenOut
 from app.core.security import create_access_token
 from app.systems.platform.models.member import AcquisitionSource, FaceStatus, Member, MerchantMember
 from app.systems.platform.models.org import Merchant, MerchantStatus, Site
+from app.systems.platform.models.payment_settings import MemberWechatBinding
 from app.systems.platform.services.audit import write_audit
 from app.systems.platform.services.otp import send_member_otp, verify_member_otp
+from app.systems.platform.services.payment_settings import resolve_payment_settings
+from app.systems.platform.services.wechat_pay import exchange_mini_openid, exchange_oa_openid
 
 router = APIRouter(prefix="/member/auth", tags=["member-auth"])
 
@@ -157,3 +161,43 @@ def verify_otp(body: OtpVerifyIn, db: Session = Depends(get_db)):
     )
     db.commit()
     return TokenOut(access_token=token)
+
+
+class WechatBindIn(BaseModel):
+    code: str = Field(min_length=1, max_length=128)
+
+
+@router.post("/wechat/mini/bind")
+def bind_mini_openid(
+    body: WechatBindIn,
+    db: Session = Depends(get_db),
+    mctx: MemberContext = Depends(get_current_member),
+):
+    """登录后绑定小程序 openid。"""
+    cfg = resolve_payment_settings(db, mctx.site_id)
+    openid = exchange_mini_openid(cfg, body.code)
+    row = db.scalar(select(MemberWechatBinding).where(MemberWechatBinding.member_id == mctx.member.id))
+    if row is None:
+        row = MemberWechatBinding(member_id=mctx.member.id)
+        db.add(row)
+    row.mp_openid = openid
+    db.commit()
+    return {"mp_openid": openid, "bound": True}
+
+
+@router.post("/wechat/oa/bind")
+def bind_oa_openid(
+    body: WechatBindIn,
+    db: Session = Depends(get_db),
+    mctx: MemberContext = Depends(get_current_member),
+):
+    """登录后绑定公众号/网页 openid。"""
+    cfg = resolve_payment_settings(db, mctx.site_id)
+    openid = exchange_oa_openid(cfg, body.code)
+    row = db.scalar(select(MemberWechatBinding).where(MemberWechatBinding.member_id == mctx.member.id))
+    if row is None:
+        row = MemberWechatBinding(member_id=mctx.member.id)
+        db.add(row)
+    row.oa_openid = openid
+    db.commit()
+    return {"oa_openid": openid, "bound": True}

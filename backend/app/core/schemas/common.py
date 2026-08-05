@@ -182,6 +182,7 @@ class OrderOut(ORMModel):
     order_type: str
     title: str
     amount: Decimal
+    refunded_amount: Decimal = Decimal("0")
     status: str
     pickup_code: str | None = None
     customer_note: str | None = None
@@ -195,7 +196,10 @@ class OfflinePayIn(BaseModel):
 
 
 class OnlinePayIn(BaseModel):
-    pass
+    note: str | None = None
+    pay_scene: str = "miniprogram"
+    client_ip: str | None = None
+    return_url: str | None = None
 
 
 class MeOut(BaseModel):

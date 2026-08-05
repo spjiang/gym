@@ -19,6 +19,8 @@ SYSTEM = {
         {"code": "order:read", "name": "查看订单"},
         {"code": "order:write", "name": "创建/收款订单"},
         {"code": "report:read", "name": "经营报表"},
+        {"code": "payment:config", "name": "支付通道配置"},
+        {"code": "payment:reconcile", "name": "支付对账补单"},
     ],
     "menus": [
         {
@@ -34,6 +36,20 @@ SYSTEM = {
             "name": "角色权限",
             "required_any": ["rbac:manage", "staff:manage", "*"],
             "sort_order": 6,
+        },
+        {
+            "code": "platform.payment",
+            "path": "/platform/payment-settings",
+            "name": "支付配置",
+            "required_any": ["payment:config", "*"],
+            "sort_order": 7,
+        },
+        {
+            "code": "platform.payment_reconcile",
+            "path": "/platform/payment-reconcile",
+            "name": "支付对账",
+            "required_any": ["payment:reconcile", "*"],
+            "sort_order": 8,
         },
         {
             "code": "platform.merchants",

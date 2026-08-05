@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import http from '../api/http'
 import { useAuthStore } from '../stores/auth'
+import { couponStatusLabel } from '../utils/labels'
 
 type Claimable = {
   id: number
@@ -87,7 +88,7 @@ onMounted(load)
         <div class="mw-list-row__title">券 #{{ c.id }}</div>
         <div class="mw-list-row__meta">模板 {{ c.template_id }} · 至 {{ c.ends_at?.slice(0, 10) }}</div>
       </div>
-      <span class="mw-status mw-status--neutral">{{ c.status }}</span>
+      <span class="mw-status mw-status--neutral">{{ couponStatusLabel(c.status) }}</span>
     </div>
     <div v-if="!mine.length" class="mw-empty">暂无卡券</div>
   </section>

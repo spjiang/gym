@@ -1,4 +1,4 @@
-"""会员端餐饮：菜单、点餐、订单、退款。"""
+"""会员端餐饮：菜单、点餐、订单（退款请走管理端）。"""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from app.core.domain.subsystems import assert_merchant_has_system
 from app.core.errors import AppError
 from app.core.schemas.common import OrderOut
 from app.systems.catering.models.catering import CateringMenuItem, CateringOrderItem
-from app.systems.platform.models.commerce import Order, OrderStatus, Payment, PaymentChannel, PaymentKind
+from app.systems.platform.models.commerce import Order, OrderStatus
 from app.systems.platform.models.org import Merchant
 from app.systems.platform.services.audit import write_audit
 
@@ -211,39 +211,3 @@ def get_order(
     if order is None or order.member_id != mctx.member.id or order.order_type != "dining":
         raise AppError("not_found", "订单不存在", status_code=404)
     return _order_detail(db, order)
-
-
-@router.post("/orders/{order_id}/refund", response_model=OrderOut)
-def refund_order(
-    order_id: int,
-    db: Session = Depends(get_db),
-    mctx: MemberContext = Depends(get_current_member),
-):
-    order = db.get(Order, order_id)
-    if order is None or order.member_id != mctx.member.id or order.order_type != "dining":
-        raise AppError("not_found", "订单不存在", status_code=404)
-    if order.status != OrderStatus.PAID.value:
-        raise AppError("invalid_state", "仅已支付订单可退款", status_code=400)
-
-    order.status = OrderStatus.REFUNDED.value
-    db.add(
-        Payment(
-            order_id=order.id,
-            kind=PaymentKind.REFUND.value,
-            channel=PaymentChannel.ONLINE.value,
-            amount=order.amount,
-            note="会员自助退款",
-        )
-    )
-    write_audit(
-        db,
-        action="member.dining_refund",
-        target_type="order",
-        target_id=order.id,
-        summary="会员餐饮退款",
-        site_id=mctx.site_id,
-        merchant_id=order.merchant_id,
-    )
-    db.commit()
-    db.refresh(order)
-    return order

@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import http from '../../../core/api/http'
 import { useAuthStore } from '../../../core/stores/auth'
+import { orderTypeLabel, paymentChannelLabel } from '../../../core/labels'
 
 type Merchant = { id: number; name: string }
 type BreakdownChannel = {
@@ -147,7 +148,7 @@ onMounted(async () => {
         </el-select>
       </el-form-item>
       <el-button type="primary" :loading="loading" @click="loadSummary">查询</el-button>
-      <el-button @click="exportCsv">导出收款 CSV</el-button>
+      <el-button @click="exportCsv">导出收款明细</el-button>
     </el-form>
 
     <h3>收款汇总</h3>
@@ -165,7 +166,9 @@ onMounted(async () => {
 
     <h3>按支付渠道</h3>
     <el-table :data="summary?.by_channel || []" stripe style="margin-bottom: 16px">
-      <el-table-column prop="channel" label="渠道" />
+      <el-table-column label="渠道">
+        <template #default="{ row }">{{ paymentChannelLabel(row.channel) }}</template>
+      </el-table-column>
       <el-table-column prop="charge_total" label="收款" />
       <el-table-column prop="refund_total" label="退款" />
       <el-table-column prop="net_total" label="净收" />
@@ -173,7 +176,9 @@ onMounted(async () => {
 
     <h3>按业务类型</h3>
     <el-table :data="summary?.by_order_type || []" stripe style="margin-bottom: 24px">
-      <el-table-column prop="order_type" label="类型" />
+      <el-table-column label="类型">
+        <template #default="{ row }">{{ orderTypeLabel(row.order_type) }}</template>
+      </el-table-column>
       <el-table-column prop="charge_total" label="收款" />
       <el-table-column prop="refund_total" label="退款" />
       <el-table-column prop="net_total" label="净收" />

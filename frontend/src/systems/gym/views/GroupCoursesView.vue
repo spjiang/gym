@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
+import { bookingStatusLabel, sessionStatusLabel } from '../../../core/labels'
 import { merchantsWithSystem } from '../../../core/nav/systems'
 
 type Merchant = { id: number; name: string; subsystem_codes?: string[] }
@@ -87,10 +88,6 @@ function memberName(id: number, row?: Booking) {
   if (row?.member) return `${row.member.name} ${row.member.phone}`
   const m = members.value.find((x) => x.id === id)
   return m ? `${m.name} ${m.phone}` : `#${id}`
-}
-
-function bookingStatusLabel(s: string) {
-  return { booked: '已预约', attended: '已出席', no_show: '未出席', cancelled: '已取消' }[s] || s
 }
 
 async function refresh() {
@@ -282,7 +279,9 @@ onMounted(refresh)
       <el-table-column prop="starts_at" label="开始" />
       <el-table-column prop="capacity" label="上限" width="80" />
       <el-table-column prop="room" label="教室" width="100" />
-      <el-table-column prop="status" label="状态" width="90" />
+      <el-table-column label="状态" width="90">
+        <template #default="{ row }">{{ sessionStatusLabel(row.status) }}</template>
+      </el-table-column>
     </el-table>
 
     <el-card v-if="selectedSessionId" header="预约名单" style="margin-top: 16px">

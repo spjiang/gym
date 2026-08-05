@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import http from '../../api/http'
+import { orderStatusLabel } from '../../utils/labels'
 
 type Order = {
   id: number
@@ -48,7 +49,7 @@ onMounted(load)
     >
       <div class="order__row">
         <span>#{{ o.id }}</span>
-        <span class="status">{{ o.status }}</span>
+        <span class="status">{{ orderStatusLabel(o.status) }}</span>
       </div>
       <div class="order__row">
         <span>¥{{ o.amount }}</span>

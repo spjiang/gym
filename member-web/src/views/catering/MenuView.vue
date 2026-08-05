@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import http from '../../api/http'
+import { payMemberOrder } from '../../api/pay'
 import { useAuthStore } from '../../stores/auth'
 
 type MenuItem = {
@@ -68,7 +69,7 @@ async function checkout() {
       items: cartLines.value.map((i) => ({ menu_item_id: i.id, quantity: i.quantity })),
       note: note.value || null,
     })
-    await http.post(`/member/orders/${order.id}/pay/online`)
+    await payMemberOrder(order.id)
     for (const k of Object.keys(qty)) qty[Number(k)] = 0
     note.value = ''
     router.push(`/m/${merchantId.value}/catering/orders/${order.id}`)
