@@ -12,6 +12,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+import app.models  # noqa: F401 — 注册 Order 等表，满足 StockMovement.order_id 外键解析
 from app.systems.platform.models.access import AccessDevice, AccessPoint
 from app.systems.gym.models.coupon import ApplicableTo, CouponTemplate, DiscountType
 from app.systems.gym.models.course import Coach, GroupCourse, GroupSession, GroupSessionStatus, PtPackageProduct

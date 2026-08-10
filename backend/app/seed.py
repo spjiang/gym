@@ -1,5 +1,7 @@
 """种子数据：场地、商户类型、示例商户、角色、超管；可选目录级 Demo。"""
 
+import app.models  # noqa: F401 — 注册全部表元数据，避免跨模块 FK 在 flush 时找不到 orders 等表
+
 from sqlalchemy import select
 
 from app.core import db as db_module
