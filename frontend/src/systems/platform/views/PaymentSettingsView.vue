@@ -118,7 +118,7 @@ onMounted(load)
 <template>
   <div v-loading="loading">
     <div class="toolbar">
-      <h3>支付配置</h3>
+      <h3>京东支付</h3>
       <div class="actions">
         <el-button @click="importEnv" :loading="saving">从环境变量导入</el-button>
         <el-button type="primary" :loading="saving" @click="save">保存</el-button>
@@ -129,7 +129,7 @@ onMounted(load)
       :closable="false"
       show-icon
       style="margin-bottom: 16px"
-      title="全场地共用一套微信商户号。密钥仅写入不回显；留空表示不修改已保存密钥。"
+      title="全场地共用一套京东支付商户号。密钥仅写入不回显；留空表示不修改已保存密钥。"
       :description="`当前生效来源：${meta.source === 'db' ? '数据库' : '环境变量兜底'}`"
     />
 
@@ -138,11 +138,12 @@ onMounted(load)
         <el-select v-model="form.mode" style="width: 240px">
           <el-option label="未配置" value="unconfigured" />
           <el-option label="模拟支付" value="mock" />
-          <el-option label="微信支付" value="wechat" />
+          <el-option label="京东支付" value="jdpay" />
+          <el-option label="京东支付（兼容 wechat）" value="wechat" />
         </el-select>
       </el-form-item>
       <el-form-item label="DRY_RUN">
-        <el-switch v-model="form.dry_run" active-text="干跑（不调微信）" inactive-text="真实下单" />
+        <el-switch v-model="form.dry_run" active-text="干跑（不调京东）" inactive-text="真实下单" />
       </el-form-item>
       <el-form-item label="小程序 AppID">
         <el-input v-model="form.mp_app_id" />

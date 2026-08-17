@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
 import { merchantsWithSystem } from '../../../core/nav/systems'
+import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
 
 type Merchant = { id: number; name: string; subsystem_codes?: string[] }
 type Point = { id: number; name: string; merchant_id: number | null }
@@ -61,13 +62,29 @@ const router = useRouter()
 const merchants = ref<Merchant[]>([])
 const points = ref<Point[]>([])
 const products = ref<Product[]>([])
-const merchantId = ref<number | undefined>()
+const { merchantId, requireMerchant } = useOpsMerchant(() => {
+  page.value = 1
+  void refresh()
+})
 const loading = ref(false)
+const page = ref(1)
+const pageSize = ref(20)
+const total = ref(0)
+const query = reactive({
+  q: '',
+  product_type: '' as '' | 'term' | 'count' | 'value',
+  status: '' as '' | 'active' | 'inactive',
+  trial: '' as '' | 'yes' | 'no',
+  access_point_id: undefined as number | undefined,
+  price_min: undefined as number | undefined,
+  price_max: undefined as number | undefined,
+})
 
 const dialogVisible = ref(false)
 const detailVisible = ref(false)
 const detailProduct = ref<Product | null>(null)
 const creating = ref(false)
+const editingId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
 
 const form = reactive({
@@ -120,24 +137,64 @@ watch(
 async function loadMerchants() {
   const { data } = await http.get('/merchants')
   merchants.value = merchantsWithSystem(data, 'gym')
-  if (!merchantId.value && merchants.value[0]) merchantId.value = merchants.value[0].id
   if (merchantId.value && !merchants.value.some((m) => m.id === merchantId.value)) {
-    merchantId.value = merchants.value[0]?.id
+    merchantId.value = undefined
   }
 }
 
 async function loadPoints() {
-  if (!merchantId.value) return
   const { data } = await http.get('/access-points')
-  points.value = data.filter(
-    (p: Point) => p.merchant_id === merchantId.value || p.merchant_id == null,
+  const list = Array.isArray(data) ? data : data.items
+  points.value = list.filter(
+    (p: Point) => !merchantId.value || p.merchant_id === merchantId.value || p.merchant_id == null,
   )
 }
 
 async function loadProducts() {
-  if (!merchantId.value) return
-  const { data } = await http.get('/membership-products', { params: { merchant_id: merchantId.value } })
-  products.value = data
+  const { data } = await http.get('/membership-products', {
+    params: {
+      merchant_id: merchantId.value,
+      q: query.q.trim() || undefined,
+      product_type: query.product_type || undefined,
+      is_active: query.status === 'active' ? true : query.status === 'inactive' ? false : undefined,
+      is_trial: query.trial === 'yes' ? true : query.trial === 'no' ? false : undefined,
+      access_point_id: query.access_point_id,
+      price_min: query.price_min,
+      price_max: query.price_max,
+      page: page.value,
+      page_size: pageSize.value,
+    },
+  })
+  products.value = data.items
+  total.value = data.total
+}
+
+function search() {
+  page.value = 1
+  void refreshProducts()
+}
+
+function resetSearch() {
+  query.q = ''
+  query.product_type = ''
+  query.status = ''
+  query.trial = ''
+  query.access_point_id = undefined
+  query.price_min = undefined
+  query.price_max = undefined
+  page.value = 1
+  void refreshProducts()
+}
+
+async function refreshProducts() {
+  loading.value = true
+  try {
+    await loadProducts()
+  } catch (e: unknown) {
+    ElMessage.error(e instanceof Error ? e.message : '加载失败')
+  } finally {
+    loading.value = false
+  }
 }
 
 async function refresh() {
@@ -153,7 +210,7 @@ async function refresh() {
   }
 }
 
-function openDialog() {
+function resetForm() {
   form.name = ''
   form.product_type = 'term'
   form.price = '299.00'
@@ -165,6 +222,11 @@ function openDialog() {
   form.is_trial = false
   form.promo_price = ''
   form.promo_days = 0
+}
+
+function openDialog() {
+  editingId.value = null
+  resetForm()
   // 默认勾选本商户门禁点，公共门可选
   const own = points.value.filter((p) => p.merchant_id === merchantId.value)
   form.access_point_ids = own.length
@@ -176,43 +238,79 @@ function openDialog() {
   dialogVisible.value = true
 }
 
+function promoDaysFrom(row: Product) {
+  if (!row.promo_starts_at || !row.promo_ends_at) return 0
+  const start = new Date(row.promo_starts_at).getTime()
+  const end = new Date(row.promo_ends_at).getTime()
+  if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return 0
+  return Math.max(1, Math.round((end - start) / 86400000))
+}
+
+function openEdit(row: Product) {
+  editingId.value = row.id
+  form.name = row.name
+  form.product_type = row.product_type
+  form.price = row.price
+  form.duration_days = row.duration_days
+  form.session_count = row.session_count
+  form.stored_value = row.stored_value
+  form.access_point_ids = [...row.access_point_ids]
+  form.is_active = row.is_active
+  form.is_trial = row.is_trial
+  form.promo_price = row.promo_price || ''
+  form.promo_days = promoDaysFrom(row)
+  formRef.value?.clearValidate()
+  dialogVisible.value = true
+}
+
+function buildPayload(mid: number) {
+  const payload: Record<string, unknown> = {
+    ...form,
+    merchant_id: mid,
+    name: form.name.trim(),
+  }
+  if (form.promo_price && form.promo_days > 0) {
+    const starts = new Date()
+    const ends = new Date()
+    ends.setDate(ends.getDate() + form.promo_days)
+    payload.promo_price = form.promo_price
+    payload.promo_starts_at = starts.toISOString()
+    payload.promo_ends_at = ends.toISOString()
+  } else {
+    payload.promo_price = null
+    payload.promo_starts_at = null
+    payload.promo_ends_at = null
+  }
+  delete payload.promo_days
+  return payload
+}
+
 async function create() {
   const ok = await formRef.value?.validate().catch(() => false)
-  if (!ok) return
+  const mid = requireMerchant()
+  if (!ok || !mid) return
   if (form.is_active && form.access_point_ids.length === 0) {
     ElMessage.warning(
       noPoints.value
-        ? '请先去「门禁设备」创建门禁点，再绑定后启用售卖'
-        : '启用售卖时必须选择至少一个门禁点',
+        ? '请先去「门禁设备」创建门禁点，再绑定后设为在售'
+        : '设为在售时必须选择至少一个门禁点',
     )
     return
   }
   creating.value = true
   try {
-    const payload: Record<string, unknown> = {
-      ...form,
-      merchant_id: merchantId.value,
-      name: form.name.trim(),
-    }
-    if (form.promo_price && form.promo_days > 0) {
-      const starts = new Date()
-      const ends = new Date()
-      ends.setDate(ends.getDate() + form.promo_days)
-      payload.promo_price = form.promo_price
-      payload.promo_starts_at = starts.toISOString()
-      payload.promo_ends_at = ends.toISOString()
+    const payload = buildPayload(mid)
+    if (editingId.value) {
+      await http.patch(`/membership-products/${editingId.value}`, payload)
+      ElMessage.success('卡种已更新')
     } else {
-      payload.promo_price = null
-      payload.promo_starts_at = null
-      payload.promo_ends_at = null
+      await http.post('/membership-products', payload)
+      ElMessage.success('卡种已创建')
     }
-    delete payload.promo_days
-    await http.post('/membership-products', payload)
-    ElMessage.success('卡种已创建')
     dialogVisible.value = false
     await loadProducts()
   } catch (e: unknown) {
-    ElMessage.error(e instanceof Error ? e.message : '创建失败')
+    ElMessage.error(e instanceof Error ? e.message : editingId.value ? '更新失败' : '创建失败')
   } finally {
     creating.value = false
   }
@@ -221,14 +319,14 @@ async function create() {
 async function deactivate(id: number) {
   try {
     await http.post(`/membership-products/${id}/deactivate`)
-    ElMessage.success('已停用')
+    ElMessage.success('已停售')
     await loadProducts()
     if (detailProduct.value?.id === id) {
       detailVisible.value = false
       detailProduct.value = null
     }
   } catch (e: unknown) {
-    ElMessage.error(e instanceof Error ? e.message : '停用失败')
+    ElMessage.error(e instanceof Error ? e.message : '停售失败')
   }
 }
 
@@ -265,15 +363,72 @@ onMounted(refresh)
 <template>
   <div>
     <div class="toolbar">
-      <h3>会籍卡种</h3>
+      <div>
+        <h3>会籍卡种</h3>
+        <p class="lead">配置期限卡、次卡、储值卡。办卡续卡在「会籍管理 → 会籍档案」。</p>
+      </div>
       <el-button type="primary" @click="openDialog">新建卡种</el-button>
     </div>
 
-    <el-form inline>
+    <el-form inline class="filters">
       <el-form-item label="商户">
-        <el-select v-model="merchantId" style="width: 200px" @change="refresh">
+        <el-select v-model="merchantId" clearable placeholder="全部商户" style="width: 180px" @change="refresh">
           <el-option v-for="m in merchants" :key="m.id" :label="m.name" :value="m.id" />
         </el-select>
+      </el-form-item>
+      <el-form-item label="关键词">
+        <el-input
+          v-model="query.q"
+          clearable
+          placeholder="名称 / ID"
+          style="width: 160px"
+          @keyup.enter="search"
+        />
+      </el-form-item>
+      <el-form-item label="类型">
+        <el-select v-model="query.product_type" clearable placeholder="全部" style="width: 120px">
+          <el-option label="期限卡" value="term" />
+          <el-option label="次卡" value="count" />
+          <el-option label="储值卡" value="value" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="状态">
+        <el-select v-model="query.status" clearable placeholder="全部" style="width: 110px">
+          <el-option label="在售" value="active" />
+          <el-option label="停售" value="inactive" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="体验">
+        <el-select v-model="query.trial" clearable placeholder="全部" style="width: 100px">
+          <el-option label="是" value="yes" />
+          <el-option label="否" value="no" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="门禁">
+        <el-select v-model="query.access_point_id" clearable placeholder="全部" style="width: 160px">
+          <el-option v-for="p in points" :key="p.id" :label="p.name" :value="p.id" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="价格">
+        <el-input-number
+          v-model="query.price_min"
+          :min="0"
+          :controls="false"
+          placeholder="最低"
+          style="width: 100px"
+        />
+        <span class="price-sep">—</span>
+        <el-input-number
+          v-model="query.price_max"
+          :min="0"
+          :controls="false"
+          placeholder="最高"
+          style="width: 100px"
+        />
+      </el-form-item>
+      <el-form-item>
+        <el-button type="primary" @click="search">查询</el-button>
+        <el-button @click="resetSearch">重置</el-button>
       </el-form-item>
     </el-form>
 
@@ -286,7 +441,7 @@ onMounted(refresh)
     >
       <template #title>当前商户还没有可用门禁点</template>
       <p style="margin: 4px 0 10px">
-        启用售卖的卡种必须绑定门禁点。请先在「综合经营 → 门禁设备」创建门禁点，或关闭「启用售卖」以草稿保存。
+        在售卡种必须绑定门禁点。请先在「观野SPACE → 门禁设备」创建门禁点，或先以停售保存，绑定门禁后再改为在售。
       </p>
       <el-button size="small" type="warning" @click="goAccess">去创建门禁点</el-button>
     </el-alert>
@@ -301,10 +456,10 @@ onMounted(refresh)
         <template #default="{ row }">{{ row.is_trial ? '是' : '否' }}</template>
       </el-table-column>
       <el-table-column prop="price" label="价格" width="120" />
-      <el-table-column label="在售" width="90">
+      <el-table-column label="状态" width="90">
         <template #default="{ row }">
           <el-tag :type="row.is_active ? 'success' : 'info'" size="small">
-            {{ row.is_active ? '在售' : '草稿' }}
+            {{ row.is_active ? '在售' : '停售' }}
           </el-tag>
         </template>
       </el-table-column>
@@ -322,13 +477,32 @@ onMounted(refresh)
           <span v-if="!row.access_point_ids.length">—</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="180" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
           <el-button size="small" @click="openDetail(row)">详情</el-button>
-          <el-button size="small" :disabled="!row.is_active" @click="deactivate(row.id)">停用</el-button>
+          <el-button size="small" @click="openEdit(row)">编辑</el-button>
+          <el-button size="small" :disabled="!row.is_active" @click="deactivate(row.id)">停售</el-button>
         </template>
       </el-table-column>
     </el-table>
+
+    <div class="pager">
+      <el-pagination
+        v-model:current-page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next"
+        background
+        @current-change="refreshProducts"
+        @size-change="
+          () => {
+            page = 1
+            refreshProducts()
+          }
+        "
+      />
+    </div>
 
     <el-drawer v-model="detailVisible" title="卡种详情" size="420px" destroy-on-close>
       <template v-if="detailProduct">
@@ -361,28 +535,29 @@ onMounted(refresh)
             }}
           </el-descriptions-item>
           <el-descriptions-item label="售卖状态">
-            {{ detailProduct.is_active ? '在售' : '已停用/草稿' }}
+            {{ detailProduct.is_active ? '在售' : '停售' }}
           </el-descriptions-item>
           <el-descriptions-item label="绑定门禁">
             {{ pointNames(detailProduct.access_point_ids) }}
           </el-descriptions-item>
         </el-descriptions>
         <div class="detail-actions">
+          <el-button type="primary" plain @click="openEdit(detailProduct); detailVisible = false">编辑</el-button>
           <el-button
             type="danger"
             plain
             :disabled="!detailProduct.is_active"
             @click="deactivate(detailProduct.id)"
           >
-            停用卡种
+            停售
           </el-button>
           <el-button @click="detailVisible = false">关闭</el-button>
         </div>
       </template>
     </el-drawer>
 
-    <!-- 新建卡种弹窗 -->
-    <el-dialog v-model="dialogVisible" title="新建卡种" width="820px" destroy-on-close>
+    <!-- 新建 / 编辑卡种弹窗 -->
+    <el-dialog v-model="dialogVisible" :title="editingId ? '编辑卡种' : '新建卡种'" width="820px" destroy-on-close>
       <div class="create-layout">
         <section class="create-form">
           <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
@@ -427,8 +602,8 @@ onMounted(refresh)
             <el-form-item label="活动天数">
               <el-input-number v-model="form.promo_days" :min="0" style="width: 100%" />
             </el-form-item>
-            <el-form-item label="启用售卖">
-              <el-switch v-model="form.is_active" />
+            <el-form-item label="售卖状态">
+              <el-switch v-model="form.is_active" active-text="在售" inactive-text="停售" />
             </el-form-item>
           </el-form>
         </section>
@@ -470,7 +645,7 @@ onMounted(refresh)
           </span>
           <div>
             <el-button @click="dialogVisible = false">取消</el-button>
-            <el-button type="primary" :loading="creating" @click="create">创建</el-button>
+            <el-button type="primary" :loading="creating" @click="create">{{ editingId ? '保存' : '创建' }}</el-button>
           </div>
         </div>
       </template>
@@ -488,8 +663,27 @@ onMounted(refresh)
 }
 
 .toolbar h3 {
-  margin: 0;
+  margin: 0 0 6px;
   font-size: 1.1rem;
+}
+.lead {
+  margin: 0;
+  max-width: 640px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--el-text-color-secondary);
+}
+.filters {
+  margin-bottom: 8px;
+}
+.pager {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+.price-sep {
+  margin: 0 6px;
+  color: var(--el-text-color-secondary);
 }
 
 .create-layout {

@@ -1,4 +1,14 @@
 <view class="wrap">
+  <view class="brand">
+    <view class="brand-word">
+      <text class="cn">观野</text>
+      <text class="en">SPACE</text>
+    </view>
+    <view class="brand-bars">
+      <view class="bar-orange"></view>
+      <view class="bar-cyan"></view>
+    </view>
+  </view>
   <view class="title">你好，{{name}}</view>
   <view class="muted">{{phone}}</view>
   <button bindtap="go" data-url="/pages/stores/index">选店</button>

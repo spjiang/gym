@@ -2,15 +2,16 @@
 
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.deps import RequestContext, get_current_context
 from app.core.domain.subsystems import assert_merchant_has_system
 from app.core.errors import AppError
+from app.core.schemas.paging import PageOut, paginate
 from app.systems.catering.models.catering import CateringMenuItem, CateringOrderItem
 from app.systems.platform.models.commerce import Order, OrderStatus
 from app.systems.platform.models.org import Merchant
@@ -68,19 +69,47 @@ def _require_catering_merchant(db: Session, ctx: RequestContext, merchant_id: in
     return mid, merchant
 
 
-@router.get("/menu-items", response_model=list[MenuItemOut])
+@router.get("/menu-items", response_model=PageOut[MenuItemOut])
 def list_menu_items(
     merchant_id: int | None = None,
     active_only: bool = False,
+    q: str | None = None,
+    category: str | None = None,
+    is_active: bool | None = None,
+    price_min: Decimal | None = None,
+    price_max: Decimal | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
     ctx: RequestContext = Depends(get_current_context),
 ):
     ctx.require_permission("catering:menu", "catering:order", "order:read")
-    mid, _ = _require_catering_merchant(db, ctx, merchant_id)
-    q = select(CateringMenuItem).where(CateringMenuItem.merchant_id == mid)
-    if active_only:
-        q = q.where(CateringMenuItem.is_active.is_(True))
-    return list(db.scalars(q.order_by(CateringMenuItem.id.desc())).all())
+    mid = ctx.resolve_merchant_id(merchant_id, required=False)
+    stmt = select(CateringMenuItem)
+    if mid is not None:
+        _require_catering_merchant(db, ctx, mid)
+        stmt = stmt.where(CateringMenuItem.merchant_id == mid)
+    else:
+        stmt = stmt.join(Merchant, Merchant.id == CateringMenuItem.merchant_id).where(Merchant.site_id == ctx.site_id)
+    if is_active is not None:
+        stmt = stmt.where(CateringMenuItem.is_active.is_(is_active))
+    elif active_only:
+        stmt = stmt.where(CateringMenuItem.is_active.is_(True))
+    keyword = (q or "").strip()
+    if keyword:
+        like = f"%{keyword}%"
+        conds = [CateringMenuItem.name.ilike(like)]
+        if keyword.isdigit():
+            conds.append(CateringMenuItem.id == int(keyword))
+        stmt = stmt.where(or_(*conds))
+    if category:
+        stmt = stmt.where(CateringMenuItem.category.ilike(f"%{category.strip()}%"))
+    if price_min is not None:
+        stmt = stmt.where(CateringMenuItem.price >= price_min)
+    if price_max is not None:
+        stmt = stmt.where(CateringMenuItem.price <= price_max)
+    rows, total = paginate(db, stmt.order_by(CateringMenuItem.id.desc()), page=page, page_size=page_size)
+    return PageOut(items=rows, total=total, page=page, page_size=page_size)
 
 
 @router.post("/menu-items", response_model=MenuItemOut)

@@ -34,6 +34,7 @@ class NotificationOut(BaseModel):
 @router.get("/notifications", response_model=PageOut[NotificationOut])
 def list_staff_notifications(
     merchant_id: int | None = None,
+    event_type: str | None = None,
     q: str | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -48,6 +49,8 @@ def list_staff_notifications(
     else:
         mid = ctx.resolve_merchant_id(merchant_id)
         filters.append(Notification.merchant_id == mid)
+    if event_type:
+        filters.append(Notification.event_type == event_type)
     keyword = (q or "").strip()
     if keyword:
         like = f"%{keyword}%"

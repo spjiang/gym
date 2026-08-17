@@ -194,16 +194,22 @@ def _ensure_product(
 def seed_demo_catalog(db: Session, *, site: Site, gym: Merchant, role_map: dict[str, Role]) -> None:
     """写入目录级体验数据。"""
     bar_type = db.scalar(select(MerchantType).where(MerchantType.code == "bar"))
-    bar = db.scalar(select(Merchant).where(Merchant.name == "回龙观清吧"))
+    bar = None
+    if bar_type is not None:
+        bar = db.scalar(
+            select(Merchant).where(Merchant.merchant_type_id == bar_type.id).order_by(Merchant.id)
+        )
     if bar is None and bar_type is not None:
         bar = Merchant(
             site_id=site.id,
             merchant_type_id=bar_type.id,
-            name="回龙观清吧",
+            name="观野BAR",
             status=MerchantStatus.ACTIVE.value,
         )
         db.add(bar)
         db.flush()
+    elif bar is not None:
+        bar.name = "观野BAR"
     if bar is not None:
         from app.core.domain.subsystems import replace_merchant_subsystems
         from app.systems.platform.models.org import MerchantSubsystem
@@ -445,6 +451,15 @@ def seed_demo_catalog(db: Session, *, site: Site, gym: Merchant, role_map: dict[
 
     coach_qiang = ensure_coach(coach_staff_1, "阿强", "增肌,力量")
     coach_ya = ensure_coach(coach_staff_2, "小雅", "减脂,团操")
+
+    coach_qiang.title = "金牌私教"
+    coach_qiang.gender = "male"
+    coach_qiang.years_experience = 8
+    coach_qiang.bio = "力量训练与增肌方向，带过多名备赛学员。"
+    coach_ya.title = "团课主教练"
+    coach_ya.gender = "female"
+    coach_ya.years_experience = 6
+    coach_ya.bio = "减脂塑形与团操，课堂氛围活泼。"
 
     # —— 私教课包 ——
     pt = db.scalar(

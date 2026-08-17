@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
-import { orderTypeLabel as mapOrderType } from '../../../core/labels'
+import { ORDER_TYPE_LABELS, orderTypeLabel as mapOrderType } from '../../../core/labels'
 
 type MemberBrief = { id: number; name: string; phone: string }
 type Order = {
@@ -39,6 +39,7 @@ const query = reactive({
   q: '',
   status: '' as string,
   merchant_id: undefined as number | undefined,
+  order_type: '' as string,
 })
 
 const form = reactive({
@@ -116,6 +117,7 @@ async function load() {
           q: query.q.trim() || undefined,
           status: query.status || undefined,
           merchant_id: query.merchant_id,
+          order_type: query.order_type || undefined,
         },
       }),
       http.get('/merchants'),
@@ -139,6 +141,7 @@ function resetSearch() {
   query.q = ''
   query.status = ''
   query.merchant_id = undefined
+  query.order_type = ''
   page.value = 1
   void load()
 }
@@ -266,6 +269,9 @@ onMounted(load)
       </el-select>
       <el-select v-model="query.merchant_id" clearable placeholder="商户" style="width: 180px">
         <el-option v-for="m in merchants" :key="m.id" :label="m.name" :value="m.id" />
+      </el-select>
+      <el-select v-model="query.order_type" clearable placeholder="订单类型" style="width: 150px">
+        <el-option v-for="(label, value) in ORDER_TYPE_LABELS" :key="value" :label="label" :value="value" />
       </el-select>
       <el-button type="primary" @click="search">查询</el-button>
       <el-button @click="resetSearch">重置</el-button>

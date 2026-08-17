@@ -57,8 +57,10 @@ def compute_payable(original: Decimal, template: CouponTemplate) -> tuple[Decima
 
 
 def _applicable(template: CouponTemplate, order_type: str) -> bool:
-    if template.applicable_to == ApplicableTo.BOTH.value:
+    if template.applicable_to in {ApplicableTo.BOTH.value, ApplicableTo.GYM.value}:
         return order_type in {"retail", "membership"}
+    if template.applicable_to in {ApplicableTo.DINING.value, ApplicableTo.CATERING.value}:
+        return order_type == "dining"
     return template.applicable_to == order_type
 
 

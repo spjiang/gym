@@ -1,9 +1,31 @@
 <view class="wrap">
+  <view class="brand">
+    <view class="brand-word">
+      <text class="cn">观野</text>
+      <text class="en">SPACE</text>
+    </view>
+    <view class="brand-tag">SPORTS · EVENTS · COMMUNITY</view>
+    <view class="brand-bars">
+      <view class="bar-orange"></view>
+      <view class="bar-cyan"></view>
+    </view>
+  </view>
   <view class="title">会员登录</view>
-  <input placeholder="手机号" bindinput="onPhone" />
-  <view class="row">
-    <input placeholder="验证码" bindinput="onCode" />
+  <view class="modes">
+    <view class="mode {{mode === 'otp' ? 'is-active' : ''}}" data-mode="otp" bindtap="setMode">验证码</view>
+    <view class="mode {{mode === 'password' ? 'is-active' : ''}}" data-mode="password" bindtap="setMode">密码</view>
+  </view>
+  <input placeholder="手机号" placeholder-class="muted" bindinput="onPhone" />
+  <view wx:if="{{mode === 'otp'}}" class="row">
+    <input placeholder="验证码" placeholder-class="muted" bindinput="onCode" />
     <button size="mini" bindtap="send">获取</button>
   </view>
-  <button type="primary" bindtap="login">登录</button>
+  <input
+    wx:else
+    password
+    placeholder="登录密码（由超管设置）"
+    placeholder-class="muted"
+    bindinput="onPassword"
+  />
+  <button bindtap="login">登录</button>
 </view>

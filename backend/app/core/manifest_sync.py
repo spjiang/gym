@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.systems.platform.models.identity import Role
 from app.systems.platform.models.rbac_catalog import MenuDef, PermissionDef, RoleMenu, RolePermission, Subsystem
+from app.systems.platform.services.role_packs import sync_existing_role_packs
 from app.systems import iter_system_manifests
 
 
@@ -110,6 +111,10 @@ def sync_manifests(db: Session, *, ensure_role_menus: bool = True) -> None:
 
     if ensure_role_menus:
         _ensure_role_menus_from_permissions(db)
+        # 模板菜单更新后，补到已有商户角色包（只增不删）
+        sync_existing_role_packs(db)
+        # 排课菜单收窄为 course:manage 后，收回前台角色上的旧授予
+        _revoke_schedule_menu_without_manage(db)
 
     db.flush()
 
@@ -143,7 +148,8 @@ def _ensure_role_menus_from_permissions(db: Session) -> None:
             if not _perm_match(perms, list(menu.required_any or [])):
                 continue
             # 业务/子系统菜单须具备对应 system:xxx，避免公共权限串菜单
-            if menu.subsystem_code in ("platform", "gym", "catering"):
+            # 业务子系统菜单须具备 system:xxx；综合经营菜单按 required_any 即可
+            if menu.subsystem_code in ("gym", "catering"):
                 if "*" not in perms and f"system:{menu.subsystem_code}" not in perms:
                     continue
             wanted.add(menu.code)
@@ -155,6 +161,25 @@ def _ensure_role_menus_from_permissions(db: Session) -> None:
             for row in existing_rows:
                 if row.menu_code not in wanted:
                     db.delete(row)
+
+
+def _revoke_schedule_menu_without_manage(db: Session) -> None:
+    """无排课权限的角色不再保留「团课排课」菜单。"""
+    roles = list(db.scalars(select(Role)).all())
+    for role in roles:
+        perms = _role_permission_set(db, role)
+        if "*" in perms or "course:manage" in perms:
+            continue
+        stale = list(
+            db.scalars(
+                select(RoleMenu).where(
+                    RoleMenu.role_id == role.id,
+                    RoleMenu.menu_code == "gym.group_courses",
+                )
+            ).all()
+        )
+        for row in stale:
+            db.delete(row)
 
 
 def sync_role_permissions_from_json(db: Session, role: Role) -> None:

@@ -26,7 +26,7 @@ const cateringTabs = computed(() => [
 ])
 
 const tabs = computed(() => (isCatering.value ? cateringTabs.value : gymTabs.value))
-const systemLabel = computed(() => (isCatering.value ? '餐饮' : '健身'))
+const systemLabel = computed(() => (isCatering.value ? '观野BAR' : '观野FIT'))
 
 function switchStore() {
   router.push({ name: 'stores' })

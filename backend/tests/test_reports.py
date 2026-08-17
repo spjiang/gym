@@ -211,7 +211,7 @@ def test_membership_course_inventory_summaries(client: TestClient, admin_headers
     ).json()
     from datetime import datetime, timedelta, timezone
 
-    start = datetime.now(timezone.utc) + timedelta(hours=2)
+    start = datetime.now(timezone.utc) + timedelta(minutes=20)
     end = start + timedelta(hours=1)
     session = client.post(
         "/api/v1/group-sessions",

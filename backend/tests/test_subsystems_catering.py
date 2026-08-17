@@ -53,7 +53,7 @@ def test_catering_checkout_pay_refund_loop(client: TestClient, admin_headers: di
         params={"merchant_id": bar["id"], "active_only": True},
     )
     assert menu.status_code == 200, menu.text
-    items = menu.json()
+    items = menu.json()["items"]
     if not items:
         created_item = client.post(
             "/api/v1/catering/menu-items",

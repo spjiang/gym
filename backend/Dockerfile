@@ -8,14 +8,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
   && rm -rf /var/lib/apt/lists/*
 
+# 先装依赖，源码变化才不会打掉 pip 缓存层
 COPY requirements.txt ./
-COPY app ./app
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -U pip && pip install -r requirements.txt
+
 COPY alembic.ini ./
 COPY alembic ./alembic
 COPY scripts ./scripts
-
-RUN pip install --no-cache-dir -U pip \
-  && pip install --no-cache-dir -r requirements.txt
+COPY app ./app
 
 EXPOSE 8000
 

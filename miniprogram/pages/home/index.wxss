@@ -1,4 +1,1 @@
-.wrap { padding: 32rpx; }
-.title { font-size: 36rpx; font-weight: 700; }
-.muted { color: #64748b; margin-bottom: 24rpx; }
-button { margin-bottom: 16rpx; }
+/* 首页沿用 app.wxss 观野主题 */

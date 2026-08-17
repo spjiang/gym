@@ -14,22 +14,22 @@ BUSINESS_SYSTEMS = ("gym", "catering")
 SYSTEM_CATALOG: dict[str, dict] = {
     "platform": {
         "code": "platform",
-        "name": "综合经营管理系统",
-        "short_name": "综合经营",
+        "name": "观野SPACE 综合管理平台",
+        "short_name": "观野SPACE",
         "description": "商户组织、员工权限、会员主档、门禁、跨业态订单与报表。",
         "permission": "system:platform",
     },
     "gym": {
         "code": "gym",
-        "name": "健身管理平台",
-        "short_name": "健身管理",
+        "name": "观野FIT",
+        "short_name": "观野FIT",
         "description": "会籍、教练课程、健身零售、优惠券与器材运维。",
         "permission": "system:gym",
     },
     "catering": {
         "code": "catering",
-        "name": "餐饮管理系统",
-        "short_name": "餐饮管理",
+        "name": "观野BAR",
+        "short_name": "观野BAR",
         "description": "清吧/餐饮菜单、点单收款与退款闭环。",
         "permission": "system:catering",
     },

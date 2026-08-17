@@ -2,23 +2,24 @@
  * 会员端设计令牌与基础组件
  * 面向正式交付：克制、可复用、对比度达标，避免演示向装饰。
  */
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@600;800&family=Noto+Sans+SC:wght@400;500;600;700&display=swap');
 
 :root {
-  /* 色板 */
-  --mw-bg: #0b0d10;
-  --mw-bg-elevated: #12151a;
-  --mw-surface: #171b22;
-  --mw-surface-hover: #1d232c;
-  --mw-border: #2a313c;
-  --mw-border-strong: #3a4452;
-  --mw-text: #e8eaed;
-  --mw-text-secondary: #9aa3af;
-  --mw-text-tertiary: #6b7380;
-  --mw-brand: #c5e063;
-  --mw-brand-pressed: #b3cc52;
-  --mw-brand-muted: rgba(197, 224, 99, 0.12);
-  --mw-brand-ink: #12160a;
+  /* 观野 VI */
+  --mw-bg: #171b1f;
+  --mw-bg-elevated: #1f2429;
+  --mw-surface: #22282e;
+  --mw-surface-hover: #2a3138;
+  --mw-border: #343b42;
+  --mw-border-strong: #4a525a;
+  --mw-text: #f2e6d2;
+  --mw-text-secondary: #7d8389;
+  --mw-text-tertiary: #7d8389;
+  --mw-brand: #f36b21;
+  --mw-brand-pressed: #d85a16;
+  --mw-brand-muted: rgba(243, 107, 33, 0.14);
+  --mw-brand-ink: #171b1f;
+  --mw-cyan: #14b8d4;
   --mw-danger: #f07178;
   --mw-danger-muted: rgba(240, 113, 120, 0.12);
   --mw-success: #6bcf8e;
@@ -35,14 +36,14 @@
   --mw-space-8: 32px;
 
   /* 圆角 / 阴影 / 布局 */
-  --mw-radius-sm: 8px;
-  --mw-radius-md: 12px;
-  --mw-radius-lg: 16px;
+  --mw-radius-sm: 6px;
+  --mw-radius-md: 8px;
+  --mw-radius-lg: 8px;
   --mw-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 8px 24px rgba(0, 0, 0, 0.28);
   --mw-shell-max: 480px;
   --mw-tab-h: 56px;
   --mw-safe-bottom: env(safe-area-inset-bottom, 0px);
-  --mw-font: 'IBM Plex Sans', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+  --mw-font: 'Noto Sans SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
   --mw-ease: 0.15s ease;
 
   color-scheme: dark;

@@ -89,6 +89,8 @@ _VALID_ASSET_STATUS = {s.value for s in EquipmentStatus}
 def list_assets(
     merchant_id: int | None = None,
     status: str | None = None,
+    category: str | None = None,
+    area: str | None = None,
     q: str | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -96,10 +98,14 @@ def list_assets(
     ctx: RequestContext = Depends(get_current_context),
 ):
     ctx.require_permission("equipment:read", "equipment:manage", "equipment:repair")
-    mid = ctx.resolve_merchant_id(merchant_id)
-    filters = [EquipmentAsset.merchant_id == mid]
+    mid = ctx.resolve_merchant_id(merchant_id, required=False)
+    filters = [EquipmentAsset.merchant_id == mid] if mid is not None else []
     if status is not None:
         filters.append(EquipmentAsset.status == status)
+    if category:
+        filters.append(EquipmentAsset.category == category)
+    if area:
+        filters.append(EquipmentAsset.area.ilike(f"%{area.strip()}%"))
     keyword = (q or "").strip()
     if keyword:
         like = f"%{keyword}%"
@@ -110,11 +116,13 @@ def list_assets(
                 EquipmentAsset.area.ilike(like),
             )
         )
-    total = db.scalar(select(func.count()).select_from(EquipmentAsset).where(*filters)) or 0
+    base = select(EquipmentAsset)
+    if filters:
+        base = base.where(*filters)
+    total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
     rows = list(
         db.scalars(
-            select(EquipmentAsset)
-            .where(*filters)
+            base
             .order_by(EquipmentAsset.id.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
@@ -195,21 +203,31 @@ def patch_asset(
 def list_repairs(
     merchant_id: int | None = None,
     status: str | None = None,
+    q: str | None = None,
+    asset_id: int | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
     ctx: RequestContext = Depends(get_current_context),
 ):
     ctx.require_permission("equipment:read", "equipment:manage", "equipment:repair")
-    mid = ctx.resolve_merchant_id(merchant_id)
-    filters = [EquipmentRepairTicket.merchant_id == mid]
+    mid = ctx.resolve_merchant_id(merchant_id, required=False)
+    filters = [EquipmentRepairTicket.merchant_id == mid] if mid is not None else []
     if status is not None:
         filters.append(EquipmentRepairTicket.status == status)
-    total = db.scalar(select(func.count()).select_from(EquipmentRepairTicket).where(*filters)) or 0
+    if asset_id is not None:
+        filters.append(EquipmentRepairTicket.asset_id == asset_id)
+    keyword = (q or "").strip()
+    if keyword:
+        like = f"%{keyword}%"
+        filters.append(EquipmentRepairTicket.description.ilike(like))
+    base = select(EquipmentRepairTicket)
+    if filters:
+        base = base.where(*filters)
+    total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
     rows = list(
         db.scalars(
-            select(EquipmentRepairTicket)
-            .where(*filters)
+            base
             .order_by(EquipmentRepairTicket.id.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)

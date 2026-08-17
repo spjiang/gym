@@ -312,7 +312,7 @@ function kpi() {
     items.push({
       label: '会员总数',
       value: String(memberTotal.value),
-      sub: '本场地会员主档',
+      sub: '本场地会员档案',
       icon: User,
       tone: 'slate',
     })
@@ -352,7 +352,7 @@ function maxCharge() {
       <div class="welcome-text">
         <p class="eyebrow">运营工作台 · {{ fmtDate() }} {{ weekday() }}</p>
         <h2>{{ greeting() }}，{{ auth.me?.display_name || '管理员' }}</h2>
-        <p class="lead">回龙观公园综合场地经营管理系统 · 今日关键数据与待办事项一目了然。</p>
+        <p class="lead">观野SPACE 综合管理平台 · 今日关键数据与待办事项一目了然。</p>
       </div>
       <div class="welcome-actions">
         <el-button

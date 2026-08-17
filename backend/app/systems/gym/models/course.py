@@ -18,6 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
+from app.systems.platform.models.identity import JSONType
 
 
 class PtPackageStatus(str, Enum):
@@ -46,8 +47,17 @@ class Coach(Base):
     merchant_id: Mapped[int] = mapped_column(ForeignKey("merchants.id"), nullable=False, index=True)
     staff_user_id: Mapped[int] = mapped_column(ForeignKey("staff_users.id"), nullable=False, index=True)
     display_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(64))
+    gender: Mapped[str | None] = mapped_column(String(16))
+    phone: Mapped[str | None] = mapped_column(String(32))
+    years_experience: Mapped[int | None] = mapped_column(Integer)
+    hourly_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     specialties: Mapped[str | None] = mapped_column(String(255))
+    certifications: Mapped[str | None] = mapped_column(Text)
+    bio: Mapped[str | None] = mapped_column(Text)
     availability_note: Mapped[str | None] = mapped_column(Text)
+    avatar_url: Mapped[str | None] = mapped_column(String(255))
+    intro_image_urls: Mapped[list] = mapped_column(JSONType, default=list, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

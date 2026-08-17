@@ -9,8 +9,8 @@
     "pages/coupons/index"
   ],
   "window": {
-    "navigationBarTitleText": "会员中心",
-    "navigationBarBackgroundColor": "#0f172a",
+    "navigationBarTitleText": "观野SPACE",
+    "navigationBarBackgroundColor": "#171B1F",
     "navigationBarTextStyle": "white"
   },
   "style": "v2",

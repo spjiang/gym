@@ -3,6 +3,8 @@
 from typing import Generic, TypeVar
 
 from pydantic import BaseModel, Field
+from sqlalchemy import Select, func, select
+from sqlalchemy.orm import Session
 
 T = TypeVar("T")
 
@@ -17,3 +19,10 @@ class PageOut(BaseModel, Generic[T]):
     total: int
     page: int
     page_size: int
+
+
+def paginate(db: Session, stmt: Select, *, page: int, page_size: int) -> tuple[list, int]:
+    """对已带筛选条件的查询做计数与切片。"""
+    total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
+    rows = list(db.scalars(stmt.offset((page - 1) * page_size).limit(page_size)).all())
+    return rows, int(total)

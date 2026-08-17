@@ -4,6 +4,7 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
 import { canAny, merchantsWithSystem } from '../../../core/nav/systems'
 import { useAuthStore } from '../../../core/stores/auth'
+import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
 
 type Merchant = { id: number; name: string; subsystem_codes?: string[] }
 type Asset = {
@@ -14,40 +15,39 @@ type Asset = {
   area: string
   status: string
 }
-type Repair = {
-  id: number
-  asset_id: number
-  description: string
-  status: string
-}
 
 const auth = useAuthStore()
 const perms = computed(() => auth.me?.permissions || [])
 const canManage = computed(() => canAny(perms.value, ['equipment:manage', '*']))
-const canRepair = computed(() => canAny(perms.value, ['equipment:repair', 'equipment:manage', '*']))
 
 const merchants = ref<Merchant[]>([])
 const assets = ref<Asset[]>([])
-const repairs = ref<Repair[]>([])
-const merchantId = ref<number | undefined>()
-const statusFilter = ref<string | undefined>()
+const { merchantId, requireMerchant } = useOpsMerchant(() => {
+  page.value = 1
+  void refresh()
+})
+const query = reactive({
+  q: '',
+  category: '' as string,
+  area: '',
+  status: '' as string,
+})
 const loading = ref(false)
+const page = ref(1)
+const pageSize = ref(20)
+const total = ref(0)
 
 const assetDialog = ref(false)
-const repairDialog = ref(false)
 const submitting = ref(false)
+const editingId = ref<number | null>(null)
 const assetFormRef = ref<FormInstance>()
-const repairFormRef = ref<FormInstance>()
 
 const form = reactive({
   name: '',
   category: 'cardio',
   asset_code: '',
   area: '',
-})
-const repairForm = reactive({
-  asset_id: undefined as number | undefined,
-  description: '',
+  status: 'in_use',
 })
 
 const CATEGORY_OPTIONS = [
@@ -61,20 +61,6 @@ const assetRules: FormRules = {
   asset_code: [{ required: true, message: '请填写资产编号', trigger: 'blur' }],
 }
 
-const repairRules: FormRules = {
-  asset_id: [{ required: true, message: '请选择器材', trigger: 'change' }],
-  description: [{ required: true, message: '请填写故障描述', trigger: 'blur' }],
-}
-
-function assetLabel(a: Asset) {
-  return `${a.asset_code} ${a.name}`
-}
-
-function assetName(id: number) {
-  const a = assets.value.find((x) => x.id === id)
-  return a ? assetLabel(a) : `#${id}`
-}
-
 function statusLabel(s: string) {
   return { in_use: '在用', repair: '维修', disabled: '停用', scrapped: '报废' }[s] || s
 }
@@ -84,26 +70,22 @@ async function refresh() {
   try {
     const { data: m } = await http.get('/merchants')
     merchants.value = merchantsWithSystem(m, 'gym')
-    if (!merchantId.value && merchants.value[0]) merchantId.value = merchants.value[0].id
     if (merchantId.value && !merchants.value.some((x) => x.id === merchantId.value)) {
-      merchantId.value = merchants.value[0]?.id
+      merchantId.value = undefined
     }
-    if (!merchantId.value) return
-    const [a, r] = await Promise.all([
-      http.get('/equipment/assets', {
-        params: {
-          merchant_id: merchantId.value,
-          status: statusFilter.value || undefined,
-          page: 1,
-          page_size: 100,
-        },
-      }),
-      http.get('/equipment/repairs', {
-        params: { merchant_id: merchantId.value, page: 1, page_size: 100 },
-      }),
-    ])
-    assets.value = a.data.items
-    repairs.value = r.data.items
+    const { data } = await http.get('/equipment/assets', {
+      params: {
+        merchant_id: merchantId.value,
+        status: query.status || undefined,
+        category: query.category || undefined,
+        area: query.area.trim() || undefined,
+        q: query.q.trim() || undefined,
+        page: page.value,
+        page_size: pageSize.value,
+      },
+    })
+    assets.value = data.items
+    total.value = data.total
   } catch (e: unknown) {
     ElMessage.error(e instanceof Error ? e.message : '加载失败')
   } finally {
@@ -111,71 +93,73 @@ async function refresh() {
   }
 }
 
+function search() {
+  page.value = 1
+  void refresh()
+}
+
+function resetSearch() {
+  query.q = ''
+  query.category = ''
+  query.area = ''
+  query.status = ''
+  page.value = 1
+  void refresh()
+}
+
 function openAssetDialog() {
+  editingId.value = null
   form.name = ''
   form.category = 'cardio'
   form.asset_code = ''
   form.area = ''
+  form.status = 'in_use'
   assetFormRef.value?.clearValidate()
   assetDialog.value = true
 }
 
-async function createAsset() {
+function openEditAsset(row: Asset) {
+  editingId.value = row.id
+  form.name = row.name
+  form.category = row.category
+  form.asset_code = row.asset_code
+  form.area = row.area
+  form.status = row.status
+  assetFormRef.value?.clearValidate()
+  assetDialog.value = true
+}
+
+async function saveAsset() {
   const ok = await assetFormRef.value?.validate().catch(() => false)
-  if (!ok) return
+  const mid = requireMerchant()
+  if (!ok || !mid) return
   submitting.value = true
   try {
-    await http.post('/equipment/assets', {
-      merchant_id: merchantId.value,
-      name: form.name.trim(),
-      category: form.category,
-      asset_code: form.asset_code.trim(),
-      area: form.area,
-    })
-    ElMessage.success('器材已创建')
+    if (editingId.value) {
+      await http.patch(`/equipment/assets/${editingId.value}`, {
+        name: form.name.trim(),
+        category: form.category,
+        area: form.area,
+        status: form.status,
+      })
+      ElMessage.success('器材已更新')
+    } else {
+      await http.post('/equipment/assets', {
+        merchant_id: mid,
+        name: form.name.trim(),
+        category: form.category,
+        asset_code: form.asset_code.trim(),
+        area: form.area,
+      })
+      ElMessage.success('器材已创建')
+    }
     assetDialog.value = false
     await refresh()
   } catch (e: unknown) {
-    ElMessage.error(e instanceof Error ? e.message : '创建失败')
+    ElMessage.error(e instanceof Error ? e.message : editingId.value ? '更新失败' : '创建失败')
   } finally {
     submitting.value = false
   }
-}
-
-function openRepairDialog() {
-  repairForm.asset_id = assets.value[0]?.id
-  repairForm.description = ''
-  repairFormRef.value?.clearValidate()
-  repairDialog.value = true
-}
-
-async function createRepair() {
-  const ok = await repairFormRef.value?.validate().catch(() => false)
-  if (!ok) return
-  submitting.value = true
-  try {
-    await http.post('/equipment/repairs', {
-      merchant_id: merchantId.value,
-      asset_id: repairForm.asset_id,
-      description: repairForm.description.trim(),
-    })
-    ElMessage.success('已报修')
-    repairDialog.value = false
-    await refresh()
-  } catch (e: unknown) {
-    ElMessage.error(e instanceof Error ? e.message : '报修失败')
-  } finally {
-    submitting.value = false
-  }
-}
-
-async function completeRepair(id: number) {
-  await http.post(`/equipment/repairs/${id}/complete`, {
-    resolution: '已处理',
-    asset_status: 'in_use',
-  })
-  ElMessage.success('报修已完成')
-  await refresh()
 }
 
 onMounted(refresh)
@@ -183,31 +167,45 @@ onMounted(refresh)
 <template>
   <div>
     <div class="toolbar">
-      <h3>器材台账</h3>
-      <div class="toolbar-actions">
-        <el-button v-if="canManage" type="primary" plain @click="openAssetDialog">新建器材</el-button>
-        <el-button v-if="canRepair" type="warning" plain @click="openRepairDialog">提交报修</el-button>
+      <div>
+        <h3>器材台账</h3>
+        <p class="lead">维护器材档案。报修请到「器材管理 → 报修单」。</p>
       </div>
+      <el-button v-if="canManage" type="primary" @click="openAssetDialog">新建器材</el-button>
     </div>
 
-    <el-form inline>
+    <el-form inline class="filters">
       <el-form-item label="商户">
-        <el-select v-model="merchantId" style="width: 200px" @change="refresh">
+        <el-select v-model="merchantId" clearable placeholder="全部商户" style="width: 180px" @change="search">
           <el-option v-for="m in merchants" :key="m.id" :label="m.name" :value="m.id" />
         </el-select>
       </el-form-item>
+      <el-form-item label="关键词">
+        <el-input v-model="query.q" clearable placeholder="名称 / 编号 / 区域" style="width: 180px" @keyup.enter="search" />
+      </el-form-item>
+      <el-form-item label="分类">
+        <el-select v-model="query.category" clearable placeholder="全部" style="width: 120px">
+          <el-option v-for="c in CATEGORY_OPTIONS" :key="c.value" :label="c.label" :value="c.value" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="区域">
+        <el-input v-model="query.area" clearable placeholder="如：有氧区" style="width: 140px" @keyup.enter="search" />
+      </el-form-item>
       <el-form-item label="状态">
-        <el-select v-model="statusFilter" clearable style="width: 140px" @change="refresh">
+        <el-select v-model="query.status" clearable placeholder="全部" style="width: 120px">
           <el-option label="在用" value="in_use" />
           <el-option label="维修" value="repair" />
           <el-option label="停用" value="disabled" />
           <el-option label="报废" value="scrapped" />
         </el-select>
       </el-form-item>
+      <el-form-item>
+        <el-button type="primary" @click="search">查询</el-button>
+        <el-button @click="resetSearch">重置</el-button>
+      </el-form-item>
     </el-form>
 
-    <h3 class="section-title">器材列表</h3>
-    <el-table :data="assets" v-loading="loading" stripe style="margin-bottom: 28px">
+    <el-table :data="assets" v-loading="loading" stripe>
       <el-table-column prop="asset_code" label="编号" width="140" />
       <el-table-column prop="name" label="名称" />
       <el-table-column label="分类" width="100">
@@ -223,44 +221,37 @@ onMounted(refresh)
           </el-tag>
         </template>
       </el-table-column>
-    </el-table>
-
-    <h3 class="section-title">报修单</h3>
-    <el-table :data="repairs" v-loading="loading" stripe>
-      <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column label="器材" width="220">
-        <template #default="{ row }">{{ assetName(row.asset_id) }}</template>
-      </el-table-column>
-      <el-table-column prop="description" label="描述" />
-      <el-table-column label="状态" width="110">
+      <el-table-column v-if="canManage" label="操作" width="90">
         <template #default="{ row }">
-          <el-tag :type="row.status === 'completed' ? 'success' : 'warning'" size="small">
-            {{ row.status === 'completed' ? '已完成' : '处理中' }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column v-if="canManage" label="操作" width="120">
-        <template #default="{ row }">
-          <el-button
-            v-if="row.status === 'open' || row.status === 'in_progress'"
-            link
-            type="primary"
-            @click="completeRepair(row.id)"
-          >
-            完成
-          </el-button>
+          <el-button link type="primary" @click="openEditAsset(row)">编辑</el-button>
         </template>
       </el-table-column>
     </el-table>
+    <div class="pager">
+      <el-pagination
+        v-model:current-page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next"
+        background
+        @current-change="refresh"
+        @size-change="
+          () => {
+            page = 1
+            refresh()
+          }
+        "
+      />
+    </div>
 
-    <!-- 新建器材弹窗 -->
-    <el-dialog v-model="assetDialog" title="新建器材" width="480px" destroy-on-close>
+    <el-dialog v-model="assetDialog" :title="editingId ? '编辑器材' : '新建器材'" width="480px" destroy-on-close>
       <el-form ref="assetFormRef" :model="form" :rules="assetRules" label-width="90px">
         <el-form-item label="名称" prop="name">
           <el-input v-model="form.name" placeholder="如：跑步机 03 号" maxlength="128" />
         </el-form-item>
         <el-form-item label="资产编号" prop="asset_code">
-          <el-input v-model="form.asset_code" placeholder="唯一资产编号" maxlength="64" />
+          <el-input v-model="form.asset_code" :disabled="!!editingId" placeholder="唯一资产编号" maxlength="64" />
         </el-form-item>
         <el-form-item label="分类">
           <el-select v-model="form.category" style="width: 100%">
@@ -270,34 +261,18 @@ onMounted(refresh)
         <el-form-item label="区域">
           <el-input v-model="form.area" placeholder="如：有氧区 / 力量区" maxlength="64" />
         </el-form-item>
+        <el-form-item v-if="editingId" label="状态">
+          <el-select v-model="form.status" style="width: 100%">
+            <el-option label="在用" value="in_use" />
+            <el-option label="维修" value="repair" />
+            <el-option label="停用" value="disabled" />
+            <el-option label="报废" value="scrapped" />
+          </el-select>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="assetDialog = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="createAsset">创建</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 报修弹窗 -->
-    <el-dialog v-model="repairDialog" title="提交报修" width="480px" destroy-on-close>
-      <el-form ref="repairFormRef" :model="repairForm" :rules="repairRules" label-width="90px">
-        <el-form-item label="器材" prop="asset_id">
-          <el-select v-model="repairForm.asset_id" filterable style="width: 100%">
-            <el-option v-for="a in assets" :key="a.id" :label="assetLabel(a)" :value="a.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="故障描述" prop="description">
-          <el-input
-            v-model="repairForm.description"
-            type="textarea"
-            :rows="3"
-            placeholder="描述故障现象，便于维修处理"
-            maxlength="500"
-          />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="repairDialog = false">取消</el-button>
-        <el-button type="warning" :loading="submitting" @click="createRepair">提交报修</el-button>
+        <el-button type="primary" :loading="submitting" @click="saveAsset">{{ editingId ? '保存' : '创建' }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -311,20 +286,23 @@ onMounted(refresh)
   gap: 12px;
   margin-bottom: 20px;
 }
-
 .toolbar h3 {
-  margin: 0;
+  margin: 0 0 6px;
   font-size: 1.1rem;
 }
-
-.toolbar-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+.lead {
+  margin: 0;
+  max-width: 640px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--el-text-color-secondary);
 }
-
-.section-title {
-  margin: 0 0 12px;
-  font-size: 0.95rem;
+.filters {
+  margin-bottom: 4px;
+}
+.pager {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

@@ -48,7 +48,7 @@ class UnconfiguredProvider(OnlinePaymentProvider):
     def create_payment(self, **kwargs) -> OnlinePayResult:
         raise AppError(
             "online_payment_unconfigured",
-            "线上支付通道未配置，请在综合经营「支付配置」中启用 mock/wechat",
+            "线上支付通道未配置，请在综合经营「京东支付」中启用 mock/jdpay",
             status_code=503,
         )
 
@@ -173,13 +173,13 @@ def get_online_provider(db: Session | None = None, site_id: int | None = None) -
         mode = (cfg.mode or "unconfigured").lower()
         if mode == "mock":
             return MockProvider()
-        if mode == "wechat":
+        if mode in {"wechat", "jdpay"}:
             return WechatProvider(cfg)
         return UnconfiguredProvider()
 
     mode = get_settings().online_payment_mode.lower()
     if mode == "mock":
         return MockProvider()
-    if mode == "wechat":
+    if mode in {"wechat", "jdpay"}:
         return WechatProvider(_env_wechat_cfg())
     return UnconfiguredProvider()

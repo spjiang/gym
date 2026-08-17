@@ -13,7 +13,7 @@ from app.core.deps import RequestContext, get_current_context
 from app.core.domain.subsystems import assert_merchant_has_system
 from app.core.errors import AppError
 from app.core.schemas.common import MemberBrief, OrderOut
-from app.core.schemas.paging import PageOut
+from app.core.schemas.paging import PageOut, paginate
 from app.systems.platform.models.access import AccessPoint
 from app.systems.platform.models.commerce import Order, OrderStatus
 from app.systems.platform.models.member import Member, MerchantMember
@@ -30,6 +30,7 @@ from app.systems.platform.services.audit import write_audit
 from app.systems.gym.services.fulfillment import (
     freeze_membership,
     product_access_point_ids,
+    update_membership,
     validate_product_for_sale,
     void_membership,
 )
@@ -89,6 +90,7 @@ class MembershipOut(ORMModel):
     ends_at: datetime | None
     remaining_sessions: int | None
     balance: Decimal | None
+    remark: str | None = None
     created_at: datetime
     member: MemberBrief | None = None
 
@@ -104,6 +106,18 @@ class RenewIn(BaseModel):
     membership_id: int
     product_id: int | None = None
     merchant_id: int | None = None
+    member_coupon_id: int | None = None
+
+
+class MembershipPatch(BaseModel):
+    member_id: int | None = None
+    product_id: int | None = None
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    remaining_sessions: int | None = None
+    balance: Decimal | None = None
+    status: str | None = None
+    remark: str | None = None
 
 
 def _product_out(db: Session, p: MembershipProduct) -> ProductOut:
@@ -162,20 +176,57 @@ def _replace_product_points(db: Session, product_id: int, access_point_ids: list
     db.flush()
 
 
-@router.get("/membership-products", response_model=list[ProductOut])
+@router.get("/membership-products", response_model=PageOut[ProductOut])
 def list_products(
     merchant_id: int | None = None,
+    q: str | None = None,
+    product_type: str | None = None,
+    is_active: bool | None = None,
+    is_trial: bool | None = None,
+    access_point_id: int | None = None,
+    price_min: Decimal | None = None,
+    price_max: Decimal | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
     ctx: RequestContext = Depends(get_current_context),
 ):
     ctx.require_permission("membership:manage", "membership:sell")
-    mid = ctx.resolve_merchant_id(merchant_id)
-    rows = list(
-        db.scalars(
-            select(MembershipProduct).where(MembershipProduct.merchant_id == mid).order_by(MembershipProduct.id.desc())
-        ).all()
-    )
-    return [_product_out(db, p) for p in rows]
+    mid = ctx.resolve_merchant_id(merchant_id, required=False)
+    stmt = select(MembershipProduct)
+    if mid is not None:
+        stmt = stmt.where(MembershipProduct.merchant_id == mid)
+    else:
+        stmt = stmt.join(Merchant, Merchant.id == MembershipProduct.merchant_id).where(
+            Merchant.site_id == ctx.site_id
+        )
+    keyword = (q or "").strip()
+    if keyword:
+        like = f"%{keyword}%"
+        conds = [MembershipProduct.name.ilike(like)]
+        if keyword.isdigit():
+            conds.append(MembershipProduct.id == int(keyword))
+        stmt = stmt.where(or_(*conds))
+    if product_type:
+        stmt = stmt.where(MembershipProduct.product_type == product_type)
+    if is_active is not None:
+        stmt = stmt.where(MembershipProduct.is_active.is_(is_active))
+    if is_trial is not None:
+        stmt = stmt.where(MembershipProduct.is_trial.is_(is_trial))
+    if access_point_id is not None:
+        stmt = stmt.where(
+            MembershipProduct.id.in_(
+                select(MembershipProductAccessPoint.product_id).where(
+                    MembershipProductAccessPoint.access_point_id == access_point_id
+                )
+            )
+        )
+    if price_min is not None:
+        stmt = stmt.where(MembershipProduct.price >= price_min)
+    if price_max is not None:
+        stmt = stmt.where(MembershipProduct.price <= price_max)
+    rows, total = paginate(db, stmt.order_by(MembershipProduct.id.desc()), page=page, page_size=page_size)
+    return PageOut(items=[_product_out(db, p) for p in rows], total=total, page=page, page_size=page_size)
 
 
 @router.post("/membership-products", response_model=ProductOut)
@@ -257,6 +308,10 @@ def update_product(
     product.duration_days = body.duration_days
     product.session_count = body.session_count
     product.stored_value = body.stored_value
+    product.is_trial = body.is_trial
+    product.promo_price = body.promo_price
+    product.promo_starts_at = body.promo_starts_at
+    product.promo_ends_at = body.promo_ends_at
     _replace_product_points(db, product.id, body.access_point_ids, mid)
     if body.is_active:
         validate_product_for_sale(product, body.access_point_ids, require_active=False)
@@ -298,6 +353,7 @@ def list_memberships(
     merchant_id: int | None = None,
     member_id: int | None = None,
     status: str | None = None,
+    product_type: str | None = None,
     q: str | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -305,12 +361,20 @@ def list_memberships(
     ctx: RequestContext = Depends(get_current_context),
 ):
     ctx.require_permission("membership:manage", "membership:sell", "member:read")
-    mid = ctx.resolve_merchant_id(merchant_id)
-    filters = [Membership.merchant_id == mid]
+    mid = ctx.resolve_merchant_id(merchant_id, required=False)
+    filters = []
+    if mid is not None:
+        filters.append(Membership.merchant_id == mid)
+    else:
+        filters.append(
+            Membership.merchant_id.in_(select(Merchant.id).where(Merchant.site_id == ctx.site_id))
+        )
     if member_id is not None:
         filters.append(Membership.member_id == member_id)
     if status:
         filters.append(Membership.status == status)
+    if product_type:
+        filters.append(Membership.product_type == product_type)
     keyword = (q or "").strip()
     if keyword:
         like = f"%{keyword}%"
@@ -348,11 +412,68 @@ def list_memberships(
                 ends_at=r.ends_at,
                 remaining_sessions=r.remaining_sessions,
                 balance=r.balance,
+                remark=r.remark,
                 created_at=r.created_at,
                 member=MemberBrief(id=m.id, name=m.name, phone=m.phone) if m else None,
             )
         )
     return PageOut(items=items, total=total, page=page, page_size=page_size)
+
+
+def _membership_out(db: Session, row: Membership) -> MembershipOut:
+    m = db.get(Member, row.member_id)
+    return MembershipOut(
+        id=row.id,
+        merchant_id=row.merchant_id,
+        member_id=row.member_id,
+        product_id=row.product_id,
+        product_type=row.product_type,
+        status=row.status,
+        starts_at=row.starts_at,
+        ends_at=row.ends_at,
+        remaining_sessions=row.remaining_sessions,
+        balance=row.balance,
+        remark=row.remark,
+        created_at=row.created_at,
+        member=MemberBrief(id=m.id, name=m.name, phone=m.phone) if m else None,
+    )
+
+
+@router.patch("/memberships/{membership_id}", response_model=MembershipOut)
+def patch_membership(
+    membership_id: int,
+    body: MembershipPatch,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    ctx.require_permission("membership:manage")
+    membership = db.get(Membership, membership_id)
+    if membership is None:
+        raise AppError("not_found", "会籍不存在", status_code=404)
+    mid = ctx.resolve_merchant_id(membership.merchant_id)
+    identity_fields = {"member_id", "product_id"} & set(body.model_fields_set)
+    if identity_fields and not ctx.is_site_admin:
+        raise AppError("forbidden", "仅场地超管可改正会员或卡种", status_code=403)
+    if body.member_id is not None and "member_id" in body.model_fields_set:
+        _ensure_member_in_merchant(db, member_id=body.member_id, merchant_id=mid, site_id=ctx.site_id)
+    update_membership(
+        db,
+        membership,
+        actor_staff_id=ctx.staff.id,
+        site_id=ctx.site_id,
+        member_id=body.member_id,
+        product_id=body.product_id,
+        starts_at=body.starts_at,
+        ends_at=body.ends_at,
+        remaining_sessions=body.remaining_sessions,
+        balance=body.balance,
+        status=body.status,
+        remark=body.remark,
+        fields_set=set(body.model_fields_set),
+    )
+    db.commit()
+    db.refresh(membership)
+    return _membership_out(db, membership)
 
 
 @router.post("/memberships/purchase", response_model=OrderOut)
@@ -451,6 +572,16 @@ def renew_membership(
     )
     db.add(order)
     db.flush()
+    if body.member_coupon_id is not None:
+        ctx.require_permission("coupon:redeem", "coupon:manage", "membership:sell", "membership:manage")
+        payable = attach_coupon_to_order(
+            db,
+            order=order,
+            member_coupon_id=body.member_coupon_id,
+            original_amount=price,
+            member_id=membership.member_id,
+        )
+        order.amount = payable
     db.add(
         MembershipOrderLink(
             order_id=order.id,

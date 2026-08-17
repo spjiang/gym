@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import http from '../../../core/api/http'
+import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
 
 type Merchant = { id: number; name: string }
 type Note = {
@@ -17,12 +18,15 @@ type Page<T> = { items: T[]; total: number; page: number; page_size: number }
 
 const merchants = ref<Merchant[]>([])
 const notes = ref<Note[]>([])
-const merchantId = ref<number | undefined>()
 const loading = ref(false)
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
-const query = reactive({ q: '' })
+const { merchantId } = useOpsMerchant(() => {
+  page.value = 1
+  void refresh()
+})
+const query = reactive({ q: '', event_type: '' })
 const detailVisible = ref(false)
 const detail = ref<Note | null>(null)
 
@@ -37,11 +41,11 @@ async function refresh() {
   try {
     const { data: m } = await http.get('/merchants')
     merchants.value = m
-    if (!merchantId.value && m[0]) merchantId.value = m[0].id
     const { data } = await http.get<Page<Note>>('/notifications', {
       params: {
         merchant_id: merchantId.value || undefined,
         q: query.q.trim() || undefined,
+        event_type: query.event_type || undefined,
         page: page.value,
         page_size: pageSize.value,
       },
@@ -60,6 +64,7 @@ function search() {
 
 function resetSearch() {
   query.q = ''
+  query.event_type = ''
   page.value = 1
   void refresh()
 }
@@ -99,6 +104,11 @@ onMounted(refresh)
         style="width: 220px"
         @keyup.enter="search"
       />
+      <el-select v-model="query.event_type" clearable placeholder="事件类型" style="width: 180px">
+        <el-option label="订单已收款" value="order.paid" />
+        <el-option label="会籍履约" value="membership.fulfilled" />
+        <el-option label="团课预约" value="group.booked" />
+      </el-select>
       <el-button type="primary" @click="search">查询</el-button>
       <el-button @click="resetSearch">重置</el-button>
     </div>

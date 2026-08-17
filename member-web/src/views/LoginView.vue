@@ -3,12 +3,15 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import http from '../api/http'
 import { pathForMerchant, useAuthStore } from '../stores/auth'
+import BrandMark from '../components/BrandMark.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 const phone = ref('')
 const code = ref('')
+const password = ref('')
+const mode = ref<'otp' | 'password'>('otp')
 const tip = ref('')
 const err = ref('')
 const sending = ref(false)
@@ -43,17 +46,32 @@ async function send() {
 
 async function login() {
   err.value = ''
-  if (!phone.value.trim() || !code.value.trim()) {
-    err.value = '请填写手机号与验证码'
+  if (!phone.value.trim()) {
+    err.value = '请填写手机号'
+    return
+  }
+  if (mode.value === 'otp' && !code.value.trim()) {
+    err.value = '请填写验证码'
+    return
+  }
+  if (mode.value === 'password' && !password.value) {
+    err.value = '请填写登录密码'
     return
   }
   logging.value = true
   try {
-    const { data } = await http.post('/member/auth/otp/verify', {
-      phone: phone.value.trim(),
-      code: code.value.trim(),
-      merchant_id: merchantId.value ?? null,
-    })
+    const { data } =
+      mode.value === 'password'
+        ? await http.post('/member/auth/password', {
+            phone: phone.value.trim(),
+            password: password.value,
+            merchant_id: merchantId.value ?? null,
+          })
+        : await http.post('/member/auth/otp/verify', {
+            phone: phone.value.trim(),
+            code: code.value.trim(),
+            merchant_id: merchantId.value ?? null,
+          })
     auth.setToken(data.access_token)
     const me = await auth.fetchMe()
     const redirect = (route.query.redirect as string) || ''
@@ -81,15 +99,33 @@ async function login() {
 <template>
   <div class="login">
     <header class="login__brand">
-      <p class="login__site">回龙观公园综合场地</p>
+      <BrandMark variant="space" show-tagline />
       <h1 class="login__title">会员中心</h1>
       <p class="login__desc">
-        <template v-if="merchantId">扫码加入门店 · 手机号验证码登录后自动关联</template>
-        <template v-else>使用手机号登录；未注册将自动开通（综合运营平台入口）</template>
+        <template v-if="merchantId">扫码加入门店 · 登录后自动关联本店</template>
+        <template v-else>验证码可自动开通；已设密码的会员也可直接登录</template>
       </p>
     </header>
 
     <form class="login__form" @submit.prevent="login">
+      <div class="login__modes" role="tablist">
+        <button
+          type="button"
+          class="login__mode"
+          :class="{ 'is-active': mode === 'otp' }"
+          @click="mode = 'otp'"
+        >
+          验证码登录
+        </button>
+        <button
+          type="button"
+          class="login__mode"
+          :class="{ 'is-active': mode === 'password' }"
+          @click="mode = 'password'"
+        >
+          密码登录
+        </button>
+      </div>
       <div class="mw-field">
         <label class="mw-field__label" for="phone">手机号</label>
         <input
@@ -104,7 +140,7 @@ async function login() {
         />
       </div>
 
-      <div class="mw-field">
+      <div v-if="mode === 'otp'" class="mw-field">
         <label class="mw-field__label" for="code">验证码</label>
         <div class="login__code-row">
           <input
@@ -121,6 +157,19 @@ async function login() {
             {{ sending ? '发送中' : '获取验证码' }}
           </button>
         </div>
+      </div>
+
+      <div v-else class="mw-field">
+        <label class="mw-field__label" for="password">登录密码</label>
+        <input
+          id="password"
+          v-model="password"
+          class="mw-input"
+          type="password"
+          autocomplete="current-password"
+          maxlength="64"
+          placeholder="由门店或平台超管设置"
+        />
       </div>
 
       <p v-if="tip" class="mw-msg mw-msg--ok">{{ tip }}</p>
@@ -148,18 +197,10 @@ async function login() {
   margin-bottom: var(--mw-space-8);
 }
 
-.login__site {
-  margin: 0 0 var(--mw-space-2);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  color: var(--mw-text-secondary);
-}
-
 .login__title {
-  font-size: 28px;
+  font-size: 22px;
   line-height: 1.2;
-  margin-bottom: var(--mw-space-3);
+  margin: var(--mw-space-5) 0 var(--mw-space-3);
 }
 
 .login__desc {
@@ -174,6 +215,29 @@ async function login() {
   background: var(--mw-surface);
   border: 1px solid var(--mw-border);
   border-radius: var(--mw-radius-lg);
+}
+
+.login__modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: var(--mw-space-4);
+}
+
+.login__mode {
+  height: 36px;
+  border: 1px solid var(--mw-border);
+  border-radius: var(--mw-radius-sm);
+  background: transparent;
+  color: var(--mw-text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.login__mode.is-active {
+  border-color: var(--mw-brand);
+  color: var(--mw-text);
+  background: var(--mw-brand-muted);
 }
 
 .login__code-row {

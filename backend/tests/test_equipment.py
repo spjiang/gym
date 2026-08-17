@@ -63,3 +63,16 @@ def test_equipment_lifecycle(client: TestClient, admin_headers: dict):
         headers=admin_headers,
     ).json()["items"]
     assert any(a["id"] == asset_id for a in refreshed)
+
+    by_cat = client.get(
+        f"/api/v1/equipment/assets?merchant_id={gym_id}&category=cardio&area=有氧",
+        headers=admin_headers,
+    )
+    assert by_cat.status_code == 200, by_cat.text
+    assert any(a["id"] == asset_id for a in by_cat.json()["items"])
+    miss = client.get(
+        f"/api/v1/equipment/assets?merchant_id={gym_id}&category=strength",
+        headers=admin_headers,
+    )
+    assert miss.status_code == 200
+    assert all(a["id"] != asset_id for a in miss.json()["items"])

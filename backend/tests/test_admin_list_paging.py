@@ -87,8 +87,100 @@ def test_a3_a4_page_contracts(client: TestClient, admin_headers: dict):
         "/api/v1/staff?page=1&page_size=5",
         f"/api/v1/notifications?merchant_id={gym_id}&page=1&page_size=5",
         f"/api/v1/orders?merchant_id={gym_id}&order_type=dining&page=1&page_size=5",
+        f"/api/v1/membership-products?merchant_id={gym_id}&page=1&page_size=5",
+        f"/api/v1/pt-products?merchant_id={gym_id}&page=1&page_size=5",
+        f"/api/v1/retail/skus?merchant_id={gym_id}&page=1&page_size=5",
+        f"/api/v1/retail/categories?merchant_id={gym_id}&page=1&page_size=5",
+        f"/api/v1/coaches?merchant_id={gym_id}&page=1&page_size=5",
+        f"/api/v1/group-courses?merchant_id={gym_id}&page=1&page_size=5",
+        f"/api/v1/coupons/templates?merchant_id={gym_id}&page=1&page_size=5",
+        f"/api/v1/catering/menu-items?page=1&page_size=5",
     ):
         resp = client.get(path, headers=admin_headers)
         assert resp.status_code == 200, f"{path}: {resp.text}"
         body = resp.json()
         assert set(body.keys()) >= {"items", "total", "page", "page_size"}, path
+
+
+def test_list_field_filters(client: TestClient, admin_headers: dict):
+    gym_id = client.get("/api/v1/merchants", headers=admin_headers).json()[0]["id"]
+    member = client.post(
+        "/api/v1/members",
+        headers=admin_headers,
+        json={"phone": "13980003301", "name": "筛会员", "merchant_id": gym_id},
+    ).json()
+    faces = client.get(
+        "/api/v1/members?face_status=not_enrolled&has_password=false&merchant_id=" + str(gym_id),
+        headers=admin_headers,
+    )
+    assert faces.status_code == 200, faces.text
+    assert any(m["id"] == member["id"] for m in faces.json()["items"])
+
+    enrolled = client.get("/api/v1/members?face_status=enrolled", headers=admin_headers)
+    assert enrolled.status_code == 200
+    assert all(m["face_status"] == "enrolled" for m in enrolled.json()["items"])
+
+    staff = client.get("/api/v1/staff?is_active=true&page=1&page_size=20", headers=admin_headers)
+    assert staff.status_code == 200, staff.text
+    assert all(s["is_active"] is True for s in staff.json()["items"])
+
+    course = client.post(
+        "/api/v1/group-courses",
+        headers=admin_headers,
+        json={
+            "merchant_id": gym_id,
+            "name": "检索瑜伽",
+            "difficulty": "入门",
+            "default_duration_minutes": 45,
+            "default_capacity": 12,
+        },
+    )
+    assert course.status_code == 200, course.text
+    cid = course.json()["id"]
+    hit = client.get(
+        f"/api/v1/group-courses?merchant_id={gym_id}&difficulty=入门&is_active=true&duration_min=40&duration_max=50&capacity_min=10&capacity_max=15",
+        headers=admin_headers,
+    )
+    assert hit.status_code == 200, hit.text
+    assert any(r["id"] == cid for r in hit.json()["items"])
+
+    miss = client.get(
+        f"/api/v1/group-courses?merchant_id={gym_id}&difficulty=高级",
+        headers=admin_headers,
+    )
+    assert miss.status_code == 200
+    assert all(r["id"] != cid for r in miss.json()["items"])
+
+    order = client.post(
+        "/api/v1/orders",
+        headers=admin_headers,
+        json={
+            "merchant_id": gym_id,
+            "member_id": member["id"],
+            "order_type": "retail",
+            "title": "筛选零售单",
+            "amount": "9.00",
+        },
+    ).json()
+    listed = client.get("/api/v1/orders?order_type=retail&q=筛选零售", headers=admin_headers)
+    assert listed.status_code == 200, listed.text
+    assert any(o["id"] == order["id"] for o in listed.json()["items"])
+    dining = client.get("/api/v1/orders?order_type=dining&q=筛选零售", headers=admin_headers)
+    assert dining.status_code == 200
+    assert all(o["id"] != order["id"] for o in dining.json()["items"])
+
+    notes = client.get("/api/v1/notifications?event_type=order.paid&page=1&page_size=5", headers=admin_headers)
+    assert notes.status_code == 200, notes.text
+    assert set(notes.json().keys()) >= {"items", "total", "page", "page_size"}
+
+    points = client.get("/api/v1/access-points?is_public_area=false&page=1&page_size=5", headers=admin_headers)
+    assert points.status_code == 200, points.text
+    devices = client.get("/api/v1/devices?is_online=false&page=1&page_size=5", headers=admin_headers)
+    assert devices.status_code == 200, devices.text
+    visits = client.get("/api/v1/visits?page=1&page_size=5", headers=admin_headers)
+    assert visits.status_code == 200, visits.text
+    memberships = client.get(
+        f"/api/v1/memberships?merchant_id={gym_id}&product_type=term&page=1&page_size=5",
+        headers=admin_headers,
+    )
+    assert memberships.status_code == 200, memberships.text

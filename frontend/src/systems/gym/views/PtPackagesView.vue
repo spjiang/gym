@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
+import { PT_PACKAGE_STATUS_LABELS } from '../../../core/labels'
 import { merchantsWithSystem } from '../../../core/nav/systems'
+import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
 
 type Merchant = { id: number; name: string; subsystem_codes?: string[] }
 type Member = { id: number; name: string; phone: string }
@@ -16,68 +18,108 @@ type Product = {
 }
 type Pkg = {
   id: number
+  merchant_id: number
   member_id: number
   product_id: number
   status: string
   remaining_sessions: number
+  starts_at: string | null
+  ends_at: string | null
+  member?: { id: number; name: string; phone: string } | null
+  product?: Product | null
 }
+type ConsumeLog = {
+  id: number
+  created_at: string
+  sessions: number
+  remaining_after: number | null
+  actor_name: string | null
+  summary: string
+}
+type Page<T> = { items: T[]; total: number; page: number; page_size: number }
 
 const merchants = ref<Merchant[]>([])
 const members = ref<Member[]>([])
 const products = ref<Product[]>([])
 const packages = ref<Pkg[]>([])
-const merchantId = ref<number | undefined>()
-const loading = ref(false)
-
-const productDialog = ref(false)
-const sellDialog = ref(false)
-const submitting = ref(false)
-const productFormRef = ref<FormInstance>()
-const sellFormRef = ref<FormInstance>()
-
-const productForm = reactive({
-  name: '',
-  price: '1000',
-  session_count: 10,
-  valid_days: 90,
+const { merchantId, requireMerchant } = useOpsMerchant(() => {
+  page.value = 1
+  void refresh()
 })
+const loading = ref(false)
+const total = ref(0)
+const page = ref(1)
+const pageSize = ref(20)
+const query = reactive({
+  q: '',
+  status: '' as string,
+  product_id: undefined as number | undefined,
+})
+
+const sellDialog = ref(false)
+const editDialog = ref(false)
+const detailVisible = ref(false)
+const consumeDialog = ref(false)
+const submitting = ref(false)
+const sellFormRef = ref<FormInstance>()
+const editFormRef = ref<FormInstance>()
 const sell = reactive({
   member_id: undefined as number | undefined,
   product_id: undefined as number | undefined,
 })
-
-const productRules: FormRules = {
-  name: [{ required: true, message: '请填写课包名称', trigger: 'blur' }],
-  price: [
-    { required: true, message: '请填写价格', trigger: 'blur' },
-    {
-      validator: (_r, v: string, cb) => {
-        const n = Number(v)
-        if (!Number.isFinite(n) || n <= 0) cb(new Error('价格必须大于 0'))
-        else cb()
-      },
-      trigger: 'blur',
-    },
-  ],
-}
+const detail = ref<Pkg | null>(null)
+const consumeTarget = ref<Pkg | null>(null)
+const consumeRange = ref<[string, string] | null>(null)
+const consumes = ref<ConsumeLog[]>([])
+const consumesLoading = ref(false)
+const editing = ref<Pkg | null>(null)
+const editForm = reactive({
+  remaining_sessions: 0,
+  starts_at: '',
+  ends_at: '',
+  status: 'active',
+})
 
 const sellRules: FormRules = {
   member_id: [{ required: true, message: '请选择会员', trigger: 'change' }],
   product_id: [{ required: true, message: '请选择课包', trigger: 'change' }],
 }
 
-function memberName(id: number, row?: { member?: { name: string; phone: string } | null }) {
+const editRules: FormRules = {
+  remaining_sessions: [{ required: true, message: '请填写剩余课时', trigger: 'blur' }],
+  status: [{ required: true, message: '请选择状态', trigger: 'change' }],
+}
+
+function memberName(id: number, row?: Pkg | null) {
   if (row?.member) return `${row.member.name} ${row.member.phone}`
   const m = members.value.find((x) => x.id === id)
   return m ? `${m.name} ${m.phone}` : `#${id}`
 }
 
-function productName(id: number) {
-  return products.value.find((p) => p.id === id)?.name || `#${id}`
+function productName(row: Pkg) {
+  return row.product?.name || products.value.find((p) => p.id === row.product_id)?.name || `#${row.product_id}`
 }
 
 function statusLabel(s: string) {
-  return { active: '使用中', exhausted: '已用尽', expired: '已过期' }[s] || s
+  return PT_PACKAGE_STATUS_LABELS[s] || s
+}
+
+function datePart(iso: string | null | undefined) {
+  return iso ? iso.slice(0, 10) : ''
+}
+
+function fmtDateTime(iso: string | null | undefined) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function productSpec(row: Pkg) {
+  const p = row.product || products.value.find((x) => x.id === row.product_id)
+  if (!p) return ''
+  return `${p.session_count} 课时 · ${p.valid_days} 天 · ¥${p.price}`
 }
 
 async function refresh() {
@@ -89,19 +131,25 @@ async function refresh() {
     ])
     merchants.value = merchantsWithSystem(m.data, 'gym')
     members.value = mem.data.items
-    if (!merchantId.value && merchants.value[0]) merchantId.value = merchants.value[0].id
     if (merchantId.value && !merchants.value.some((x) => x.id === merchantId.value)) {
-      merchantId.value = merchants.value[0]?.id
+      merchantId.value = undefined
     }
-    if (!merchantId.value) return
     const [p, pkgs] = await Promise.all([
-      http.get('/pt-products', { params: { merchant_id: merchantId.value } }),
-      http.get('/pt-packages', {
-        params: { merchant_id: merchantId.value, page: 1, page_size: 100 },
+      http.get('/pt-products', { params: { merchant_id: merchantId.value, page: 1, page_size: 100 } }),
+      http.get<Page<Pkg>>('/pt-packages', {
+        params: {
+          merchant_id: merchantId.value,
+          q: query.q.trim() || undefined,
+          status: query.status || undefined,
+          product_id: query.product_id,
+          page: page.value,
+          page_size: pageSize.value,
+        },
       }),
     ])
-    products.value = p.data
+    products.value = p.data.items
     packages.value = pkgs.data.items
+    total.value = pkgs.data.total
   } catch (e: unknown) {
     ElMessage.error(e instanceof Error ? e.message : '加载失败')
   } finally {
@@ -109,34 +157,64 @@ async function refresh() {
   }
 }
 
-function openProductDialog() {
-  productForm.name = ''
-  productForm.price = '1000'
-  productForm.session_count = 10
-  productForm.valid_days = 90
-  productFormRef.value?.clearValidate()
-  productDialog.value = true
+function search() {
+  page.value = 1
+  void refresh()
 }
 
-async function createProduct() {
-  const ok = await productFormRef.value?.validate().catch(() => false)
-  if (!ok) return
-  submitting.value = true
+function resetSearch() {
+  query.q = ''
+  query.status = ''
+  query.product_id = undefined
+  page.value = 1
+  void refresh()
+}
+
+async function loadConsumes(packageId: number) {
+  consumesLoading.value = true
   try {
-    await http.post('/pt-products', {
-      merchant_id: merchantId.value,
-      ...productForm,
-      price: productForm.price,
-      all_coaches: true,
+    const { data } = await http.get<ConsumeLog[]>(`/pt-packages/${packageId}/consumes`, {
+      params: {
+        from_date: consumeRange.value?.[0],
+        to_date: consumeRange.value?.[1],
+      },
     })
-    ElMessage.success('课包商品已创建')
-    productDialog.value = false
-    await refresh()
+    consumes.value = data
   } catch (e: unknown) {
-    ElMessage.error(e instanceof Error ? e.message : '创建失败')
+    consumes.value = []
+    ElMessage.error(e instanceof Error ? e.message : '加载核销记录失败')
   } finally {
-    submitting.value = false
+    consumesLoading.value = false
   }
+}
+
+async function openDetail(row: Pkg) {
+  detail.value = row
+  detailVisible.value = true
+  try {
+    const { data } = await http.get<Pkg>(`/pt-packages/${row.id}`)
+    detail.value = data
+  } catch (e: unknown) {
+    ElMessage.error(e instanceof Error ? e.message : '加载详情失败')
+  }
+}
+
+async function openConsumes(row: Pkg) {
+  consumeTarget.value = row
+  consumeRange.value = null
+  consumeDialog.value = true
+  consumes.value = []
+  await loadConsumes(row.id)
+}
+
+function searchConsumes() {
+  if (!consumeTarget.value) return
+  void loadConsumes(consumeTarget.value.id)
+}
+
+function resetConsumeSearch() {
+  consumeRange.value = null
+  searchConsumes()
 }
 
 function openSellDialog() {
@@ -146,13 +224,28 @@ function openSellDialog() {
   sellDialog.value = true
 }
 
+function openEdit(row: Pkg) {
+  if (row.status === 'void') {
+    ElMessage.warning('已作废课包不可编辑')
+    return
+  }
+  editing.value = row
+  editForm.remaining_sessions = row.remaining_sessions
+  editForm.starts_at = datePart(row.starts_at)
+  editForm.ends_at = datePart(row.ends_at)
+  editForm.status = row.status
+  editFormRef.value?.clearValidate()
+  editDialog.value = true
+}
+
 async function sellPackage() {
   const ok = await sellFormRef.value?.validate().catch(() => false)
-  if (!ok) return
+  const mid = requireMerchant()
+  if (!ok || !mid) return
   submitting.value = true
   try {
     const { data: order } = await http.post('/pt-packages/purchase', {
-      merchant_id: merchantId.value,
+      merchant_id: mid,
       member_id: sell.member_id,
       product_id: sell.product_id,
     })
@@ -167,10 +260,56 @@ async function sellPackage() {
   }
 }
 
-async function consume(id: number) {
-  await http.post(`/pt-packages/${id}/consume`)
-  ElMessage.success('已核销 1 课时')
-  await refresh()
+async function saveEdit() {
+  const ok = await editFormRef.value?.validate().catch(() => false)
+  if (!ok || !editing.value) return
+  submitting.value = true
+  try {
+    const { data } = await http.patch<Pkg>(`/pt-packages/${editing.value.id}`, {
+      remaining_sessions: editForm.remaining_sessions,
+      starts_at: editForm.starts_at ? `${editForm.starts_at}T00:00:00` : null,
+      ends_at: editForm.ends_at ? `${editForm.ends_at}T23:59:59` : null,
+      status: editForm.status,
+    })
+    ElMessage.success('课包已更新')
+    editDialog.value = false
+    if (detail.value?.id === data.id) detail.value = data
+    await refresh()
+  } catch (e: unknown) {
+    ElMessage.error(e instanceof Error ? e.message : '保存失败')
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function consume(row: Pkg) {
+  const next = Math.max(row.remaining_sessions - 1, 0)
+  try {
+    await ElMessageBox.confirm(
+      `确认为「${memberName(row.member_id, row)}」核销「${productName(row)}」1 课时？核销后剩余 ${next} 课时。`,
+      '核销确认',
+      {
+        type: 'warning',
+        confirmButtonText: '确认核销',
+        cancelButtonText: '取消',
+        appendTo: document.body,
+      },
+    )
+  } catch {
+    return
+  }
+  try {
+    const { data } = await http.post<Pkg>(`/pt-packages/${row.id}/consume`)
+    ElMessage.success('已核销 1 课时')
+    if (detail.value?.id === data.id) detail.value = data
+    if (consumeTarget.value?.id === data.id) {
+      consumeTarget.value = data
+      await loadConsumes(data.id)
+    }
+    await refresh()
+  } catch (e: unknown) {
+    ElMessage.error(e instanceof Error ? e.message : '核销失败')
+  }
 }
 
 onMounted(refresh)
@@ -179,77 +318,166 @@ onMounted(refresh)
 <template>
   <div>
     <div class="toolbar">
-      <h3>私教课包</h3>
-      <div class="toolbar-actions">
-        <el-button type="primary" plain @click="openProductDialog">新建课包商品</el-button>
-        <el-button type="primary" @click="openSellDialog">售卖课包</el-button>
+      <div>
+        <h3>会员课包</h3>
+        <p class="lead">售卖课包并核销课时。课包商品请到「私教课管理 → 私教课包」。</p>
       </div>
+      <el-button type="primary" @click="openSellDialog">售卖课包</el-button>
     </div>
 
-    <el-form inline>
+    <el-form inline class="filters">
       <el-form-item label="商户">
-        <el-select v-model="merchantId" style="width: 200px" @change="refresh">
+        <el-select v-model="merchantId" clearable placeholder="全部商户" style="width: 180px">
           <el-option v-for="m in merchants" :key="m.id" :label="m.name" :value="m.id" />
         </el-select>
       </el-form-item>
+      <el-form-item label="关键词">
+        <el-input
+          v-model="query.q"
+          clearable
+          placeholder="会员姓名 / 手机 / 课包名"
+          style="width: 220px"
+          @keyup.enter="search"
+        />
+      </el-form-item>
+      <el-form-item label="课包">
+        <el-select v-model="query.product_id" clearable placeholder="全部" style="width: 160px">
+          <el-option v-for="p in products" :key="p.id" :label="p.name" :value="p.id" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="状态">
+        <el-select v-model="query.status" clearable placeholder="全部" style="width: 120px">
+          <el-option label="使用中" value="active" />
+          <el-option label="已用尽" value="exhausted" />
+          <el-option label="已过期" value="expired" />
+          <el-option label="已作废" value="void" />
+        </el-select>
+      </el-form-item>
+      <el-form-item>
+        <el-button type="primary" @click="search">查询</el-button>
+        <el-button @click="resetSearch">重置</el-button>
+      </el-form-item>
     </el-form>
 
-    <h3 class="section-title">课包商品</h3>
-    <el-table :data="products.filter((x) => x.is_active)" v-loading="loading" stripe style="margin-bottom: 28px">
-      <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column prop="name" label="名称" />
-      <el-table-column prop="price" label="价格" width="120" />
-      <el-table-column prop="session_count" label="课时" width="90" />
-      <el-table-column prop="valid_days" label="有效天" width="90" />
-    </el-table>
-
-    <h3 class="section-title">会员课包</h3>
     <el-table :data="packages" v-loading="loading" stripe>
       <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column label="会员" width="180">
+      <el-table-column label="会员" min-width="180">
         <template #default="{ row }">{{ memberName(row.member_id, row) }}</template>
       </el-table-column>
-      <el-table-column label="课包" width="160">
-        <template #default="{ row }">{{ productName(row.product_id) }}</template>
+      <el-table-column label="课包" min-width="180">
+        <template #default="{ row }">
+          <el-button link type="primary" @click="openDetail(row)">{{ productName(row) }}</el-button>
+          <div class="card-spec">{{ productSpec(row) }}</div>
+        </template>
       </el-table-column>
-      <el-table-column label="状态" width="110">
+      <el-table-column label="状态" width="100">
         <template #default="{ row }">
           <el-tag :type="row.status === 'active' ? 'success' : 'info'" size="small">
             {{ statusLabel(row.status) }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="remaining_sessions" label="剩余课时" width="110" />
-      <el-table-column label="操作" width="120">
+      <el-table-column prop="remaining_sessions" label="剩余课时" width="100" />
+      <el-table-column label="生效" width="120">
+        <template #default="{ row }">{{ datePart(row.starts_at) || '—' }}</template>
+      </el-table-column>
+      <el-table-column label="到期" width="120">
+        <template #default="{ row }">{{ datePart(row.ends_at) || '—' }}</template>
+      </el-table-column>
+      <el-table-column label="操作" width="280" fixed="right">
         <template #default="{ row }">
-          <el-button v-if="row.status === 'active'" link type="primary" @click="consume(row.id)">核销</el-button>
+          <el-button link type="primary" @click="openDetail(row)">详情</el-button>
+          <el-button link type="primary" @click="openConsumes(row)">核销记录</el-button>
+          <el-button v-if="row.status !== 'void'" link type="primary" @click="openEdit(row)">编辑</el-button>
+          <el-button v-if="row.status === 'active'" link type="danger" @click="consume(row)">核销</el-button>
         </template>
       </el-table-column>
     </el-table>
 
-    <!-- 新建课包商品弹窗 -->
-    <el-dialog v-model="productDialog" title="新建课包商品" width="480px" destroy-on-close>
-      <el-form ref="productFormRef" :model="productForm" :rules="productRules" label-width="90px">
-        <el-form-item label="名称" prop="name">
-          <el-input v-model="productForm.name" placeholder="如：私教 10 次卡" maxlength="128" />
+    <div class="pager">
+      <el-pagination
+        v-model:current-page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next"
+        background
+        @current-change="refresh"
+        @size-change="
+          () => {
+            page = 1
+            refresh()
+          }
+        "
+      />
+    </div>
+
+    <el-drawer v-model="detailVisible" title="课包详情" size="520px">
+      <template v-if="detail">
+        <h4 class="detail-section">课包</h4>
+        <el-descriptions :column="1" border>
+          <el-descriptions-item label="ID">{{ detail.id }}</el-descriptions-item>
+          <el-descriptions-item label="会员">{{ memberName(detail.member_id, detail) }}</el-descriptions-item>
+          <el-descriptions-item label="状态">{{ statusLabel(detail.status) }}</el-descriptions-item>
+          <el-descriptions-item label="剩余课时">{{ detail.remaining_sessions }}</el-descriptions-item>
+          <el-descriptions-item label="生效">{{ datePart(detail.starts_at) || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="到期">{{ datePart(detail.ends_at) || '—' }}</el-descriptions-item>
+        </el-descriptions>
+
+        <h4 class="detail-section">商品</h4>
+        <el-descriptions :column="1" border>
+          <template v-if="detail.product">
+            <el-descriptions-item label="名称">{{ detail.product.name }}</el-descriptions-item>
+            <el-descriptions-item label="课时额度">{{ detail.product.session_count }} 节</el-descriptions-item>
+            <el-descriptions-item label="有效天数">{{ detail.product.valid_days }} 天</el-descriptions-item>
+            <el-descriptions-item label="标价">¥{{ detail.product.price }}</el-descriptions-item>
+            <el-descriptions-item label="售卖状态">
+              {{ detail.product.is_active ? '在售' : '已停用' }}
+            </el-descriptions-item>
+          </template>
+          <el-descriptions-item v-else label="课包">{{ productName(detail) }}</el-descriptions-item>
+        </el-descriptions>
+        <div class="detail-actions">
+          <el-button v-if="detail.status === 'active'" type="danger" plain @click="consume(detail)">核销</el-button>
+          <el-button type="primary" plain @click="openConsumes(detail)">核销记录</el-button>
+          <el-button v-if="detail.status !== 'void'" type="primary" @click="openEdit(detail)">编辑</el-button>
+          <el-button @click="detailVisible = false">关闭</el-button>
+        </div>
+      </template>
+    </el-drawer>
+
+    <el-dialog v-model="editDialog" title="编辑课包" width="480px" destroy-on-close>
+      <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-width="90px">
+        <el-form-item label="会员">
+          <el-input :model-value="editing ? memberName(editing.member_id, editing) : ''" disabled />
         </el-form-item>
-        <el-form-item label="价格" prop="price">
-          <el-input v-model="productForm.price" placeholder="0.00" />
+        <el-form-item label="课包">
+          <el-input :model-value="editing ? productName(editing) : ''" disabled />
         </el-form-item>
-        <el-form-item label="课时">
-          <el-input-number v-model="productForm.session_count" :min="1" style="width: 100%" />
+        <el-form-item label="剩余课时" prop="remaining_sessions">
+          <el-input-number v-model="editForm.remaining_sessions" :min="0" style="width: 100%" />
         </el-form-item>
-        <el-form-item label="有效天">
-          <el-input-number v-model="productForm.valid_days" :min="1" style="width: 100%" />
+        <el-form-item label="生效日">
+          <el-date-picker v-model="editForm.starts_at" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
         </el-form-item>
+        <el-form-item label="到期日">
+          <el-date-picker v-model="editForm.ends_at" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="状态" prop="status">
+          <el-select v-model="editForm.status" style="width: 100%">
+            <el-option label="使用中" value="active" />
+            <el-option label="已用尽" value="exhausted" />
+            <el-option label="已过期" value="expired" />
+          </el-select>
+        </el-form-item>
+        <el-alert type="info" :closable="false" show-icon title="校正剩余课时或有效期后立即生效，核销仍按 1 课时扣减。" />
       </el-form>
       <template #footer>
-        <el-button @click="productDialog = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="createProduct">创建</el-button>
+        <el-button @click="editDialog = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="saveEdit">保存</el-button>
       </template>
     </el-dialog>
 
-    <!-- 售卖课包弹窗 -->
     <el-dialog v-model="sellDialog" title="售卖课包并收款" width="480px" destroy-on-close>
       <el-form ref="sellFormRef" :model="sell" :rules="sellRules" label-width="90px">
         <el-form-item label="会员" prop="member_id">
@@ -279,6 +507,62 @@ onMounted(refresh)
         <el-button type="primary" :loading="submitting" @click="sellPackage">售卖并收款</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="consumeDialog"
+      :title="consumeTarget ? `核销记录 · ${productName(consumeTarget)}` : '核销记录'"
+      width="720px"
+      append-to-body
+      destroy-on-close
+    >
+      <p v-if="consumeTarget" class="card-hint">
+        {{ memberName(consumeTarget.member_id, consumeTarget) }} · 剩余 {{ consumeTarget.remaining_sessions }} 课时
+      </p>
+      <el-form inline class="filters">
+        <el-form-item label="核销时间">
+          <el-date-picker
+            v-model="consumeRange"
+            type="daterange"
+            value-format="YYYY-MM-DD"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            unlink-panels
+            style="width: 260px"
+          />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="searchConsumes">查询</el-button>
+          <el-button @click="resetConsumeSearch">重置</el-button>
+        </el-form-item>
+      </el-form>
+      <el-table :data="consumes" v-loading="consumesLoading" stripe empty-text="暂无核销记录">
+        <el-table-column label="核销时间" min-width="170">
+          <template #default="{ row }">{{ fmtDateTime(row.created_at) }}</template>
+        </el-table-column>
+        <el-table-column label="核销课时" width="100">
+          <template #default="{ row }">{{ row.sessions }} 节</template>
+        </el-table-column>
+        <el-table-column label="核销后剩余" width="110">
+          <template #default="{ row }">{{ row.remaining_after ?? '—' }}</template>
+        </el-table-column>
+        <el-table-column label="操作人" min-width="120">
+          <template #default="{ row }">{{ row.actor_name || '—' }}</template>
+        </el-table-column>
+        <el-table-column label="说明" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.summary }}</template>
+        </el-table-column>
+      </el-table>
+      <template #footer>
+        <el-button
+          v-if="consumeTarget?.status === 'active'"
+          type="danger"
+          @click="consumeTarget && consume(consumeTarget)"
+        >
+          核销
+        </el-button>
+        <el-button @click="consumeDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -292,18 +576,53 @@ onMounted(refresh)
 }
 
 .toolbar h3 {
-  margin: 0;
+  margin: 0 0 6px;
   font-size: 1.1rem;
 }
 
-.toolbar-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+.lead {
+  margin: 0;
+  max-width: 640px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--el-text-color-secondary);
 }
 
-.section-title {
+.filters {
+  margin-bottom: 8px;
+}
+
+.pager {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.card-spec {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.detail-section {
+  margin: 0 0 10px;
+  font-size: 0.9rem;
+}
+
+.detail-section + .el-descriptions + .detail-section {
+  margin-top: 20px;
+}
+
+.detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.card-hint {
   margin: 0 0 12px;
-  font-size: 0.95rem;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
 }
 </style>

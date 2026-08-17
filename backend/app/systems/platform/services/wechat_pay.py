@@ -76,8 +76,8 @@ def create_wechat_prepay(
     client_ip: str | None,
     return_url: str | None,
 ) -> WechatPrepayResult:
-    if cfg.mode != "wechat":
-        raise AppError("online_payment_unconfigured", "当前未启用微信支付", status_code=503)
+    if cfg.mode not in {"wechat", "jdpay"}:
+        raise AppError("online_payment_unconfigured", "当前未启用京东支付", status_code=503)
 
     missing = []
     if not cfg.mch_id:

@@ -13,7 +13,8 @@ export const ORDER_TYPE_LABELS: Record<string, string> = {
 
 export const PAYMENT_CHANNEL_LABELS: Record<string, string> = {
   online: '线上支付',
-  wechat_original: '微信原路退',
+  wechat_original: '京东原路退',
+  jdpay_original: '京东原路退',
   offline_cash: '现金',
   offline_transfer: '转账',
 }
@@ -28,7 +29,8 @@ export const ORDER_STATUS_LABELS: Record<string, string> = {
 export const PAYMENT_MODE_LABELS: Record<string, string> = {
   unconfigured: '未配置',
   mock: '模拟支付',
-  wechat: '微信支付',
+  wechat: '京东支付',
+  jdpay: '京东支付',
 }
 
 /** 商户状态 */
@@ -64,12 +66,16 @@ export const COUPON_STATUS_LABELS: Record<string, string> = {
   unused: '未使用',
   used: '已使用',
   expired: '已过期',
+  void: '已停用',
 }
 
 export const COUPON_APPLICABLE_LABELS: Record<string, string> = {
-  both: '办卡+零售',
-  retail: '仅零售',
-  membership: '仅办卡',
+  both: '观野FIT·办卡+零售',
+  gym: '观野FIT·办卡+零售',
+  retail: '观野FIT·仅零售',
+  membership: '观野FIT·仅办卡',
+  dining: '观野BAR消费',
+  catering: '观野BAR消费',
 }
 
 export function orderTypeLabel(code: string | null | undefined): string {
@@ -120,4 +126,16 @@ export function couponStatusLabel(code: string | null | undefined): string {
 export function couponApplicableLabel(code: string | null | undefined): string {
   if (!code) return '—'
   return COUPON_APPLICABLE_LABELS[code] || code
+}
+
+export const PT_PACKAGE_STATUS_LABELS: Record<string, string> = {
+  active: '使用中',
+  exhausted: '已用尽',
+  expired: '已过期',
+  void: '已作废',
+}
+
+export function ptPackageStatusLabel(code: string | null | undefined): string {
+  if (!code) return '—'
+  return PT_PACKAGE_STATUS_LABELS[code] || code
 }

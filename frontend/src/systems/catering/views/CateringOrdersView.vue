@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import http from '../../../core/api/http'
+import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
 
 type Merchant = { id: number; name: string; subsystem_codes: string[] }
 type MenuItem = { id: number; name: string; category: string; price: string; is_active: boolean }
@@ -20,7 +21,7 @@ type Order = {
 const merchants = ref<Merchant[]>([])
 const menu = ref<MenuItem[]>([])
 const orders = ref<Order[]>([])
-const merchantId = ref<number | undefined>()
+const { merchantId, requireMerchant } = useOpsMerchant(() => void refresh())
 const loading = ref(false)
 const paying = ref(false)
 const cart = reactive<Record<number, number>>({})
@@ -64,7 +65,7 @@ async function refresh() {
     const { data: ms } = await http.get('/merchants')
     merchants.value = ms
     const list = cateringMerchants()
-    if (!merchantId.value && list[0]) merchantId.value = list[0].id
+    if (merchantId.value && !list.some((m) => m.id === merchantId.value)) merchantId.value = undefined
     await loadMerchantData()
   } catch (e: unknown) {
     ElMessage.error(e instanceof Error ? e.message : '加载失败')
@@ -74,14 +75,12 @@ async function refresh() {
 }
 
 async function loadMerchantData() {
-  if (!merchantId.value) {
-    menu.value = []
-    orders.value = []
-    orderTotal.value = 0
-    return
-  }
   const [m, o] = await Promise.all([
-    http.get('/catering/menu-items', { params: { merchant_id: merchantId.value, active_only: true } }),
+    merchantId.value
+      ? http.get('/catering/menu-items', {
+          params: { merchant_id: merchantId.value, active_only: true, page: 1, page_size: 100 },
+        })
+      : Promise.resolve({ data: { items: [] as MenuItem[] } }),
     http.get('/orders', {
       params: {
         merchant_id: merchantId.value,
@@ -93,7 +92,7 @@ async function loadMerchantData() {
       },
     }),
   ])
-  menu.value = m.data
+  menu.value = m.data.items
   orders.value = o.data.items
   orderTotal.value = o.data.total
   for (const key of Object.keys(cart)) delete cart[Number(key)]
@@ -122,14 +121,15 @@ function dec(id: number) {
 }
 
 async function checkout() {
-  if (!merchantId.value || !cartLines.value.length) {
-    ElMessage.warning('请先选择菜品')
+  const mid = requireMerchant('点单收款请先选择餐饮商户')
+  if (!mid || !cartLines.value.length) {
+    if (mid && !cartLines.value.length) ElMessage.warning('请先选择菜品')
     return
   }
   paying.value = true
   try {
     const { data: order } = await http.post('/catering/checkout', {
-      merchant_id: merchantId.value,
+      merchant_id: mid,
       items: cartLines.value.map((l) => ({ menu_item_id: l.item.id, quantity: l.qty })),
     })
     await http.post(`/orders/${order.id}/pay/offline`, { channel: 'offline_cash' })
@@ -178,7 +178,7 @@ onMounted(refresh)
       <h3>点单收款</h3>
       <el-form inline>
         <el-form-item label="餐饮商户">
-          <el-select v-model="merchantId" style="width: 220px" @change="loadMerchantData">
+          <el-select v-model="merchantId" clearable placeholder="全部商户" style="width: 220px">
             <el-option v-for="m in cateringMerchants()" :key="m.id" :label="m.name" :value="m.id" />
           </el-select>
         </el-form-item>
@@ -193,7 +193,15 @@ onMounted(refresh)
       style="margin-bottom: 16px"
     />
 
-    <div v-else class="layout">
+    <el-alert
+      v-else-if="!merchantId"
+      type="info"
+      :closable="false"
+      title="未选择商户时展示全部餐饮订单；点单收款请先选择商户"
+      style="margin-bottom: 16px"
+    />
+
+    <div v-if="cateringMerchants().length && merchantId" class="layout">
       <section>
         <h4>菜单</h4>
         <div v-for="m in menu" :key="m.id" class="menu-row">

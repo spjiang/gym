@@ -251,6 +251,93 @@ def fulfill_membership_order(db: Session, order: Order, *, actor_staff_id: int |
         raise
 
 
+_EDITABLE_STATUS = {
+    MembershipStatus.ACTIVE.value,
+    MembershipStatus.FROZEN.value,
+    MembershipStatus.EXPIRED.value,
+}
+
+
+def update_membership(
+    db: Session,
+    membership: Membership,
+    *,
+    actor_staff_id: int,
+    site_id: int,
+    member_id: int | None = None,
+    product_id: int | None = None,
+    starts_at: datetime | None = None,
+    ends_at: datetime | None = None,
+    remaining_sessions: int | None = None,
+    balance: Decimal | None = None,
+    status: str | None = None,
+    remark: str | None = None,
+    fields_set: set[str] | None = None,
+) -> Membership:
+    """前台校正会籍档案；超管可改正会员/卡种。改完同步门禁。"""
+    if membership.status == MembershipStatus.VOID.value:
+        raise AppError("invalid_state", "已作废会籍不可编辑", status_code=400)
+    changed = fields_set or set()
+    identity_changed = ("member_id" in changed and member_id != membership.member_id) or (
+        "product_id" in changed and product_id != membership.product_id
+    )
+    if identity_changed:
+        # 先按旧会员/卡种撤授权，避免改挂后旧人仍能进门
+        sync_grants_for_membership(db, membership, revoke=True)
+
+    if "member_id" in changed:
+        if member_id is None:
+            raise AppError("invalid_member", "会员不能为空", status_code=400)
+        membership.member_id = member_id
+    if "product_id" in changed:
+        if product_id is None:
+            raise AppError("invalid_product", "卡种不能为空", status_code=400)
+        product = db.get(MembershipProduct, product_id)
+        if product is None or product.merchant_id != membership.merchant_id:
+            raise AppError("not_found", "卡种不存在或不属于本商户", status_code=404)
+        membership.product_id = product.id
+        membership.product_type = product.product_type
+
+    if "starts_at" in changed:
+        membership.starts_at = _ensure_aware(starts_at)
+    if "ends_at" in changed:
+        membership.ends_at = _ensure_aware(ends_at)
+    if "remaining_sessions" in changed:
+        if remaining_sessions is not None and remaining_sessions < 0:
+            raise AppError("invalid_sessions", "剩余次数不能为负数", status_code=400)
+        membership.remaining_sessions = remaining_sessions
+    if "balance" in changed:
+        if balance is not None and balance < 0:
+            raise AppError("invalid_balance", "余额不能为负数", status_code=400)
+        membership.balance = balance
+    if "status" in changed:
+        if status not in _EDITABLE_STATUS:
+            raise AppError("invalid_status", "会籍状态无效", status_code=400)
+        membership.status = status
+    if "remark" in changed:
+        text = (remark or "").strip()
+        membership.remark = text or None
+
+    revoke = membership.status in {
+        MembershipStatus.FROZEN.value,
+        MembershipStatus.EXPIRED.value,
+        MembershipStatus.VOID.value,
+    }
+    sync_grants_for_membership(db, membership, revoke=revoke)
+    write_audit(
+        db,
+        action="membership.update",
+        target_type="membership",
+        target_id=membership.id,
+        summary="编辑会籍档案",
+        actor_staff_id=actor_staff_id,
+        site_id=site_id,
+        merchant_id=membership.merchant_id,
+    )
+    db.flush()
+    return membership
+
+
 def freeze_membership(db: Session, membership: Membership, *, actor_staff_id: int, site_id: int) -> Membership:
     if membership.status != MembershipStatus.ACTIVE.value:
         raise AppError("invalid_state", "仅生效中会籍可停卡", status_code=400)

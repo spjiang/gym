@@ -28,6 +28,9 @@ class ApplicableTo(str, Enum):
     RETAIL = "retail"
     MEMBERSHIP = "membership"
     BOTH = "both"
+    GYM = "gym"
+    DINING = "dining"
+    CATERING = "catering"
 
 
 class MemberCouponStatus(str, Enum):

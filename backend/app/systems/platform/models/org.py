@@ -1,9 +1,9 @@
 """场地与商户组织模型。"""
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -46,11 +46,27 @@ class Merchant(Base):
     merchant_type_id: Mapped[int] = mapped_column(ForeignKey("merchant_types.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[str] = mapped_column(String(32), default=MerchantStatus.PREPARING.value, nullable=False)
+    legal_name: Mapped[str | None] = mapped_column(String(128))
+    credit_code: Mapped[str | None] = mapped_column(String(32))
+    license_no: Mapped[str | None] = mapped_column(String(64))
+    license_image_url: Mapped[str | None] = mapped_column(String(512))
+    legal_person: Mapped[str | None] = mapped_column(String(64))
+    registered_address: Mapped[str | None] = mapped_column(String(255))
+    business_address: Mapped[str | None] = mapped_column(String(255))
+    contact_phone: Mapped[str | None] = mapped_column(String(32))
+    contact_email: Mapped[str | None] = mapped_column(String(128))
+    business_hours: Mapped[str | None] = mapped_column(String(128))
+    description: Mapped[str | None] = mapped_column(Text)
+    lease_starts_on: Mapped[date | None] = mapped_column(Date)
+    lease_ends_on: Mapped[date | None] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     site: Mapped[Site] = relationship(back_populates="merchants")
     merchant_type: Mapped[MerchantType] = relationship(back_populates="merchants")
     subsystems: Mapped[list["MerchantSubsystem"]] = relationship(back_populates="merchant")
+    contacts: Mapped[list["MerchantContact"]] = relationship(
+        back_populates="merchant", cascade="all, delete-orphan"
+    )
 
 
 class MerchantSubsystem(Base):
@@ -65,3 +81,27 @@ class MerchantSubsystem(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     merchant: Mapped[Merchant] = relationship(back_populates="subsystems")
+
+
+class MerchantContactKind(str, Enum):
+    PRIMARY = "primary"
+    EMERGENCY = "emergency"
+    OTHER = "other"
+
+
+class MerchantContact(Base):
+    """商户联系人，支持多名紧急联系人。"""
+
+    __tablename__ = "merchant_contacts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    merchant_id: Mapped[int] = mapped_column(ForeignKey("merchants.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    phone: Mapped[str] = mapped_column(String(32), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(64))
+    kind: Mapped[str] = mapped_column(String(16), default=MerchantContactKind.OTHER.value, nullable=False)
+    remark: Mapped[str | None] = mapped_column(String(255))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    merchant: Mapped[Merchant] = relationship(back_populates="contacts")

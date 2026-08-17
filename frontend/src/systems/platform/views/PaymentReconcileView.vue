@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import http from '../../../core/api/http'
 import { orderStatusLabel } from '../../../core/labels'
@@ -8,6 +8,33 @@ type Item = Record<string, unknown>
 const kind = ref('pay_stale')
 const items = ref<Item[]>([])
 const loading = ref(false)
+const page = ref(1)
+const pageSize = ref(20)
+const query = reactive({ q: '', status: '' })
+const filteredItems = computed(() => {
+  const kw = query.q.trim()
+  return items.value.filter((row) => {
+    if (query.status && String(row.status || '') !== query.status) return false
+    if (!kw) return true
+    const hay = [row.order_id, row.intent_id, row.refund_intent_id, row.out_trade_no, row.status, row.amount]
+      .map((v) => String(v ?? ''))
+      .join(' ')
+    return hay.includes(kw)
+  })
+})
+const pagedItems = computed(() => {
+  const start = (page.value - 1) * pageSize.value
+  return filteredItems.value.slice(start, start + pageSize.value)
+})
+watch(query, () => {
+  page.value = 1
+}, { deep: true })
+
+function resetSearch() {
+  query.q = ''
+  query.status = ''
+  page.value = 1
+}
 
 async function load() {
   loading.value = true
@@ -16,6 +43,7 @@ async function load() {
       params: { kind: kind.value },
     })
     items.value = data.items || []
+    page.value = 1
   } catch (e: unknown) {
     ElMessage.error(e instanceof Error ? e.message : '加载失败')
   } finally {
@@ -73,7 +101,17 @@ onMounted(load)
       </el-select>
       <el-button @click="load">刷新</el-button>
     </div>
-    <el-table :data="items" stripe>
+    <div class="filters">
+      <el-input v-model="query.q" clearable placeholder="订单号 / 商户单号 / 意图" style="width: 240px" />
+      <el-select v-model="query.status" clearable placeholder="订单状态" style="width: 140px">
+        <el-option label="待支付" value="pending" />
+        <el-option label="已收款" value="paid" />
+        <el-option label="已退款" value="refunded" />
+        <el-option label="已取消" value="cancelled" />
+      </el-select>
+      <el-button @click="resetSearch">重置</el-button>
+    </div>
+    <el-table :data="pagedItems" stripe>
       <el-table-column prop="order_id" label="订单" width="90" />
       <el-table-column prop="intent_id" label="支付意图" width="100" />
       <el-table-column prop="refund_intent_id" label="退款意图" width="100" />
@@ -90,6 +128,16 @@ onMounted(load)
         </template>
       </el-table-column>
     </el-table>
+    <div class="pager">
+      <el-pagination
+        v-model:current-page="page"
+        v-model:page-size="pageSize"
+        :total="filteredItems.length"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next"
+        background
+      />
+    </div>
   </div>
 </template>
 
@@ -103,5 +151,16 @@ onMounted(load)
 .toolbar h3 {
   margin: 0;
   margin-right: auto;
+}
+.filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.pager {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

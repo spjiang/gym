@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { pathForMerchant, useAuthStore, type MemberMerchant } from '../stores/auth'
+import BrandMark from '../components/BrandMark.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -39,7 +40,7 @@ const sections = computed<Section[]>(() => {
   if (buckets.gym.length) {
     out.push({
       key: 'gym',
-      title: '健身',
+      title: '观野FIT',
       subtitle: '会籍 · 团课 · 商城 · 通行',
       items: buckets.gym,
     })
@@ -47,7 +48,7 @@ const sections = computed<Section[]>(() => {
   if (buckets.catering.length) {
     out.push({
       key: 'catering',
-      title: '餐饮',
+      title: '观野BAR',
       subtitle: '点餐 · 取餐号 · 订单',
       items: buckets.catering,
     })
@@ -81,7 +82,7 @@ function goMe() {
 
     <header class="stores__brand">
       <div class="stores__brand-row">
-        <p class="stores__site">回龙观公园综合场地</p>
+        <BrandMark variant="space" compact />
         <div class="stores__actions">
           <button class="mw-btn mw-btn--ghost mw-btn--sm" type="button" @click="goMe">我的</button>
         </div>
@@ -146,8 +147,8 @@ function goMe() {
   inset: -20% -30% auto;
   height: 280px;
   background:
-    radial-gradient(ellipse 70% 60% at 20% 30%, rgba(197, 224, 99, 0.16), transparent 60%),
-    radial-gradient(ellipse 50% 50% at 85% 20%, rgba(107, 207, 142, 0.1), transparent 55%);
+    radial-gradient(ellipse 70% 60% at 20% 30%, rgba(242, 230, 210, 0.08), transparent 60%),
+    radial-gradient(ellipse 50% 50% at 85% 20%, rgba(20, 184, 212, 0.08), transparent 55%);
   pointer-events: none;
   animation: glow-in 0.8s var(--mw-ease) both;
 }
@@ -164,14 +165,6 @@ function goMe() {
   justify-content: space-between;
   gap: var(--mw-space-3);
   margin-bottom: var(--mw-space-3);
-}
-
-.stores__site {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--mw-brand);
 }
 
 .stores__hello {
@@ -290,7 +283,7 @@ function goMe() {
 }
 
 .store-card--catering .store-card__accent {
-  background: #7eb8d8;
+  background: var(--mw-cyan);
 }
 
 .store-card--other .store-card__accent {
@@ -322,8 +315,8 @@ function goMe() {
 }
 
 .store-card--catering .store-card__badge {
-  background: rgba(126, 184, 216, 0.14);
-  color: #9ecce6;
+  background: rgba(20, 184, 212, 0.14);
+  color: #14b8d4;
 }
 
 .store-card__go {
@@ -337,7 +330,7 @@ function goMe() {
 }
 
 .store-card--catering:hover .store-card__go {
-  color: #9ecce6;
+  color: #14b8d4;
 }
 
 .store-card__name {

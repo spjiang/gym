@@ -28,6 +28,23 @@ def test_create_merchant_type_and_merchant(client: TestClient, admin_headers: di
     assert r.status_code == 200
     assert r.json()["status"] == "disabled"
 
+    patched_type = client.patch(
+        f"/api/v1/merchant-types/{type_id}",
+        headers=admin_headers,
+        json={"name": "零售店", "description": "零售业态"},
+    )
+    assert patched_type.status_code == 200, patched_type.text
+    assert patched_type.json()["name"] == "零售店"
+
+    patched = client.patch(
+        f"/api/v1/merchants/{mid}",
+        headers=admin_headers,
+        json={"name": "测试店改名", "status": "active"},
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["name"] == "测试店改名"
+    assert patched.json()["status"] == "active"
+
 
 def test_login_and_unauthorized(client: TestClient, admin_headers: dict):
     assert client.get("/api/v1/auth/me").status_code == 401

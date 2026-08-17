@@ -1,4 +1,28 @@
-.wrap { padding: 32rpx; }
-.title { font-size: 40rpx; font-weight: 700; margin-bottom: 24rpx; }
-input { border: 1px solid #ddd; padding: 16rpx; margin-bottom: 16rpx; }
-.row { display: flex; gap: 12rpx; align-items: center; }
+.modes {
+  display: flex;
+  gap: 16rpx;
+  margin-bottom: 24rpx;
+}
+.mode {
+  flex: 1;
+  text-align: center;
+  padding: 16rpx 0;
+  border: 1rpx solid #343b42;
+  border-radius: 8rpx;
+  color: #7d8389;
+}
+.mode.is-active {
+  border-color: #f36b21;
+  color: #f2e6d2;
+  background: rgba(243, 107, 33, 0.14);
+}
+.row {
+  display: flex;
+  gap: 16rpx;
+  align-items: center;
+  margin-bottom: 16rpx;
+}
+.row input {
+  flex: 1;
+  margin-bottom: 0;
+}

@@ -35,17 +35,31 @@ class RequestContext:
     def is_site_admin(self) -> bool:
         return ROLE_SITE_ADMIN in self.role_codes
 
+    @property
+    def can_reset_account_password(self) -> bool:
+        """场地超管，或具备员工管理权限的业务系统超管，可改他人密码。"""
+        if self.is_site_admin:
+            return True
+        return "staff:manage" in self.permissions
+
+    def require_password_reset(self) -> None:
+        if not self.can_reset_account_password:
+            raise AppError("forbidden", "仅超管可修改账号密码", status_code=403)
+
     def require_permission(self, *perms: str) -> None:
         if self.is_site_admin:
             return
         if not any(p in self.permissions for p in perms):
             raise AppError("forbidden", "权限不足", status_code=403)
 
-    def resolve_merchant_id(self, requested: int | None = None) -> int:
-        """非超管强制本商户；超管可指定商户。"""
+    def resolve_merchant_id(self, requested: int | None = None, *, required: bool = True) -> int | None:
+        """非超管强制本商户；超管可指定商户。
+
+        required=False 时超管可不传商户，表示「全部商户」列表筛选。
+        """
         if self.is_site_admin:
             mid = requested if requested is not None else self.merchant_id
-            if mid is None:
+            if mid is None and required:
                 raise AppError("merchant_required", "请指定 merchant_id", status_code=400)
             return mid
         if self.merchant_id is None:

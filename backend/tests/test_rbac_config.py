@@ -20,6 +20,32 @@ def test_sync_manifests_via_seed(client: TestClient, admin_headers: dict):
     assert codes >= {"platform", "gym", "catering"}
 
 
+def test_gym_navigation_splits_ops_and_config(client: TestClient, admin_headers: dict):
+    nav = client.get("/api/v1/me/navigation", headers=admin_headers)
+    assert nav.status_code == 200, nav.text
+    gym_paths = {m["path"] for m in nav.json()["menus"] if m["subsystem_code"] == "gym"}
+    assert {
+        "/memberships",
+        "/group-courses",
+        "/group-bookings",
+        "/pt-packages",
+        "/coach-desk",
+        "/retail",
+        "/retail-categories",
+        "/retail-products",
+        "/products",
+        "/pt-products",
+        "/group-templates",
+        "/coaches",
+        "/equipment",
+        "/equipment-repairs",
+    } <= gym_paths
+    # 办卡/续卡/收银不单独占菜单，走运营页内弹窗
+    assert "/memberships/purchase" not in gym_paths
+    assert "/memberships/renew" not in gym_paths
+    assert "/retail/sell" not in gym_paths
+
+
 def test_disable_gym_hides_from_navigation(client: TestClient, admin_headers: dict):
     patch = client.patch(
         "/api/v1/rbac/subsystems/gym",

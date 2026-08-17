@@ -27,6 +27,7 @@ class Member(Base):
     site_id: Mapped[int] = mapped_column(ForeignKey("sites.id"), nullable=False, index=True)
     phone: Mapped[str] = mapped_column(String(32), nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     face_status: Mapped[str] = mapped_column(String(32), default=FaceStatus.NOT_ENROLLED.value, nullable=False)
     acquisition_source: Mapped[str] = mapped_column(
         String(32), default=AcquisitionSource.PLATFORM.value, nullable=False

@@ -1,11 +1,12 @@
 """零售分类、SKU、库存与收银 API。"""
 
+import re
 from datetime import datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -13,8 +14,9 @@ from app.core.deps import RequestContext, get_current_context
 from app.core.domain.subsystems import assert_merchant_has_system
 from app.core.errors import AppError
 from app.core.schemas.common import OrderOut
-from app.core.schemas.paging import PageOut
+from app.core.schemas.paging import PageOut, paginate
 from app.systems.platform.models.commerce import Order, OrderStatus
+from app.systems.platform.models.identity import StaffUser
 from app.systems.platform.models.member import Member
 from app.systems.gym.models.retail import ProductCategory, RetailOrderItem, RetailOrderLink, RetailSku, StockMovement
 from app.systems.platform.services.audit import write_audit
@@ -55,6 +57,8 @@ class SkuIn(BaseModel):
     promo_price: Decimal | None = None
     promo_starts_at: datetime | None = None
     promo_ends_at: datetime | None = None
+    remark: str | None = Field(default=None, max_length=500)
+    image_urls: list[str] = Field(default_factory=list)
 
 
 class SkuOut(ORMModel):
@@ -72,6 +76,8 @@ class SkuOut(ORMModel):
     promo_starts_at: datetime | None = None
     promo_ends_at: datetime | None = None
     effective_price: Decimal | None = None
+    remark: str | None = None
+    image_urls: list[str] = Field(default_factory=list)
 
 
 class StockInBody(BaseModel):
@@ -98,6 +104,7 @@ class MovementOut(ORMModel):
     order_id: int | None
     note: str | None
     created_at: datetime
+    actor_name: str | None = None
 
 
 class RetailLineIn(BaseModel):
@@ -112,21 +119,37 @@ class RetailOrderIn(BaseModel):
     member_coupon_id: int | None = None
 
 
-@router.get("/categories", response_model=list[CategoryOut])
+@router.get("/categories", response_model=PageOut[CategoryOut])
 def list_categories(
     merchant_id: int | None = None,
+    q: str | None = None,
+    is_active: bool | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
     ctx: RequestContext = Depends(get_current_context),
 ):
     ctx.require_permission("retail:read", "retail:manage", "retail:sell")
-    mid = ctx.resolve_merchant_id(merchant_id)
-    return list(
-        db.scalars(
-            select(ProductCategory)
-            .where(ProductCategory.merchant_id == mid)
-            .order_by(ProductCategory.sort_order, ProductCategory.id)
-        ).all()
+    mid = ctx.resolve_merchant_id(merchant_id, required=False)
+    stmt = select(ProductCategory)
+    if mid is not None:
+        stmt = stmt.where(ProductCategory.merchant_id == mid)
+    keyword = (q or "").strip()
+    if keyword:
+        like = f"%{keyword}%"
+        conds = [ProductCategory.name.ilike(like)]
+        if keyword.isdigit():
+            conds.append(ProductCategory.id == int(keyword))
+        stmt = stmt.where(or_(*conds))
+    if is_active is not None:
+        stmt = stmt.where(ProductCategory.is_active.is_(is_active))
+    rows, total = paginate(
+        db,
+        stmt.order_by(ProductCategory.sort_order, ProductCategory.id),
+        page=page,
+        page_size=page_size,
     )
+    return PageOut(items=rows, total=total, page=page, page_size=page_size)
 
 
 @router.post("/categories", response_model=CategoryOut)
@@ -145,20 +168,116 @@ def create_category(
     return cat
 
 
-@router.get("/skus", response_model=list[SkuOut])
+@router.patch("/categories/{category_id}", response_model=CategoryOut)
+def update_category(
+    category_id: int,
+    body: CategoryIn,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    ctx.require_permission("retail:manage")
+    cat = db.get(ProductCategory, category_id)
+    if cat is None:
+        raise AppError("not_found", "分类不存在", status_code=404)
+    mid = ctx.resolve_merchant_id(body.merchant_id or cat.merchant_id)
+    if cat.merchant_id != mid:
+        raise AppError("forbidden", "禁止跨商户修改", status_code=403)
+    cat.name = body.name.strip()
+    cat.sort_order = body.sort_order
+    db.commit()
+    db.refresh(cat)
+    return cat
+
+
+_SKU_IMAGE_URL_RE = re.compile(r"^/api/v1/files/[0-9a-f]{32}\.(jpg|png|webp)$")
+_MAX_SKU_IMAGES = 9
+
+
+def _normalize_remark(value: str | None) -> str | None:
+    text = (value or "").strip()
+    return text or None
+
+
+def _normalize_image_urls(urls: list[str] | None) -> list[str]:
+    """只接受本系统已上传的图片地址，去重且最多 9 张。"""
+    out: list[str] = []
+    for raw in urls or []:
+        url = (raw or "").strip()
+        if not url:
+            continue
+        if not _SKU_IMAGE_URL_RE.match(url):
+            raise AppError("invalid_image", "图片地址无效，请通过系统上传", status_code=400)
+        if url not in out:
+            out.append(url)
+    if len(out) > _MAX_SKU_IMAGES:
+        raise AppError("too_many_images", "最多上传 9 张图片", status_code=400)
+    return out
+
+
+def _sku_out(s: RetailSku) -> SkuOut:
+    return SkuOut(
+        id=s.id,
+        merchant_id=s.merchant_id,
+        category_id=s.category_id,
+        name=s.name,
+        price=s.price,
+        unit=s.unit,
+        barcode=s.barcode,
+        stock_qty=s.stock_qty,
+        low_stock_threshold=s.low_stock_threshold,
+        is_active=s.is_active,
+        promo_price=s.promo_price,
+        promo_starts_at=s.promo_starts_at,
+        promo_ends_at=s.promo_ends_at,
+        effective_price=effective_price(s.price, s.promo_price, s.promo_starts_at, s.promo_ends_at),
+        remark=s.remark,
+        image_urls=list(s.image_urls or []),
+    )
+
+
+@router.get("/skus", response_model=PageOut[SkuOut])
 def list_skus(
     merchant_id: int | None = None,
+    q: str | None = None,
+    category_id: int | None = None,
+    is_active: bool | None = None,
     low_stock: bool = Query(False),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
     ctx: RequestContext = Depends(get_current_context),
 ):
     ctx.require_permission("retail:read", "retail:manage", "retail:sell")
-    mid = ctx.resolve_merchant_id(merchant_id)
-    q = select(RetailSku).where(RetailSku.merchant_id == mid)
-    rows = list(db.scalars(q.order_by(RetailSku.id.desc())).all())
+    mid = ctx.resolve_merchant_id(merchant_id, required=False)
+    stmt = select(RetailSku)
+    if mid is not None:
+        stmt = stmt.where(RetailSku.merchant_id == mid)
+    if category_id is not None:
+        stmt = stmt.where(RetailSku.category_id == category_id)
+    if is_active is not None:
+        stmt = stmt.where(RetailSku.is_active.is_(is_active))
+    keyword = (q or "").strip()
+    if keyword:
+        like = f"%{keyword}%"
+        stmt = stmt.where(or_(RetailSku.name.ilike(like), RetailSku.barcode.ilike(like)))
     if low_stock:
-        rows = [s for s in rows if s.stock_qty <= s.low_stock_threshold]
-    return rows
+        stmt = stmt.where(RetailSku.stock_qty <= RetailSku.low_stock_threshold)
+    rows, total = paginate(db, stmt.order_by(RetailSku.id.desc()), page=page, page_size=page_size)
+    return PageOut(items=[_sku_out(s) for s in rows], total=total, page=page, page_size=page_size)
+
+
+@router.get("/skus/{sku_id}", response_model=SkuOut)
+def get_sku(
+    sku_id: int,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    ctx.require_permission("retail:read", "retail:manage", "retail:sell")
+    sku = db.get(RetailSku, sku_id)
+    if sku is None:
+        raise AppError("not_found", "商品不存在", status_code=404)
+    ctx.resolve_merchant_id(sku.merchant_id)
+    return _sku_out(sku)
 
 
 @router.post("/skus", response_model=SkuOut)
@@ -177,7 +296,7 @@ def create_sku(
     sku = RetailSku(
         merchant_id=mid,
         category_id=body.category_id,
-        name=body.name,
+        name=body.name.strip(),
         price=body.price,
         unit=body.unit,
         barcode=body.barcode,
@@ -187,6 +306,8 @@ def create_sku(
         promo_price=body.promo_price,
         promo_starts_at=body.promo_starts_at,
         promo_ends_at=body.promo_ends_at,
+        remark=_normalize_remark(body.remark),
+        image_urls=_normalize_image_urls(body.image_urls),
     )
     db.add(sku)
     db.flush()
@@ -202,7 +323,42 @@ def create_sku(
     )
     db.commit()
     db.refresh(sku)
-    return sku
+    return _sku_out(sku)
+
+
+@router.patch("/skus/{sku_id}", response_model=SkuOut)
+def update_sku(
+    sku_id: int,
+    body: SkuIn,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    ctx.require_permission("retail:manage")
+    sku = db.get(RetailSku, sku_id)
+    if sku is None:
+        raise AppError("not_found", "SKU 不存在", status_code=404)
+    mid = ctx.resolve_merchant_id(body.merchant_id or sku.merchant_id)
+    if sku.merchant_id != mid:
+        raise AppError("forbidden", "禁止跨商户修改", status_code=403)
+    if body.category_id is not None:
+        cat = db.get(ProductCategory, body.category_id)
+        if cat is None or cat.merchant_id != mid:
+            raise AppError("invalid_category", "分类无效", status_code=400)
+    sku.category_id = body.category_id
+    sku.name = body.name.strip()
+    sku.price = body.price
+    sku.unit = body.unit
+    sku.barcode = body.barcode
+    sku.low_stock_threshold = body.low_stock_threshold
+    sku.is_active = body.is_active
+    sku.promo_price = body.promo_price
+    sku.promo_starts_at = body.promo_starts_at
+    sku.promo_ends_at = body.promo_ends_at
+    sku.remark = _normalize_remark(body.remark)
+    sku.image_urls = _normalize_image_urls(body.image_urls)
+    db.commit()
+    db.refresh(sku)
+    return _sku_out(sku)
 
 
 @router.post("/skus/{sku_id}/deactivate", response_model=SkuOut)
@@ -285,22 +441,43 @@ def list_movements(
     db: Session = Depends(get_db),
     ctx: RequestContext = Depends(get_current_context),
 ):
-    ctx.require_permission("retail:read", "retail:manage")
-    mid = ctx.resolve_merchant_id(merchant_id)
-    filters = [StockMovement.merchant_id == mid]
+    ctx.require_permission("retail:read", "retail:manage", "retail:sell")
+    mid = ctx.resolve_merchant_id(merchant_id, required=False)
+    filters = [StockMovement.merchant_id == mid] if mid is not None else []
     if sku_id is not None:
         filters.append(StockMovement.sku_id == sku_id)
-    total = db.scalar(select(func.count()).select_from(StockMovement).where(*filters)) or 0
+    base = select(StockMovement)
+    if filters:
+        base = base.where(*filters)
+    total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
     rows = list(
         db.scalars(
-            select(StockMovement)
-            .where(*filters)
+            base
             .order_by(StockMovement.id.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
         ).all()
     )
-    return PageOut(items=rows, total=total, page=page, page_size=page_size)
+    staff_ids = {r.actor_staff_id for r in rows if r.actor_staff_id}
+    names: dict[int, str] = {}
+    if staff_ids:
+        staff_rows = list(db.scalars(select(StaffUser).where(StaffUser.id.in_(staff_ids))).all())
+        names = {s.id: s.display_name for s in staff_rows}
+    items = [
+        MovementOut(
+            id=r.id,
+            sku_id=r.sku_id,
+            movement_type=r.movement_type,
+            quantity_delta=r.quantity_delta,
+            stock_after=r.stock_after,
+            order_id=r.order_id,
+            note=r.note,
+            created_at=r.created_at,
+            actor_name=names.get(r.actor_staff_id) if r.actor_staff_id else None,
+        )
+        for r in rows
+    ]
+    return PageOut(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.post("/orders", response_model=OrderOut)

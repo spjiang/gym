@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import http from '../../../core/api/http'
 import { useAuthStore } from '../../../core/stores/auth'
@@ -28,11 +28,40 @@ const editing = ref<Role | null>(null)
 const grantPerms = ref<string[]>([])
 const grantMenus = ref<string[]>([])
 const creating = ref(false)
+const createVisible = ref(false)
+const query = reactive({ q: '', merchant_id: undefined as number | undefined, is_system: '' as string })
 const form = reactive({
   code: '',
   name: '',
   merchant_id: undefined as number | undefined,
 })
+
+const page = ref(1)
+const pageSize = ref(20)
+const filteredRoles = computed(() => {
+  return roles.value.filter((r) => {
+    const kw = query.q.trim()
+    if (kw && !r.code.includes(kw) && !r.name.includes(kw)) return false
+    if (query.merchant_id !== undefined && r.merchant_id !== query.merchant_id) return false
+    if (query.is_system === '1' && !r.is_system) return false
+    if (query.is_system === '0' && r.is_system) return false
+    return true
+  })
+})
+const pagedRoles = computed(() => {
+  const start = (page.value - 1) * pageSize.value
+  return filteredRoles.value.slice(start, start + pageSize.value)
+})
+watch(query, () => {
+  page.value = 1
+}, { deep: true })
+
+function resetRoleSearch() {
+  query.q = ''
+  query.merchant_id = undefined
+  query.is_system = ''
+  page.value = 1
+}
 
 const isSiteAdmin = computed(() => auth.isSiteAdmin())
 
@@ -114,6 +143,7 @@ async function createRole() {
     form.code = ''
     form.name = ''
     form.merchant_id = undefined
+    createVisible.value = false
     await load()
   } catch (e: unknown) {
     ElMessage.error(e instanceof Error ? e.message : '创建失败')
@@ -148,28 +178,26 @@ onMounted(load)
 <template>
   <div>
     <div class="toolbar">
-      <h3>角色权限</h3>
-      <el-button @click="load">刷新</el-button>
+      <h3>角色配置</h3>
+      <div>
+        <el-button @click="load">刷新</el-button>
+        <el-button type="primary" @click="createVisible = true">新建角色</el-button>
+      </div>
     </div>
 
-    <el-card shadow="never" class="create-card">
-      <div class="create-row">
-        <el-input v-model="form.code" placeholder="角色编码" style="width: 160px" />
-        <el-input v-model="form.name" placeholder="显示名称" style="width: 180px" />
-        <el-select
-          v-if="isSiteAdmin"
-          v-model="form.merchant_id"
-          clearable
-          placeholder="场地级（空）或商户"
-          style="width: 220px"
-        >
-          <el-option v-for="m in merchants" :key="m.id" :label="m.name" :value="m.id" />
-        </el-select>
-        <el-button type="primary" :loading="creating" @click="createRole">新建角色</el-button>
-      </div>
-    </el-card>
+    <div class="filters">
+      <el-input v-model="query.q" clearable placeholder="编码 / 名称" style="width: 200px" />
+      <el-select v-if="isSiteAdmin" v-model="query.merchant_id" clearable placeholder="范围" style="width: 200px">
+        <el-option v-for="m in merchants" :key="m.id" :label="m.name" :value="m.id" />
+      </el-select>
+      <el-select v-model="query.is_system" clearable placeholder="是否系统角色" style="width: 160px">
+        <el-option label="系统角色" value="1" />
+        <el-option label="自定义" value="0" />
+      </el-select>
+      <el-button @click="resetRoleSearch">重置</el-button>
+    </div>
 
-    <el-table :data="roles" v-loading="loading" stripe style="margin-top: 16px">
+    <el-table :data="pagedRoles" v-loading="loading" stripe style="margin-top: 16px">
       <el-table-column prop="code" label="编码" width="140" />
       <el-table-column prop="name" label="名称" min-width="140" />
       <el-table-column label="范围" width="160">
@@ -192,6 +220,17 @@ onMounted(load)
       </el-table-column>
     </el-table>
 
+    <div class="pager">
+      <el-pagination
+        v-model:current-page="page"
+        v-model:page-size="pageSize"
+        :total="filteredRoles.length"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next"
+        background
+      />
+    </div>
+
     <el-drawer v-model="drawer" :title="editing ? `授权 · ${editing.name}` : '授权'" size="520px">
       <h4>权限点</h4>
       <div v-for="(list, sys) in permsBySystem" :key="sys" class="group">
@@ -209,6 +248,26 @@ onMounted(load)
       </div>
       <el-button type="primary" style="margin-top: 16px" @click="saveGrants">保存授权</el-button>
     </el-drawer>
+
+    <el-dialog v-model="createVisible" title="新建角色" width="480px" destroy-on-close>
+      <el-form label-width="90px">
+        <el-form-item label="角色编码">
+          <el-input v-model="form.code" placeholder="如 gym_cashier" />
+        </el-form-item>
+        <el-form-item label="显示名称">
+          <el-input v-model="form.name" />
+        </el-form-item>
+        <el-form-item v-if="isSiteAdmin" label="所属范围">
+          <el-select v-model="form.merchant_id" clearable placeholder="场地级（空）或商户" style="width: 100%">
+            <el-option v-for="m in merchants" :key="m.id" :label="m.name" :value="m.id" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="createVisible = false">取消</el-button>
+        <el-button type="primary" :loading="creating" @click="createRole">创建</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -221,14 +280,16 @@ onMounted(load)
 .toolbar h3 {
   margin: 0;
 }
-.create-card {
-  margin-top: 12px;
-}
-.create-row {
+.filters {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  align-items: center;
+  margin-top: 12px;
+}
+.pager {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
 }
 .group {
   margin-bottom: 14px;

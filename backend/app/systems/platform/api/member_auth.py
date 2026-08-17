@@ -10,7 +10,7 @@ from app.core.db import get_db
 from app.core.deps import MemberContext, get_current_member
 from app.core.errors import AppError
 from app.core.schemas.common import TokenOut
-from app.core.security import create_access_token
+from app.core.security import create_access_token, verify_password
 from app.systems.platform.models.member import AcquisitionSource, FaceStatus, Member, MerchantMember
 from app.systems.platform.models.org import Merchant, MerchantStatus, Site
 from app.systems.platform.models.payment_settings import MemberWechatBinding
@@ -156,6 +156,50 @@ def verify_otp(body: OtpVerifyIn, db: Session = Depends(get_db)):
         target_type="member",
         target_id=member.id,
         summary="会员验证码登录成功",
+        site_id=member.site_id,
+        merchant_id=body.merchant_id,
+    )
+    db.commit()
+    return TokenOut(access_token=token)
+
+
+class PasswordLoginIn(BaseModel):
+    phone: str = Field(min_length=5, max_length=32)
+    password: str = Field(min_length=1, max_length=64)
+    merchant_id: int | None = None
+
+
+@router.post("/password", response_model=TokenOut)
+def login_with_password(body: PasswordLoginIn, db: Session = Depends(get_db)):
+    """已设置密码的会员可用手机号+密码登录；未设置则需走验证码。"""
+    member = db.scalar(select(Member).where(Member.phone == body.phone.strip()))
+    if member is None or not member.password_hash or not verify_password(body.password, member.password_hash):
+        raise AppError("invalid_credentials", "手机号或密码错误", status_code=401)
+
+    merchant = _resolve_merchant(db, body.merchant_id, site_id=member.site_id)
+    if merchant is not None:
+        linked = _ensure_link(db, member_id=member.id, merchant_id=merchant.id)
+        if linked:
+            write_audit(
+                db,
+                action="member.link_merchant",
+                target_type="member",
+                target_id=member.id,
+                summary=f"密码登录挂靠商户 merchant_id={merchant.id}",
+                site_id=member.site_id,
+                merchant_id=merchant.id,
+            )
+
+    token = create_access_token(
+        subject=str(member.id),
+        extra={"site_id": member.site_id, "typ": "member"},
+    )
+    write_audit(
+        db,
+        action="member.login",
+        target_type="member",
+        target_id=member.id,
+        summary="会员密码登录成功",
         site_id=member.site_id,
         merchant_id=body.merchant_id,
     )

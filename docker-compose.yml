@@ -22,8 +22,16 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-gym}:${POSTGRES_PASSWORD:-gym_dev_password}@postgres:5432/${POSTGRES_DB:-gym}
+      UPLOAD_DIR: /app/uploads
+      UVICORN_RELOAD: "1"
     ports:
       - "18000:8000"
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/alembic:/app/alembic
+      - ./backend/alembic.ini:/app/alembic.ini
+      - ./backend/scripts:/app/scripts
+      - backend_uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -64,3 +72,4 @@ services:
 
 volumes:
   postgres_data:
+  backend_uploads:

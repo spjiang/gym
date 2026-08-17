@@ -1,39 +1,43 @@
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=Sora:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@600;800&family=Noto+Sans+SC:wght@400;500;600;700&display=swap');
 
-/* 管理后台主题：石墨侧栏 + 暖石画布 + 铜绿强调
- * 文字对比度按交付标准强制覆盖 Element Plus 变量，避免主色按钮/占位符看不清。
- */
+/* 观野 VI：炭黑 / 暖白 / 活力橙 / 电光青 / 中性灰 */
 :root {
-  --admin-bg: #efeae2;
-  --admin-bg-accent: #e4ddd2;
-  --admin-surface: #fbf8f3;
-  --admin-surface-elevated: #ffffff;
-  --admin-ink: #1c1917;
-  --admin-ink-muted: #57534e;
-  --admin-line: rgba(28, 25, 23, 0.1);
-  --admin-aside: #141816;
-  --admin-aside-elevated: #1c221f;
-  --admin-aside-text: #c5cbc6;
-  --admin-aside-active: #f5f0e8;
-  --admin-accent: #3d6b5c;
-  --admin-accent-strong: #2f5549;
-  --admin-accent-soft: rgba(61, 107, 92, 0.12);
-  --admin-copper: #a67c52;
+  --brand-black: #171b1f;
+  --brand-white: #f2e6d2;
+  --brand-orange: #f36b21;
+  --brand-cyan: #14b8d4;
+  --brand-gray: #7d8389;
+  --admin-bg: #f2e6d2;
+  --admin-bg-accent: #e8dcc6;
+  --admin-surface: #f7efe2;
+  --admin-surface-elevated: #fffaf3;
+  --admin-ink: #171b1f;
+  --admin-ink-muted: #7d8389;
+  --admin-line: rgba(23, 27, 31, 0.1);
+  --admin-aside: #171b1f;
+  --admin-aside-elevated: #1f2429;
+  --admin-aside-text: #c8c2b6;
+  --admin-aside-active: #f2e6d2;
+  --brand-teal: #14b8d4;
+  --admin-accent: #f36b21;
+  --admin-accent-strong: #d85a16;
+  --admin-accent-soft: rgba(243, 107, 33, 0.12);
+  --admin-copper: #f36b21;
   --admin-danger: #b42318;
-  --admin-radius: 14px;
-  --admin-shadow: 0 1px 0 rgba(28, 25, 23, 0.04), 0 18px 40px -28px rgba(28, 25, 23, 0.35);
-  --admin-font: 'Sora', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+  --admin-radius: 8px;
+  --admin-shadow: 0 1px 0 rgba(23, 27, 31, 0.04), 0 12px 28px -24px rgba(23, 27, 31, 0.35);
+  --admin-font: 'Noto Sans SC', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
 
   /* —— Element Plus 全局色板（对比度优先） —— */
-  --el-color-white: #ffffff;
-  --el-color-black: #1c1917;
-  --el-color-primary: #3d6b5c;
-  --el-color-primary-light-3: #5f8779;
-  --el-color-primary-light-5: #8eada3;
-  --el-color-primary-light-7: #b9cdc7;
-  --el-color-primary-light-8: #d0ddd8;
-  --el-color-primary-light-9: #e8efec;
-  --el-color-primary-dark-2: #2f5549;
+  --el-color-white: #fffaf3;
+  --el-color-black: #171b1f;
+  --el-color-primary: #f36b21;
+  --el-color-primary-light-3: #f58a4e;
+  --el-color-primary-light-5: #f8a87a;
+  --el-color-primary-light-7: #fbc6a7;
+  --el-color-primary-light-8: #fcd8c3;
+  --el-color-primary-light-9: #feeee6;
+  --el-color-primary-dark-2: #d85a16;
 
   --el-text-color-primary: #1c1917;
   --el-text-color-regular: #292524;
@@ -80,11 +84,7 @@ body,
 body {
   font-family: var(--admin-font);
   color: var(--admin-ink);
-  background:
-    radial-gradient(1200px 600px at 12% -10%, rgba(166, 124, 82, 0.12), transparent 55%),
-    radial-gradient(900px 500px at 90% 0%, rgba(61, 107, 92, 0.1), transparent 50%),
-    linear-gradient(180deg, var(--admin-bg) 0%, var(--admin-bg-accent) 100%);
-  background-attachment: fixed;
+  background: var(--admin-bg);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -118,26 +118,26 @@ p {
   --el-button-hover-bg-color: var(--admin-accent-strong);
   --el-button-hover-border-color: var(--admin-accent-strong);
   --el-button-active-text-color: #ffffff;
-  --el-button-active-bg-color: #27463c;
-  --el-button-active-border-color: #27463c;
-  --el-button-disabled-text-color: #ffffff;
-  --el-button-disabled-bg-color: #8eada3;
-  --el-button-disabled-border-color: #8eada3;
+  --el-button-active-bg-color: #c44f12;
+  --el-button-active-border-color: #c44f12;
+  --el-button-disabled-text-color: #f2e6d2;
+  --el-button-disabled-bg-color: #f8a87a;
+  --el-button-disabled-border-color: #f8a87a;
   color: #ffffff !important;
   font-weight: 600;
 }
 
 .el-button--primary.is-plain {
-  --el-button-text-color: #2f5549;
-  --el-button-bg-color: #e8efec;
-  --el-button-border-color: #7fa396;
+  --el-button-text-color: #d85a16;
+  --el-button-bg-color: #feeee6;
+  --el-button-border-color: #f8a87a;
   --el-button-hover-text-color: #ffffff;
   --el-button-hover-bg-color: var(--admin-accent);
   --el-button-hover-border-color: var(--admin-accent);
   --el-button-active-text-color: #ffffff;
-  color: #2f5549 !important;
-  background-color: #e8efec !important;
-  border-color: #7fa396 !important;
+  color: #d85a16 !important;
+  background-color: #feeee6 !important;
+  border-color: #f8a87a !important;
 }
 
 .el-button--primary.is-plain:hover,
@@ -154,9 +154,16 @@ p {
   border-color: transparent !important;
 }
 
-.el-button--warning {
+.el-button--warning:not(.is-link):not(.is-text):not(.is-plain) {
   --el-button-text-color: #ffffff;
   color: #ffffff !important;
+}
+
+.el-button--warning.is-link,
+.el-button--warning.is-text {
+  color: var(--admin-accent-strong) !important;
+  background: transparent !important;
+  border-color: transparent !important;
 }
 
 .el-button--warning.is-plain {
@@ -320,13 +327,53 @@ p {
   font-weight: 600;
 }
 
+.el-dialog,
 .el-dialog__body {
+  overflow: visible;
   color: #292524;
+}
+
+/* 优惠券下拉挂到 body，需用全局样式撑开默认 34px 行高 */
+.coupon-select-popper .el-select-dropdown__item {
+  height: auto !important;
+  min-height: 34px;
+  line-height: 1.4;
+  white-space: normal;
+  padding: 8px 12px;
+}
+
+.coupon-select-popper .coupon-option__name {
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.coupon-select-popper .coupon-option__meta {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  white-space: normal;
 }
 
 .el-message-box__message,
 .el-message__content {
   color: #1c1917;
+}
+
+/* 签到提示要盖在会籍/名单弹窗之上 */
+.el-overlay.checkin-time-alert-overlay,
+.el-overlay.is-message-box:has(.checkin-time-alert) {
+  z-index: 5000 !important;
+}
+
+.el-dialog.checkin-time-alert,
+.el-message-box.checkin-time-alert {
+  z-index: 5001 !important;
+}
+
+.el-message-box.checkin-time-alert .el-message-box__message {
+  white-space: normal;
+  line-height: 1.7;
+  color: #44403c;
 }
 
 .el-pagination {

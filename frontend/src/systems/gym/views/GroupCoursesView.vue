@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
-import { bookingStatusLabel, sessionStatusLabel } from '../../../core/labels'
+import { sessionStatusLabel } from '../../../core/labels'
 import { merchantsWithSystem } from '../../../core/nav/systems'
+import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
 
 type Merchant = { id: number; name: string; subsystem_codes?: string[] }
-type Member = { id: number; name: string; phone: string }
 type Coach = { id: number; display_name: string; is_active: boolean }
 type Course = { id: number; name: string; default_capacity: number }
 type Session = {
@@ -19,34 +20,37 @@ type Session = {
   capacity: number
   status: string
 }
-type Booking = {
-  id: number
-  session_id: number
-  member_id: number
-  status: string
-  member?: { id: number; name: string; phone: string } | null
-}
+type Page<T> = { items: T[]; total: number; page: number; page_size: number }
 
+const router = useRouter()
 const merchants = ref<Merchant[]>([])
-const members = ref<Member[]>([])
 const coaches = ref<Coach[]>([])
 const courses = ref<Course[]>([])
 const sessions = ref<Session[]>([])
-const bookings = ref<Booking[]>([])
-const merchantId = ref<number | undefined>()
-const selectedSessionId = ref<number | undefined>()
+const { merchantId, requireMerchant } = useOpsMerchant(() => {
+  page.value = 1
+  void refresh()
+})
 const loading = ref(false)
+const total = ref(0)
+const page = ref(1)
+const pageSize = ref(20)
+const query = reactive({
+  q: '',
+  course_id: undefined as number | undefined,
+  coach_id: undefined as number | undefined,
+  status: '' as string,
+  on_date: '' as string,
+})
 
-const courseDialog = ref(false)
 const sessionDialog = ref(false)
-const bookDialog = ref(false)
+const detailVisible = ref(false)
 const submitting = ref(false)
+const editingId = ref<number | null>(null)
+const detail = ref<Session | null>(null)
 
-const courseFormRef = ref<FormInstance>()
 const sessionFormRef = ref<FormInstance>()
-const bookFormRef = ref<FormInstance>()
 
-const courseForm = reactive({ name: '', default_capacity: 20 })
 const sessionForm = reactive({
   course_id: undefined as number | undefined,
   coach_id: undefined as number | undefined,
@@ -54,13 +58,8 @@ const sessionForm = reactive({
   ends_at: '',
   room: '',
   capacity: 20,
+  status: 'open',
 })
-const bookForm = reactive({ member_id: undefined as number | undefined })
-
-const courseRules: FormRules = {
-  name: [{ required: true, message: '请填写课程名称', trigger: 'blur' }],
-}
-
 const sessionRules: FormRules = {
   course_id: [{ required: true, message: '请选择课程', trigger: 'change' }],
   coach_id: [{ required: true, message: '请选择教练', trigger: 'change' }],
@@ -68,13 +67,7 @@ const sessionRules: FormRules = {
   ends_at: [{ required: true, message: '请填写结束时间', trigger: 'blur' }],
 }
 
-const bookRules: FormRules = {
-  member_id: [{ required: true, message: '请选择会员', trigger: 'change' }],
-}
-
-const selectedSession = computed(() =>
-  sessions.value.find((s) => s.id === selectedSessionId.value),
-)
+const activeCoaches = computed(() => coaches.value.filter((x) => x.is_active))
 
 function courseName(id: number) {
   return courses.value.find((c) => c.id === id)?.name || `#${id}`
@@ -84,35 +77,53 @@ function coachName(id: number) {
   return coaches.value.find((c) => c.id === id)?.display_name || `#${id}`
 }
 
-function memberName(id: number, row?: Booking) {
-  if (row?.member) return `${row.member.name} ${row.member.phone}`
-  const m = members.value.find((x) => x.id === id)
-  return m ? `${m.name} ${m.phone}` : `#${id}`
+function fmtTime(iso: string | null | undefined) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function toPickerValue(iso: string) {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 19)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00`
 }
 
 async function refresh() {
   loading.value = true
   try {
-    const [m, mem] = await Promise.all([
-      http.get('/merchants'),
-      http.get('/members', { params: { page: 1, page_size: 100 } }),
-    ])
-    merchants.value = merchantsWithSystem(m.data, 'gym')
-    members.value = mem.data.items
-    if (!merchantId.value && merchants.value[0]) merchantId.value = merchants.value[0].id
+    const { data: merchantRows } = await http.get('/merchants')
+    merchants.value = merchantsWithSystem(merchantRows, 'gym')
     if (merchantId.value && !merchants.value.some((x) => x.id === merchantId.value)) {
-      merchantId.value = merchants.value[0]?.id
+      merchantId.value = undefined
     }
-    if (!merchantId.value) return
     const [c, co, s] = await Promise.all([
-      http.get('/group-courses', { params: { merchant_id: merchantId.value } }),
-      http.get('/coaches', { params: { merchant_id: merchantId.value } }),
-      http.get('/group-sessions', { params: { merchant_id: merchantId.value } }),
+      http.get('/group-courses', { params: { merchant_id: merchantId.value, page: 1, page_size: 100 } }),
+      http.get('/coaches', { params: { merchant_id: merchantId.value, page: 1, page_size: 100 } }),
+      http.get<Page<Session>>('/group-sessions', {
+        params: {
+          merchant_id: merchantId.value,
+          q: query.q.trim() || undefined,
+          course_id: query.course_id,
+          coach_id: query.coach_id,
+          status: query.status || undefined,
+          on_date: query.on_date || undefined,
+          page: page.value,
+          page_size: pageSize.value,
+        },
+      }),
     ])
-    courses.value = c.data
-    coaches.value = co.data.filter((x: Coach) => x.is_active)
-    sessions.value = s.data
-    if (selectedSessionId.value) await loadBookings()
+    courses.value = c.data.items
+    coaches.value = co.data.items
+    sessions.value = s.data.items
+    total.value = s.data.total
+    if (detail.value) {
+      const latest = sessions.value.find((x) => x.id === detail.value?.id)
+      if (latest) detail.value = latest
+    }
   } catch (e: unknown) {
     ElMessage.error(e instanceof Error ? e.message : '加载失败')
   } finally {
@@ -120,117 +131,106 @@ async function refresh() {
   }
 }
 
-async function loadBookings() {
-  if (!selectedSessionId.value) return
-  const { data } = await http.get('/group-bookings', {
-    params: {
-      merchant_id: merchantId.value,
-      session_id: selectedSessionId.value,
-      page: 1,
-      page_size: 100,
-    },
-  })
-  bookings.value = data.items
+function search() {
+  page.value = 1
+  void refresh()
 }
 
-function openCourseDialog() {
-  courseForm.name = ''
-  courseForm.default_capacity = 20
-  courseFormRef.value?.clearValidate()
-  courseDialog.value = true
+function resetSearch() {
+  query.q = ''
+  query.course_id = undefined
+  query.coach_id = undefined
+  query.status = ''
+  query.on_date = ''
+  page.value = 1
+  void refresh()
 }
 
-async function createCourse() {
-  const ok = await courseFormRef.value?.validate().catch(() => false)
-  if (!ok) return
-  submitting.value = true
-  try {
-    await http.post('/group-courses', {
-      merchant_id: merchantId.value,
-      name: courseForm.name.trim(),
-      default_capacity: courseForm.default_capacity,
-    })
-    ElMessage.success('课程已创建')
-    courseDialog.value = false
-    await refresh()
-  } catch (e: unknown) {
-    ElMessage.error(e instanceof Error ? e.message : '创建失败')
-  } finally {
-    submitting.value = false
-  }
+function openDetail(row: Session) {
+  detail.value = row
+  detailVisible.value = true
 }
 
-function openSessionDialog() {
+function resetSessionForm() {
   sessionForm.course_id = courses.value[0]?.id
-  sessionForm.coach_id = coaches.value[0]?.id
+  sessionForm.coach_id = activeCoaches.value[0]?.id
   sessionForm.starts_at = ''
   sessionForm.ends_at = ''
   sessionForm.room = ''
   sessionForm.capacity = courses.value[0]?.default_capacity || 20
+  sessionForm.status = 'open'
+}
+
+function openSessionDialog() {
+  editingId.value = null
+  resetSessionForm()
   sessionFormRef.value?.clearValidate()
   sessionDialog.value = true
 }
 
-async function createSession() {
+function openEdit(row: Session) {
+  editingId.value = row.id
+  sessionForm.course_id = row.course_id
+  sessionForm.coach_id = row.coach_id
+  sessionForm.starts_at = toPickerValue(row.starts_at)
+  sessionForm.ends_at = toPickerValue(row.ends_at)
+  sessionForm.room = row.room || ''
+  sessionForm.capacity = row.capacity
+  sessionForm.status = row.status
+  sessionFormRef.value?.clearValidate()
+  sessionDialog.value = true
+}
+
+async function saveSession() {
   const ok = await sessionFormRef.value?.validate().catch(() => false)
-  if (!ok) return
+  const mid = requireMerchant()
+  if (!ok || !mid) return
   submitting.value = true
   try {
-    await http.post('/group-sessions', {
-      merchant_id: merchantId.value,
+    const payload = {
+      merchant_id: mid,
       course_id: sessionForm.course_id,
       coach_id: sessionForm.coach_id,
       starts_at: new Date(sessionForm.starts_at).toISOString(),
       ends_at: new Date(sessionForm.ends_at).toISOString(),
       room: sessionForm.room,
       capacity: sessionForm.capacity,
-    })
-    ElMessage.success('场次已排')
+      status: sessionForm.status,
+    }
+    if (editingId.value) {
+      await http.patch(`/group-sessions/${editingId.value}`, payload)
+      ElMessage.success('场次已更新')
+    } else {
+      await http.post('/group-sessions', payload)
+      ElMessage.success('场次已排')
+    }
     sessionDialog.value = false
     await refresh()
   } catch (e: unknown) {
-    ElMessage.error(e instanceof Error ? e.message : '排课失败')
+    ElMessage.error(e instanceof Error ? e.message : editingId.value ? '更新失败' : '排课失败')
   } finally {
     submitting.value = false
   }
 }
 
-function openBookDialog() {
-  bookForm.member_id = undefined
-  bookFormRef.value?.clearValidate()
-  bookDialog.value = true
-}
-
-async function book() {
-  const ok = await bookFormRef.value?.validate().catch(() => false)
-  if (!ok) return
-  submitting.value = true
+async function removeSession(row: Session) {
   try {
-    await http.post('/group-bookings', {
-      merchant_id: merchantId.value,
-      session_id: selectedSessionId.value,
-      member_id: bookForm.member_id,
-    })
-    ElMessage.success('代约成功')
-    bookDialog.value = false
-    await loadBookings()
-  } catch (e: unknown) {
-    ElMessage.error(e instanceof Error ? e.message : '预约失败')
-  } finally {
-    submitting.value = false
+    await ElMessageBox.confirm(
+      `确认删除「${courseName(row.course_id)}」这场课？删除后不可预约，已预约会员会被取消；记录仍会保留。`,
+      '删除确认',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消', appendTo: document.body },
+    )
+  } catch {
+    return
   }
-}
-
-async function cancel(id: number) {
-  await http.post(`/group-bookings/${id}/cancel`, { force: true })
-  ElMessage.success('已取消')
-  await loadBookings()
-}
-
-async function checkin(id: number, status: string) {
-  await http.post(`/group-bookings/${id}/checkin`, { status })
-  ElMessage.success('签到已更新')
-  await loadBookings()
+  try {
+    await http.delete(`/group-sessions/${row.id}`)
+    ElMessage.success('场次已删除')
+    if (detail.value?.id === row.id) detailVisible.value = false
+    await refresh()
+  } catch (e: unknown) {
+    ElMessage.error(e instanceof Error ? e.message : '删除失败')
+  }
 }
 
 onMounted(refresh)
@@ -239,99 +239,130 @@ onMounted(refresh)
 <template>
   <div>
     <div class="toolbar">
-      <h3>团课排课</h3>
+      <div>
+        <h3>团课排课</h3>
+        <p class="lead">安排场次。课种请先在「团课管理 → 团课模板」建好；代约请到「团课管理 → 团课代约」。</p>
+      </div>
       <div class="toolbar-actions">
-        <el-button type="primary" plain @click="openCourseDialog">新建团课模板</el-button>
+        <el-button @click="router.push('/group-templates')">团课模板</el-button>
         <el-button type="primary" @click="openSessionDialog">排场次</el-button>
       </div>
     </div>
 
-    <el-form inline>
+    <el-alert
+      v-if="!loading && courses.length === 0"
+      type="warning"
+      :closable="false"
+      show-icon
+      style="margin-bottom: 16px"
+      title="还没有团课模板，无法排场次。请先到「团课管理 → 团课模板」创建课种。"
+    />
+
+    <el-form inline class="filters">
       <el-form-item label="商户">
-        <el-select v-model="merchantId" style="width: 200px" @change="refresh">
+        <el-select v-model="merchantId" clearable placeholder="全部商户" style="width: 180px">
           <el-option v-for="m in merchants" :key="m.id" :label="m.name" :value="m.id" />
         </el-select>
       </el-form-item>
+      <el-form-item label="关键词">
+        <el-input v-model="query.q" clearable placeholder="课程 / 教练 / 教室 / ID" style="width: 200px" @keyup.enter="search" />
+      </el-form-item>
+      <el-form-item label="课程">
+        <el-select v-model="query.course_id" clearable placeholder="全部" style="width: 140px">
+          <el-option v-for="c in courses" :key="c.id" :label="c.name" :value="c.id" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="教练">
+        <el-select v-model="query.coach_id" clearable placeholder="全部" style="width: 140px">
+          <el-option v-for="c in coaches" :key="c.id" :label="c.display_name" :value="c.id" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="状态">
+        <el-select v-model="query.status" clearable placeholder="全部" style="width: 120px">
+          <el-option label="可预约" value="open" />
+          <el-option label="已取消" value="cancelled" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="日期">
+        <el-date-picker
+          v-model="query.on_date"
+          type="date"
+          value-format="YYYY-MM-DD"
+          placeholder="上课日期"
+          style="width: 150px"
+        />
+      </el-form-item>
+      <el-form-item>
+        <el-button type="primary" @click="search">查询</el-button>
+        <el-button @click="resetSearch">重置</el-button>
+      </el-form-item>
     </el-form>
 
-    <h3 class="section-title">团课模板</h3>
-    <el-table :data="courses" v-loading="loading" stripe style="margin-bottom: 28px">
+    <el-table :data="sessions" v-loading="loading" stripe style="width: 100%">
       <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column prop="name" label="名称" />
-      <el-table-column prop="default_capacity" label="默认上限" width="110" />
-    </el-table>
-
-    <h3 class="section-title">场次</h3>
-    <el-table
-      :data="sessions"
-      v-loading="loading"
-      stripe
-      highlight-current-row
-      @current-change="(row: Session | undefined) => { selectedSessionId = row?.id; loadBookings() }"
-    >
-      <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column label="课程" width="140">
+      <el-table-column label="课程" min-width="160">
         <template #default="{ row }">{{ courseName(row.course_id) }}</template>
       </el-table-column>
-      <el-table-column label="教练" width="120">
+      <el-table-column label="教练" min-width="140">
         <template #default="{ row }">{{ coachName(row.coach_id) }}</template>
       </el-table-column>
-      <el-table-column prop="starts_at" label="开始" />
+      <el-table-column label="开始" min-width="180">
+        <template #default="{ row }">{{ fmtTime(row.starts_at) }}</template>
+      </el-table-column>
       <el-table-column prop="capacity" label="上限" width="80" />
-      <el-table-column prop="room" label="教室" width="100" />
+      <el-table-column prop="room" label="教室" min-width="140" />
       <el-table-column label="状态" width="90">
         <template #default="{ row }">{{ sessionStatusLabel(row.status) }}</template>
       </el-table-column>
+      <el-table-column label="操作" width="180" fixed="right">
+        <template #default="{ row }">
+          <el-button link type="primary" @click="openDetail(row)">详情</el-button>
+          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+          <el-button v-if="row.status !== 'cancelled'" link type="danger" @click="removeSession(row)">删除</el-button>
+        </template>
+      </el-table-column>
     </el-table>
 
-    <el-card v-if="selectedSessionId" header="预约名单" style="margin-top: 16px">
-      <div class="card-toolbar">
-        <span class="card-hint">场次 #{{ selectedSessionId }} · {{ courseName(selectedSession?.course_id || 0) }}</span>
-        <el-button type="primary" plain size="small" @click="openBookDialog">代约</el-button>
-      </div>
-      <el-table :data="bookings" stripe style="margin-top: 12px">
-        <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column label="会员" width="220">
-          <template #default="{ row }">{{ memberName(row.member_id, row) }}</template>
-        </el-table-column>
-        <el-table-column label="状态" width="110">
-          <template #default="{ row }">
-            <el-tag
-              size="small"
-              :type="row.status === 'attended' ? 'success' : row.status === 'cancelled' ? 'info' : 'warning'"
-            >
-              {{ bookingStatusLabel(row.status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="260">
-          <template #default="{ row }">
-            <el-button v-if="row.status === 'booked'" link type="danger" @click="cancel(row.id)">取消</el-button>
-            <el-button v-if="row.status === 'booked'" link type="success" @click="checkin(row.id, 'attended')">出席</el-button>
-            <el-button v-if="row.status === 'booked'" link @click="checkin(row.id, 'no_show')">未出席</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+    <div class="pager">
+      <el-pagination
+        v-model:current-page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next"
+        background
+        @current-change="refresh"
+        @size-change="
+          () => {
+            page = 1
+            refresh()
+          }
+        "
+      />
+    </div>
 
-    <!-- 新建团课模板弹窗 -->
-    <el-dialog v-model="courseDialog" title="新建团课模板" width="460px" destroy-on-close>
-      <el-form ref="courseFormRef" :model="courseForm" :rules="courseRules" label-width="90px">
-        <el-form-item label="名称" prop="name">
-          <el-input v-model="courseForm.name" placeholder="如：燃脂操 / 瑜伽" maxlength="128" />
-        </el-form-item>
-        <el-form-item label="默认上限">
-          <el-input-number v-model="courseForm.default_capacity" :min="1" style="width: 100%" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="courseDialog = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="createCourse">创建</el-button>
+    <el-drawer v-model="detailVisible" title="场次详情" size="520px" destroy-on-close>
+      <template v-if="detail">
+        <el-descriptions :column="1" border>
+          <el-descriptions-item label="ID">{{ detail.id }}</el-descriptions-item>
+          <el-descriptions-item label="课程">{{ courseName(detail.course_id) }}</el-descriptions-item>
+          <el-descriptions-item label="教练">{{ coachName(detail.coach_id) }}</el-descriptions-item>
+          <el-descriptions-item label="开始">{{ fmtTime(detail.starts_at) }}</el-descriptions-item>
+          <el-descriptions-item label="结束">{{ fmtTime(detail.ends_at) }}</el-descriptions-item>
+          <el-descriptions-item label="教室">{{ detail.room || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="上限">{{ detail.capacity }}</el-descriptions-item>
+          <el-descriptions-item label="状态">{{ sessionStatusLabel(detail.status) }}</el-descriptions-item>
+        </el-descriptions>
+        <div class="detail-actions">
+          <el-button type="primary" plain @click="openEdit(detail)">编辑</el-button>
+          <el-button v-if="detail.status !== 'cancelled'" type="danger" plain @click="removeSession(detail)">删除</el-button>
+          <el-button @click="detailVisible = false">关闭</el-button>
+        </div>
       </template>
-    </el-dialog>
+    </el-drawer>
 
-    <!-- 排场次弹窗 -->
-    <el-dialog v-model="sessionDialog" title="排场次" width="520px" destroy-on-close>
+    <!-- 排场次 / 编辑场次 -->
+    <el-dialog v-model="sessionDialog" :title="editingId ? '编辑场次' : '排场次'" width="520px" destroy-on-close>
       <el-form ref="sessionFormRef" :model="sessionForm" :rules="sessionRules" label-width="90px">
         <el-form-item label="课程" prop="course_id">
           <el-select v-model="sessionForm.course_id" style="width: 100%">
@@ -340,7 +371,7 @@ onMounted(refresh)
         </el-form-item>
         <el-form-item label="教练" prop="coach_id">
           <el-select v-model="sessionForm.coach_id" style="width: 100%">
-            <el-option v-for="c in coaches" :key="c.id" :label="c.display_name" :value="c.id" />
+            <el-option v-for="c in activeCoaches" :key="c.id" :label="c.display_name" :value="c.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="开始" prop="starts_at">
@@ -367,25 +398,18 @@ onMounted(refresh)
         <el-form-item label="上限">
           <el-input-number v-model="sessionForm.capacity" :min="1" style="width: 100%" />
         </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="sessionDialog = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="createSession">排课</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 代约弹窗 -->
-    <el-dialog v-model="bookDialog" title="代会员预约" width="460px" destroy-on-close>
-      <el-form ref="bookFormRef" :model="bookForm" :rules="bookRules" label-width="90px">
-        <el-form-item label="会员" prop="member_id">
-          <el-select v-model="bookForm.member_id" filterable style="width: 100%">
-            <el-option v-for="x in members" :key="x.id" :label="`${x.name} ${x.phone}`" :value="x.id" />
+        <el-form-item v-if="editingId" label="状态">
+          <el-select v-model="sessionForm.status" style="width: 100%">
+            <el-option label="可预约" value="open" />
+            <el-option label="已取消" value="cancelled" />
           </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="bookDialog = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="book">确认预约</el-button>
+        <el-button @click="sessionDialog = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="saveSession">
+          {{ editingId ? '保存' : '排课' }}
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -401,8 +425,16 @@ onMounted(refresh)
 }
 
 .toolbar h3 {
-  margin: 0;
+  margin: 0 0 6px;
   font-size: 1.1rem;
+}
+
+.lead {
+  margin: 0;
+  max-width: 640px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--el-text-color-secondary);
 }
 
 .toolbar-actions {
@@ -411,20 +443,20 @@ onMounted(refresh)
   flex-wrap: wrap;
 }
 
-.section-title {
-  margin: 0 0 12px;
-  font-size: 0.95rem;
+.filters {
+  margin-bottom: 8px;
 }
 
-.card-toolbar {
+.pager {
+  margin-top: 16px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-end;
 }
 
-.card-hint {
-  font-size: 0.85rem;
-  color: var(--admin-ink-muted);
+.detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
 }
 </style>

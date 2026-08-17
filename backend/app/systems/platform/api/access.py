@@ -13,10 +13,13 @@ from app.core.errors import AppError
 from app.core.schemas.common import (
     AccessPointIn,
     AccessPointOut,
+    AccessPointPatch,
     DeviceOut,
+    DevicePatch,
     DeviceRegisterIn,
     GrantIn,
     GrantOut,
+    GrantPatch,
     MemberBrief,
 )
 from app.core.schemas.paging import PageOut
@@ -44,14 +47,41 @@ class AccessEventAdminOut(ORMModel):
     member: MemberBrief | None = None
 
 
-@router.get("/access-points", response_model=list[AccessPointOut])
-def list_points(db: Session = Depends(get_db), ctx: RequestContext = Depends(get_current_context)):
+@router.get("/access-points")
+def list_points(
+    page: int | None = Query(default=None, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    q: str | None = None,
+    merchant_id: int | None = None,
+    is_public_area: bool | None = None,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
     ctx.require_permission("access:read", "access:manage")
-    q = select(AccessPoint).where(AccessPoint.site_id == ctx.site_id)
+    filters = [AccessPoint.site_id == ctx.site_id]
     if not ctx.is_site_admin:
         mid = ctx.resolve_merchant_id()
-        q = q.where((AccessPoint.merchant_id == mid) | (AccessPoint.is_public_area.is_(True)))
-    return list(db.scalars(q.order_by(AccessPoint.id)).all())
+        filters.append((AccessPoint.merchant_id == mid) | (AccessPoint.is_public_area.is_(True)))
+    elif merchant_id is not None:
+        filters.append((AccessPoint.merchant_id == merchant_id) | (AccessPoint.is_public_area.is_(True)))
+    if is_public_area is not None:
+        filters.append(AccessPoint.is_public_area.is_(is_public_area))
+    keyword = (q or "").strip()
+    if keyword:
+        filters.append(AccessPoint.name.ilike(f"%{keyword}%"))
+    base = select(AccessPoint).where(*filters)
+    if page is None:
+        return list(db.scalars(base.order_by(AccessPoint.id)).all())
+    total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
+    rows = list(
+        db.scalars(base.order_by(AccessPoint.id).offset((page - 1) * page_size).limit(page_size)).all()
+    )
+    return PageOut(
+        items=[AccessPointOut.model_validate(r) for r in rows],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.post("/access-points", response_model=AccessPointOut)
@@ -73,6 +103,32 @@ def create_point(
         is_public_area=body.is_public_area,
     )
     db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.patch("/access-points/{point_id}", response_model=AccessPointOut)
+def patch_point(
+    point_id: int,
+    body: AccessPointPatch,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    ctx.require_permission("access:manage")
+    row = db.get(AccessPoint, point_id)
+    if row is None or row.site_id != ctx.site_id:
+        raise AppError("not_found", "门禁点不存在", status_code=404)
+    if body.name is not None:
+        row.name = body.name.strip()
+    if body.is_public_area is not None:
+        if body.is_public_area and not ctx.is_site_admin:
+            raise AppError("forbidden", "仅超管可设为公共区域", status_code=403)
+        row.is_public_area = body.is_public_area
+        if body.is_public_area:
+            row.merchant_id = None
+    if body.merchant_id is not None and not row.is_public_area:
+        row.merchant_id = ctx.resolve_merchant_id(body.merchant_id)
     db.commit()
     db.refresh(row)
     return row
@@ -104,16 +160,76 @@ def register_device(
     return device
 
 
-@router.get("/devices", response_model=list[DeviceOut])
-def list_devices(db: Session = Depends(get_db), ctx: RequestContext = Depends(get_current_context)):
+@router.get("/devices")
+def list_devices(
+    page: int | None = Query(default=None, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    q: str | None = None,
+    access_point_id: int | None = None,
+    is_online: bool | None = None,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
     ctx.require_permission("access:read", "access:manage")
     points = select(AccessPoint.id).where(AccessPoint.site_id == ctx.site_id)
     if not ctx.is_site_admin:
         mid = ctx.resolve_merchant_id()
         points = points.where((AccessPoint.merchant_id == mid) | (AccessPoint.is_public_area.is_(True)))
-    return list(
-        db.scalars(select(AccessDevice).where(AccessDevice.access_point_id.in_(points)).order_by(AccessDevice.id)).all()
+    filters = [AccessDevice.access_point_id.in_(points)]
+    if access_point_id is not None:
+        filters.append(AccessDevice.access_point_id == access_point_id)
+    if is_online is not None:
+        filters.append(AccessDevice.is_online.is_(is_online))
+    keyword = (q or "").strip()
+    if keyword:
+        filters.append(AccessDevice.device_code.ilike(f"%{keyword}%"))
+    base = select(AccessDevice).where(*filters)
+    if page is None:
+        return list(db.scalars(base.order_by(AccessDevice.id)).all())
+    total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
+    rows = list(
+        db.scalars(base.order_by(AccessDevice.id).offset((page - 1) * page_size).limit(page_size)).all()
     )
+    return PageOut(
+        items=[DeviceOut.model_validate(r) for r in rows],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.patch("/devices/{device_id}", response_model=DeviceOut)
+def patch_device(
+    device_id: int,
+    body: DevicePatch,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    ctx.require_permission("access:manage")
+    device = db.get(AccessDevice, device_id)
+    if device is None:
+        raise AppError("not_found", "设备不存在", status_code=404)
+    point = db.get(AccessPoint, device.access_point_id)
+    if point is None or point.site_id != ctx.site_id:
+        raise AppError("not_found", "设备不存在", status_code=404)
+    if body.access_point_id is not None:
+        new_point = db.get(AccessPoint, body.access_point_id)
+        if new_point is None or new_point.site_id != ctx.site_id:
+            raise AppError("not_found", "门禁点不存在", status_code=404)
+        device.access_point_id = new_point.id
+    if body.device_code is not None:
+        code = body.device_code.strip()
+        exists = db.scalar(
+            select(AccessDevice).where(AccessDevice.device_code == code, AccessDevice.id != device.id)
+        )
+        if exists:
+            raise AppError("conflict", "设备编码已存在", status_code=409)
+        device.device_code = code
+    if body.api_key:
+        device.api_key_hash = hash_device_api_key(body.api_key)
+    db.commit()
+    db.refresh(device)
+    return device
 
 
 @router.post("/grants", response_model=GrantOut)
@@ -205,13 +321,72 @@ def revoke_grant(
     return grant
 
 
-@router.get("/grants", response_model=list[GrantOut])
-def list_grants(db: Session = Depends(get_db), ctx: RequestContext = Depends(get_current_context)):
+@router.get("/grants")
+def list_grants(
+    page: int | None = Query(default=None, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    q: str | None = None,
+    access_point_id: int | None = None,
+    revoked: bool | None = None,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
     ctx.require_permission("access:read", "access:manage")
-    q = select(AccessGrant).join(AccessPoint).where(AccessPoint.site_id == ctx.site_id)
+    filters = [AccessPoint.site_id == ctx.site_id]
     if not ctx.is_site_admin:
-        q = q.where(AccessGrant.merchant_id == ctx.resolve_merchant_id())
-    return list(db.scalars(q.order_by(AccessGrant.id.desc())).all())
+        filters.append(AccessGrant.merchant_id == ctx.resolve_merchant_id())
+    if access_point_id is not None:
+        filters.append(AccessGrant.access_point_id == access_point_id)
+    if revoked is not None:
+        filters.append(AccessGrant.revoked.is_(revoked))
+    keyword = (q or "").strip()
+    if keyword:
+        like = f"%{keyword}%"
+        member_ids = select(Member.id).where(or_(Member.phone.ilike(like), Member.name.ilike(like)))
+        filters.append(AccessGrant.member_id.in_(member_ids))
+    base = select(AccessGrant).join(AccessPoint).where(*filters)
+    if page is None:
+        return list(db.scalars(base.order_by(AccessGrant.id.desc())).all())
+    total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
+    rows = list(
+        db.scalars(base.order_by(AccessGrant.id.desc()).offset((page - 1) * page_size).limit(page_size)).all()
+    )
+    return PageOut(
+        items=[GrantOut.model_validate(r) for r in rows],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.patch("/grants/{grant_id}", response_model=GrantOut)
+def patch_grant(
+    grant_id: int,
+    body: GrantPatch,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    ctx.require_permission("access:manage")
+    grant = db.get(AccessGrant, grant_id)
+    if grant is None:
+        raise AppError("not_found", "授权不存在", status_code=404)
+    point = db.get(AccessPoint, grant.access_point_id)
+    if point is None or point.site_id != ctx.site_id:
+        raise AppError("not_found", "授权不存在", status_code=404)
+    if body.access_point_id is not None:
+        new_point = db.get(AccessPoint, body.access_point_id)
+        if new_point is None or new_point.site_id != ctx.site_id:
+            raise AppError("not_found", "门禁点不存在", status_code=404)
+        grant.access_point_id = new_point.id
+    if body.valid_from is not None:
+        grant.valid_from = body.valid_from
+    if body.valid_until is not None:
+        grant.valid_until = body.valid_until
+    if body.revoked is not None:
+        grant.revoked = body.revoked
+    db.commit()
+    db.refresh(grant)
+    return grant
 
 
 @router.get("/access-events", response_model=PageOut[AccessEventAdminOut])
@@ -219,6 +394,7 @@ def list_access_events(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     merchant_id: int | None = None,
+    access_point_id: int | None = None,
     allowed: bool | None = None,
     q: str | None = None,
     db: Session = Depends(get_db),
@@ -234,6 +410,8 @@ def list_access_events(
         filters.append(
             (AccessPoint.merchant_id == merchant_id) | (AccessPoint.is_public_area.is_(True))
         )
+    if access_point_id is not None:
+        filters.append(AccessEvent.access_point_id == access_point_id)
     if allowed is not None:
         filters.append(AccessEvent.allowed.is_(allowed))
     keyword = (q or "").strip()
@@ -277,3 +455,46 @@ def list_access_events(
             )
         )
     return PageOut(items=items, total=total, page=page, page_size=page_size)
+
+
+class AccessEventPatch(BaseModel):
+    reason: str | None = None
+    detail: str | None = None
+
+
+@router.patch("/access-events/{event_id}", response_model=AccessEventAdminOut)
+def patch_access_event(
+    event_id: int,
+    body: AccessEventPatch,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    """补记通行事件原因/备注（不改放行结果）。"""
+    ctx.require_permission("access:manage")
+    row = db.get(AccessEvent, event_id)
+    if row is None:
+        raise AppError("not_found", "通行事件不存在", status_code=404)
+    point = db.get(AccessPoint, row.access_point_id)
+    if point is None or point.site_id != ctx.site_id:
+        raise AppError("not_found", "通行事件不存在", status_code=404)
+    if not ctx.is_site_admin:
+        mid = ctx.resolve_merchant_id()
+        if point.merchant_id not in (None, mid) and not point.is_public_area:
+            raise AppError("forbidden", "禁止跨商户访问", status_code=403)
+    if body.reason is not None:
+        row.reason = body.reason.strip() or None
+    if body.detail is not None:
+        row.detail = body.detail.strip() or None
+    db.commit()
+    db.refresh(row)
+    member = db.get(Member, row.member_id) if row.member_id else None
+    return AccessEventAdminOut(
+        id=row.id,
+        device_id=row.device_id,
+        access_point_id=row.access_point_id,
+        member_id=row.member_id,
+        allowed=row.allowed,
+        reason=row.reason,
+        created_at=row.created_at,
+        member=MemberBrief(id=member.id, name=member.name, phone=member.phone) if member else None,
+    )

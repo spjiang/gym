@@ -35,6 +35,8 @@ class SubsystemOut(BaseModel):
 class SubsystemPatch(BaseModel):
     is_enabled: bool | None = None
     sort_order: int | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    description: str | None = Field(default=None, max_length=512)
 
 
 class PermissionDefOut(BaseModel):
@@ -182,12 +184,16 @@ def patch_subsystem(
         row.is_enabled = body.is_enabled
     if body.sort_order is not None:
         row.sort_order = body.sort_order
+    if body.name is not None:
+        row.name = body.name.strip()
+    if body.description is not None:
+        row.description = body.description.strip() or None
     write_audit(
         db,
         action="rbac.subsystem_patch",
         target_type="subsystem",
         target_id=0,
-        summary=f"{code} enabled={row.is_enabled}",
+        summary=f"{code} enabled={row.is_enabled} name={row.name}",
         actor_staff_id=ctx.staff.id,
         site_id=ctx.site_id,
         merchant_id=None,

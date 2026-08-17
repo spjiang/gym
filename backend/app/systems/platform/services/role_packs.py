@@ -77,3 +77,37 @@ def ensure_merchant_role_packs(db: Session, merchant_id: int) -> list[int]:
             db.flush()
             result_ids.append(inst.id)
     return result_ids
+
+
+def sync_existing_role_packs(db: Session) -> None:
+    """把模板新增的菜单/权限补到已有商户实例，不删除商户已微调的授予。"""
+    for _system, pairs in PACK_BY_SYSTEM.items():
+        for tpl_code, inst_code in pairs:
+            tpl = db.scalar(select(Role).where(Role.merchant_id.is_(None), Role.code == tpl_code))
+            if tpl is None:
+                continue
+            tpl_menus = set(
+                db.scalars(select(RoleMenu.menu_code).where(RoleMenu.role_id == tpl.id)).all()
+            )
+            tpl_perms = set(
+                db.scalars(
+                    select(RolePermission.permission_code).where(RolePermission.role_id == tpl.id)
+                ).all()
+            )
+            instances = list(
+                db.scalars(select(Role).where(Role.code == inst_code, Role.merchant_id.is_not(None))).all()
+            )
+            for inst in instances:
+                have_menus = set(
+                    db.scalars(select(RoleMenu.menu_code).where(RoleMenu.role_id == inst.id)).all()
+                )
+                for menu_code in tpl_menus - have_menus:
+                    db.add(RoleMenu(role_id=inst.id, menu_code=menu_code))
+                have_perms = set(
+                    db.scalars(
+                        select(RolePermission.permission_code).where(RolePermission.role_id == inst.id)
+                    ).all()
+                )
+                for perm_code in tpl_perms - have_perms:
+                    db.add(RolePermission(role_id=inst.id, permission_code=perm_code))
+            db.flush()

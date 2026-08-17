@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -31,7 +31,52 @@ class MerchantTypeOut(ORMModel):
     description: str | None
 
 
-class MerchantIn(BaseModel):
+class MerchantTypePatch(BaseModel):
+    code: str | None = Field(default=None, min_length=1, max_length=64)
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    description: str | None = None
+
+
+class MerchantContactIn(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    phone: str = Field(min_length=5, max_length=32)
+    title: str | None = Field(default=None, max_length=64)
+    kind: str = "other"
+    remark: str | None = Field(default=None, max_length=255)
+    sort_order: int = 0
+
+
+class MerchantContactOut(ORMModel):
+    id: int
+    merchant_id: int
+    name: str
+    phone: str
+    title: str | None
+    kind: str
+    remark: str | None
+    sort_order: int
+
+
+class MerchantProfileMixin(BaseModel):
+    """商户证照与经营档案（创建/编辑共用）。"""
+
+    legal_name: str | None = Field(default=None, max_length=128)
+    credit_code: str | None = Field(default=None, max_length=32)
+    license_no: str | None = Field(default=None, max_length=64)
+    license_image_url: str | None = Field(default=None, max_length=512)
+    legal_person: str | None = Field(default=None, max_length=64)
+    registered_address: str | None = Field(default=None, max_length=255)
+    business_address: str | None = Field(default=None, max_length=255)
+    contact_phone: str | None = Field(default=None, max_length=32)
+    contact_email: str | None = Field(default=None, max_length=128)
+    business_hours: str | None = Field(default=None, max_length=128)
+    description: str | None = None
+    lease_starts_on: date | None = None
+    lease_ends_on: date | None = None
+    contacts: list[MerchantContactIn] | None = None
+
+
+class MerchantIn(MerchantProfileMixin):
     merchant_type_id: int
     name: str = Field(min_length=1, max_length=128)
     status: str = "preparing"
@@ -48,6 +93,33 @@ class MerchantOut(ORMModel):
     status: str
     created_at: datetime
     subsystem_codes: list[str] = []
+    legal_name: str | None = None
+    credit_code: str | None = None
+    license_no: str | None = None
+    license_image_url: str | None = None
+    legal_person: str | None = None
+    registered_address: str | None = None
+    business_address: str | None = None
+    contact_phone: str | None = None
+    contact_email: str | None = None
+    business_hours: str | None = None
+    description: str | None = None
+    lease_starts_on: date | None = None
+    lease_ends_on: date | None = None
+    lease_days_total: int | None = None
+    lease_days_remaining: int | None = None
+    lease_progress: int | None = None
+    lease_state: str = "unset"
+    contacts: list[MerchantContactOut] = []
+    has_license: bool = False
+    emergency_contact_count: int = 0
+
+
+class MerchantPatch(MerchantProfileMixin):
+    merchant_type_id: int | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    status: str | None = None
+    subsystem_codes: list[str] | None = None
 
 
 class MerchantSubsystemsIn(BaseModel):
@@ -55,10 +127,24 @@ class MerchantSubsystemsIn(BaseModel):
 
 class StaffCreateIn(BaseModel):
     username: str
-    password: str
+    password: str = Field(min_length=6, max_length=64)
     display_name: str
     merchant_id: int | None = None
     role_codes: list[str]
+
+
+class StaffUpdateIn(BaseModel):
+    display_name: str | None = None
+    password: str | None = Field(default=None, min_length=6, max_length=64)
+    merchant_id: int | None = None
+    role_codes: list[str] | None = None
+    is_active: bool | None = None
+
+
+class PasswordResetIn(BaseModel):
+    """超管重置员工或会员登录密码。"""
+
+    password: str = Field(min_length=6, max_length=64)
 
 
 class StaffOut(ORMModel):
@@ -79,6 +165,7 @@ class MemberCreateIn(BaseModel):
     phone: str = Field(min_length=1, max_length=32)
     name: str = Field(min_length=1, max_length=128)
     merchant_id: int | None = None
+    password: str | None = Field(default=None, min_length=6, max_length=64)
 
 
 class MemberOut(ORMModel):
@@ -92,6 +179,7 @@ class MemberOut(ORMModel):
     acquisition_source: str = "platform"
     first_merchant_id: int | None = None
     first_merchant_name: str | None = None
+    has_password: bool = False
 
 
 class MemberLinkIn(BaseModel):
@@ -100,6 +188,24 @@ class MemberLinkIn(BaseModel):
 
 class MemberUpdateIn(BaseModel):
     name: str = Field(min_length=1, max_length=128)
+
+
+class MemberImportErrorOut(BaseModel):
+    row: int
+    phone: str | None = None
+    name: str | None = None
+    message: str
+
+
+class MemberImportOut(BaseModel):
+    merchant_id: int
+    merchant_name: str
+    total_rows: int
+    created: int
+    linked: int
+    skipped: int
+    failed: int
+    errors: list[MemberImportErrorOut] = []
 
 
 class MemberBrief(BaseModel):
@@ -114,6 +220,25 @@ class AccessPointIn(BaseModel):
     name: str
     merchant_id: int | None = None
     is_public_area: bool = False
+
+
+class AccessPointPatch(BaseModel):
+    name: str | None = None
+    merchant_id: int | None = None
+    is_public_area: bool | None = None
+
+
+class DevicePatch(BaseModel):
+    access_point_id: int | None = None
+    device_code: str | None = None
+    api_key: str | None = None
+
+
+class GrantPatch(BaseModel):
+    access_point_id: int | None = None
+    valid_from: datetime | None = None
+    valid_until: datetime | None = None
+    revoked: bool | None = None
 
 
 class AccessPointOut(ORMModel):

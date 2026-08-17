@@ -2,6 +2,8 @@
 
 import app.models  # noqa: F401 — 注册全部表元数据，避免跨模块 FK 在 flush 时找不到 orders 等表
 
+from datetime import date
+
 from sqlalchemy import select
 
 from app.core import db as db_module
@@ -12,8 +14,63 @@ from app.core.security import hash_password
 from app.seed_demo import seed_demo_catalog
 from app.systems.platform.models.access import AccessPoint
 from app.systems.platform.models.identity import Role, StaffRole, StaffUser
-from app.systems.platform.models.org import Merchant, MerchantStatus, MerchantType, Site
+from app.systems.platform.models.org import Merchant, MerchantContact, MerchantStatus, MerchantType, Site
 from app.systems.platform.services.role_packs import ensure_merchant_role_packs
+
+
+def _ensure_merchant_profile(
+    db,
+    merchant: Merchant,
+    *,
+    legal_name: str,
+    credit_code: str,
+    license_no: str,
+    legal_person: str,
+    registered_address: str,
+    business_address: str,
+    contact_phone: str,
+    business_hours: str,
+    description: str,
+    contacts: list[tuple[str, str, str, str]],
+    lease_starts_on: date | None = None,
+    lease_ends_on: date | None = None,
+) -> None:
+    """补齐演示商户证照、租期与联系人；已有档案则只补空字段。"""
+    if not merchant.legal_name:
+        merchant.legal_name = legal_name
+    if not merchant.credit_code:
+        merchant.credit_code = credit_code
+    if not merchant.license_no:
+        merchant.license_no = license_no
+    if not merchant.legal_person:
+        merchant.legal_person = legal_person
+    if not merchant.registered_address:
+        merchant.registered_address = registered_address
+    if not merchant.business_address:
+        merchant.business_address = business_address
+    if not merchant.contact_phone:
+        merchant.contact_phone = contact_phone
+    if not merchant.business_hours:
+        merchant.business_hours = business_hours
+    if not merchant.description:
+        merchant.description = description
+    if merchant.lease_starts_on is None and lease_starts_on is not None:
+        merchant.lease_starts_on = lease_starts_on
+    if merchant.lease_ends_on is None and lease_ends_on is not None:
+        merchant.lease_ends_on = lease_ends_on
+    existing = db.scalar(select(MerchantContact.id).where(MerchantContact.merchant_id == merchant.id))
+    if existing is None:
+        for index, (name, phone, title, kind) in enumerate(contacts):
+            db.add(
+                MerchantContact(
+                    merchant_id=merchant.id,
+                    name=name,
+                    phone=phone,
+                    title=title,
+                    kind=kind,
+                    sort_order=index,
+                )
+            )
 
 ROLE_DEFS = [
     {
@@ -165,43 +222,98 @@ def run_seed() -> None:
     try:
         site = db.scalar(select(Site).order_by(Site.id))
         if site is None:
-            site = Site(name="回龙观公园综合场地", address="北京市昌平区回龙观公园")
+            site = Site(name="观野SPACE", address="北京市昌平区回龙观公园")
             db.add(site)
             db.flush()
+        else:
+            site.name = "观野SPACE"
 
-        for code, name in (("gym", "健身房"), ("bar", "酒吧")):
+        for code, name in (("gym", "观野FIT"), ("bar", "观野BAR")):
             mt = db.scalar(select(MerchantType).where(MerchantType.code == code))
             if mt is None:
                 db.add(MerchantType(code=code, name=name))
                 db.flush()
+            else:
+                mt.name = name
 
         gym_type = db.scalar(select(MerchantType).where(MerchantType.code == "gym"))
         bar_type = db.scalar(select(MerchantType).where(MerchantType.code == "bar"))
-        gym = db.scalar(select(Merchant).where(Merchant.name == "回龙观自营健身房"))
-        if gym is None and gym_type is not None:
-            gym = Merchant(
-                site_id=site.id,
-                merchant_type_id=gym_type.id,
-                name="回龙观自营健身房",
-                status=MerchantStatus.ACTIVE.value,
+        gym = None
+        if gym_type is not None:
+            gym = db.scalar(
+                select(Merchant).where(Merchant.merchant_type_id == gym_type.id).order_by(Merchant.id)
             )
-            db.add(gym)
-            db.flush()
-        bar = db.scalar(select(Merchant).where(Merchant.name == "回龙观清吧"))
-        if bar is None and bar_type is not None:
-            bar = Merchant(
-                site_id=site.id,
-                merchant_type_id=bar_type.id,
-                name="回龙观清吧",
-                status=MerchantStatus.ACTIVE.value,
+            if gym is None:
+                gym = Merchant(
+                    site_id=site.id,
+                    merchant_type_id=gym_type.id,
+                    name="观野FIT",
+                    status=MerchantStatus.ACTIVE.value,
+                )
+                db.add(gym)
+                db.flush()
+            else:
+                gym.name = "观野FIT"
+        bar = None
+        if bar_type is not None:
+            bar = db.scalar(
+                select(Merchant).where(Merchant.merchant_type_id == bar_type.id).order_by(Merchant.id)
             )
-            db.add(bar)
-            db.flush()
+            if bar is None:
+                bar = Merchant(
+                    site_id=site.id,
+                    merchant_type_id=bar_type.id,
+                    name="观野BAR",
+                    status=MerchantStatus.ACTIVE.value,
+                )
+                db.add(bar)
+                db.flush()
+            else:
+                bar.name = "观野BAR"
 
         if gym is not None:
             replace_merchant_subsystems(db, gym.id, ["gym"])
+            _ensure_merchant_profile(
+                db,
+                gym,
+                legal_name="北京观野健身服务有限公司",
+                credit_code="91110108MA01FIT01X",
+                license_no="91110108MA01FIT01X",
+                legal_person="林观野",
+                registered_address="北京市昌平区回龙观东大街综合场地",
+                business_address="回龙观综合场地 · 观野FIT",
+                contact_phone="010-88881001",
+                business_hours="06:00-22:00",
+                description="观野FIT 健身空间",
+                lease_starts_on=date(2025, 3, 1),
+                lease_ends_on=date(2028, 2, 28),
+                contacts=[
+                    ("陈店长", "13800101001", "店长", "primary"),
+                    ("值班经理", "13800101002", "值班经理", "emergency"),
+                    ("物业对接", "13800101003", "物业", "emergency"),
+                ],
+            )
         if bar is not None:
             replace_merchant_subsystems(db, bar.id, ["catering"])
+            _ensure_merchant_profile(
+                db,
+                bar,
+                legal_name="北京观野餐饮管理有限公司",
+                credit_code="91110108MA01BAR01X",
+                license_no="91110108MA01BAR01X",
+                legal_person="林观野",
+                registered_address="北京市昌平区回龙观东大街综合场地",
+                business_address="回龙观综合场地 · 观野BAR",
+                contact_phone="010-88881002",
+                business_hours="17:00-02:00",
+                description="观野BAR 酒吧",
+                lease_starts_on=date(2025, 9, 1),
+                lease_ends_on=date(2026, 9, 5),
+                contacts=[
+                    ("赵店长", "13800102001", "店长", "primary"),
+                    ("安保负责", "13800102002", "安保", "emergency"),
+                ],
+            )
 
         if gym is not None:
             existing_point = db.scalar(

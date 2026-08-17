@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -24,12 +25,43 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+SITE_TZ = ZoneInfo("Asia/Shanghai")
+CHECKIN_AHEAD = timedelta(hours=1)
+
+
 def _ensure_aware(dt: datetime | None) -> datetime | None:
     if dt is None:
         return None
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt
+
+
+def _fmt_local(dt: datetime) -> str:
+    return dt.astimezone(SITE_TZ).strftime("%Y-%m-%d %H:%M")
+
+
+def assert_attend_window(session: GroupSession) -> None:
+    """出席仅允许开课当天、开课前 1 小时至下课。"""
+    now = _now()
+    starts = _ensure_aware(session.starts_at)
+    ends = _ensure_aware(session.ends_at)
+    if starts is None or ends is None:
+        raise AppError("invalid_session", "场次时间无效", status_code=400)
+    open_at = starts - CHECKIN_AHEAD
+    window = f"开课时间 {_fmt_local(starts)}，签到时间 {_fmt_local(open_at)} ～ {_fmt_local(ends)}"
+    local_start = starts.astimezone(SITE_TZ)
+    local_now = now.astimezone(SITE_TZ)
+    if local_now.date() != local_start.date() and now < open_at:
+        raise AppError(
+            "checkin_wrong_day",
+            f"只能在开课当天签到。{window}",
+            status_code=400,
+        )
+    if now < open_at:
+        raise AppError("checkin_too_early", f"未到签到时间。{window}", status_code=400)
+    if now > ends:
+        raise AppError("checkin_too_late", f"课程已结束，不能再标记出席。{window}", status_code=400)
 
 
 def has_active_membership(db: Session, merchant_id: int, member_id: int) -> bool:
@@ -145,6 +177,64 @@ def book_group_session(
     return booking
 
 
+def cancel_group_session(
+    db: Session,
+    session: GroupSession,
+    *,
+    actor_staff_id: int | None = None,
+    site_id: int | None = None,
+) -> GroupSession:
+    """软删除场次：标记为已取消，并强制取消仍为已预约的名额。"""
+    if session.status == GroupSessionStatus.CANCELLED.value:
+        return session
+
+    course = db.get(GroupCourse, session.course_id)
+    if course is None:
+        raise AppError("not_found", "课程不存在", status_code=404)
+
+    bookings = list(
+        db.scalars(
+            select(GroupBooking).where(
+                GroupBooking.session_id == session.id,
+                GroupBooking.status == GroupBookingStatus.BOOKED.value,
+            )
+        ).all()
+    )
+    for booking in bookings:
+        cancel_group_booking(
+            db,
+            booking,
+            session,
+            course,
+            force=True,
+            actor_staff_id=actor_staff_id,
+            site_id=site_id,
+        )
+        if site_id is not None:
+            write_notification(
+                db,
+                site_id=site_id,
+                merchant_id=session.merchant_id,
+                member_id=booking.member_id,
+                event_type="group.session_cancelled",
+                title="团课场次已取消",
+                body=f"场次 #{session.id} 已取消，原预约同步取消",
+            )
+
+    session.status = GroupSessionStatus.CANCELLED.value
+    write_audit(
+        db,
+        action="group_session.delete",
+        target_type="group_session",
+        target_id=session.id,
+        summary=f"软删除场次 course={session.course_id} bookings={len(bookings)}",
+        actor_staff_id=actor_staff_id,
+        site_id=site_id,
+        merchant_id=session.merchant_id,
+    )
+    return session
+
+
 def cancel_group_booking(
     db: Session,
     booking: GroupBooking,
@@ -183,6 +273,7 @@ def checkin_group_booking(
     booking: GroupBooking,
     status: str,
     *,
+    session: GroupSession | None = None,
     actor_staff_id: int | None = None,
     site_id: int | None = None,
 ) -> GroupBooking:
@@ -194,6 +285,11 @@ def checkin_group_booking(
         GroupBookingStatus.NO_SHOW.value,
     }:
         raise AppError("invalid_state", "当前预约不可签到", status_code=400)
+    if status == GroupBookingStatus.ATTENDED.value:
+        sess = session or db.get(GroupSession, booking.session_id)
+        if sess is None:
+            raise AppError("not_found", "场次不存在", status_code=404)
+        assert_attend_window(sess)
 
     booking.status = status
     write_audit(

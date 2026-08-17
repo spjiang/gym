@@ -141,7 +141,7 @@ def member_dry_run_confirm(
     if order is None or order.member_id != mctx.member.id:
         raise AppError("not_found", "订单不存在", status_code=404)
     cfg = resolve_payment_settings(db, order.site_id)
-    if cfg.mode != "wechat" or not cfg.dry_run:
+    if cfg.mode not in {"wechat", "jdpay"} or not cfg.dry_run:
         raise AppError("forbidden", "仅微信 DRY_RUN 可确认干跑支付", status_code=403)
 
     q = select(PaymentIntent).where(PaymentIntent.order_id == order_id).order_by(PaymentIntent.id.desc())

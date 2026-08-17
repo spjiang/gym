@@ -1,24 +1,51 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import {
   findMenuFromNav,
   firstAllowedPathFromNav,
+  groupGymMenus,
+  groupPlatformMenus,
   menusForSystemFromNav,
+  merchantsWithSystem,
   type SystemId,
 } from '../nav/systems'
-
-/** 侧栏展示用短名，避免长标题挤占 */
-const SYSTEM_SHORT: Record<string, string> = {
-  platform: '综合经营',
-  gym: '健身管理',
-  catering: '餐饮管理',
-}
+import { useOpsStore } from '../stores/ops'
+import { brandLabelForSystem, brandVariantForSystem } from '../brand'
+import BrandMark from '../components/BrandMark.vue'
+import http from '../api/http'
 
 const auth = useAuthStore()
+const ops = useOpsStore()
 const router = useRouter()
 const route = useRoute()
+const allMerchants = ref<{ id: number; name: string; subsystem_codes?: string[] }[]>([])
+
+const scopedMerchants = computed(() => merchantsWithSystem(allMerchants.value, ops.subsystem))
+
+async function loadMerchants() {
+  try {
+    const { data } = await http.get('/merchants')
+    allMerchants.value = data
+    if (ops.merchantId && !scopedMerchants.value.some((m) => m.id === ops.merchantId)) {
+      ops.setMerchantId(null)
+    }
+  } catch {
+    allMerchants.value = []
+  }
+}
+
+watch(
+  () => ops.subsystem,
+  () => {
+    if (ops.merchantId && !scopedMerchants.value.some((m) => m.id === ops.merchantId)) {
+      ops.setMerchantId(null)
+    }
+  },
+)
+
+onMounted(loadMerchants)
 
 const currentSystem = computed<SystemId | 'portal'>(() => {
   if (route.path === '/portal' || route.name === 'portal') return 'portal'
@@ -34,12 +61,30 @@ const systemMeta = computed(() => {
   return auth.navigation?.subsystems.find((s) => s.code === code) || null
 })
 
-const menus = computed(() => {
-  if (currentSystem.value === 'portal') return []
-  return menusForSystemFromNav(auth, currentSystem.value)
-})
-
+const platformMenus = computed(() => menusForSystemFromNav(auth, 'platform'))
+const platformGroups = computed(() => groupPlatformMenus(platformMenus.value))
+const opsMenus = computed(() =>
+  platformMenus.value.filter((m) => ['/ops', '/reports'].includes(m.path)),
+)
 const isPortal = computed(() => currentSystem.value === 'portal')
+const isPlatform = computed(() => currentSystem.value === 'platform')
+const isBusiness = computed(() => currentSystem.value === 'gym' || currentSystem.value === 'catering')
+const businessMenus = computed(() =>
+  isBusiness.value ? menusForSystemFromNav(auth, currentSystem.value) : [],
+)
+const gymGroups = computed(() => groupGymMenus(businessMenus.value))
+const isGym = computed(() => currentSystem.value === 'gym')
+const showMerchantFilter = computed(() => isBusiness.value)
+const activeMenu = computed(() => route.path)
+
+watch(
+  () => currentSystem.value,
+  (sys) => {
+    if (sys === 'gym' || sys === 'catering') {
+      if (ops.subsystem !== sys) ops.setSubsystem(sys)
+    }
+  },
+)
 
 const subsystems = computed(() => auth.navigation?.subsystems || [])
 
@@ -50,12 +95,14 @@ const pageTitle = computed(() => {
 })
 
 const eyebrow = computed(() => {
-  if (isPortal.value) return '回龙观公园综合场地'
-  return systemMeta.value?.name || '运营工作台'
+  if (isPortal.value) return '观野SPACE 综合管理平台'
+  return systemMeta.value?.name || brandLabelForSystem(String(currentSystem.value))
 })
 
+const brandVariant = computed(() => brandVariantForSystem(isPortal.value ? 'platform' : String(currentSystem.value)))
+
 function shortName(code: string, fallback: string) {
-  return SYSTEM_SHORT[code] || fallback
+  return brandLabelForSystem(code) || fallback
 }
 
 function goPortal() {
@@ -63,8 +110,10 @@ function goPortal() {
 }
 
 function openSystem(s: { code: string; entry_path: string | null; name: string }) {
-  if (s.entry_path) router.push(s.entry_path)
-  else router.push(firstAllowedPathFromNav(auth, s.code))
+  if (s.code === 'gym' || s.code === 'catering') {
+    ops.setSubsystem(s.code)
+  }
+  router.push(firstAllowedPathFromNav(auth, s.code))
 }
 
 function logout() {
@@ -77,11 +126,8 @@ function logout() {
   <el-container class="layout">
     <el-aside width="248px" class="aside">
       <div class="brand">
-        <div class="brand-mark" aria-hidden="true" />
-        <div>
-          <div class="brand-name">回龙观场地</div>
-          <div class="brand-sub">{{ isPortal ? '运营工作台' : systemMeta?.name }}</div>
-        </div>
+        <BrandMark :variant="brandVariant" compact />
+        <div class="brand-sub">{{ isPortal ? '综合管理平台' : systemMeta?.name }}</div>
       </div>
 
       <!-- 工作台：侧栏直接列出业务系统 -->
@@ -106,40 +152,112 @@ function logout() {
             <span class="nav-dot" :data-system="s.code" aria-hidden="true" />
             <span class="nav-text">
               <span class="nav-title">{{ shortName(s.code, s.name) }}</span>
-              <span class="nav-desc">{{ s.is_business ? '业态' : '公共' }}</span>
+              <span class="nav-desc">{{ s.is_business ? '业态' : '平台' }}</span>
             </span>
           </button>
           <p v-if="!subsystems.length" class="nav-empty">暂无可用系统</p>
         </nav>
       </template>
 
-      <!-- 子系统内：返回工作台 + 功能菜单 -->
+      <!-- 子系统内：返回工作台 + 二级功能菜单 -->
       <template v-else>
         <button class="portal-link" type="button" @click="goPortal">← 工作台</button>
 
-        <div class="system-label">{{ shortName(currentSystem, systemMeta?.name || '') }}</div>
+        <div class="system-label">{{ shortName(String(currentSystem), systemMeta?.name || '') }}</div>
 
         <el-menu
-          v-if="menus.length"
+          v-if="isPlatform"
           router
-          :default-active="$route.path"
+          :default-active="activeMenu"
+          :default-openeds="[]"
+          unique-opened
           class="side-menu"
           background-color="transparent"
           text-color="#c5cbc6"
-          active-text-color="#f5f0e8"
+          active-text-color="#f2e6d2"
         >
-          <el-menu-item v-for="m in menus" :key="m.path" :index="m.path">
-            <span>{{ m.label }}</span>
+          <el-sub-menu v-if="opsMenus.length" index="ops">
+            <template #title>经营管理</template>
+            <el-menu-item v-for="m in opsMenus" :key="m.path" :index="m.path">
+              {{ m.label }}
+            </el-menu-item>
+          </el-sub-menu>
+          <template v-for="g in platformGroups.groups" :key="g.key">
+            <el-menu-item v-if="g.flat && g.items[0]" :index="g.items[0].path">
+              {{ g.label }}
+            </el-menu-item>
+            <el-sub-menu v-else :index="g.key">
+              <template #title>{{ g.label }}</template>
+              <el-menu-item v-for="m in g.items" :key="m.path" :index="m.path">
+                {{ m.label }}
+              </el-menu-item>
+            </el-sub-menu>
+          </template>
+          <el-menu-item v-for="m in platformGroups.leftover" :key="m.path" :index="m.path">
+            {{ m.label }}
+          </el-menu-item>
+        </el-menu>
+
+        <el-menu
+          v-else-if="isGym"
+          router
+          :default-active="activeMenu"
+          :default-openeds="[]"
+          unique-opened
+          class="side-menu"
+          background-color="transparent"
+          text-color="#c5cbc6"
+          active-text-color="#f2e6d2"
+        >
+          <template v-for="g in gymGroups.groups" :key="g.key">
+            <el-sub-menu :index="g.key">
+              <template #title>{{ g.label }}</template>
+              <el-menu-item v-for="m in g.items" :key="m.path" :index="m.path">
+                {{ m.label }}
+              </el-menu-item>
+            </el-sub-menu>
+          </template>
+          <el-menu-item v-for="m in gymGroups.leftover" :key="m.path" :index="m.path">
+            {{ m.label }}
+          </el-menu-item>
+        </el-menu>
+
+        <el-menu
+          v-else
+          router
+          :default-active="activeMenu"
+          :default-openeds="[]"
+          unique-opened
+          class="side-menu"
+          background-color="transparent"
+          text-color="#c5cbc6"
+          active-text-color="#f2e6d2"
+        >
+          <el-menu-item v-for="m in businessMenus" :key="m.path" :index="m.path">
+            {{ m.label }}
           </el-menu-item>
         </el-menu>
       </template>
     </el-aside>
 
     <el-container class="workspace">
-      <el-header class="header" height="72px">
+      <el-header class="header" height="auto">
         <div class="header-left">
-          <div class="eyebrow">{{ eyebrow }}</div>
-          <h1 class="page-title">{{ pageTitle }}</h1>
+          <div class="header-titles">
+            <div class="eyebrow">{{ eyebrow }}</div>
+            <h1 class="page-title">{{ pageTitle }}</h1>
+          </div>
+          <div v-if="showMerchantFilter" class="ops-filter">
+            <el-select
+              :model-value="ops.merchantId ?? undefined"
+              clearable
+              placeholder="全部商户"
+              style="width: 200px"
+              @change="(v: number | undefined) => ops.setMerchantId(v ?? null)"
+            >
+              <el-option v-for="m in scopedMerchants" :key="m.id" :label="m.name" :value="m.id" />
+            </el-select>
+          </div>
         </div>
         <div class="header-right">
           <div class="user-chip">
@@ -168,52 +286,24 @@ function logout() {
 }
 
 .aside {
-  background:
-    linear-gradient(180deg, rgba(61, 107, 92, 0.18) 0%, transparent 28%),
-    linear-gradient(165deg, #171c19 0%, #101412 55%, #0c0f0d 100%);
-  color: #fff;
-  border-right: 1px solid rgba(255, 255, 255, 0.04);
+  background: #171b1f;
+  color: #f2e6d2;
+  border-right: 1px solid rgba(242, 230, 210, 0.06);
   position: relative;
   overflow: hidden;
 }
 
-.aside::after {
-  content: '';
-  position: absolute;
-  inset: auto -40% -20% auto;
-  width: 280px;
-  height: 280px;
-  background: radial-gradient(circle, rgba(166, 124, 82, 0.18), transparent 68%);
-  pointer-events: none;
-}
-
 .brand {
   display: flex;
-  gap: 12px;
-  align-items: center;
-  padding: 28px 22px 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 24px 22px 10px;
   position: relative;
   z-index: 1;
 }
 
-.brand-mark {
-  width: 36px;
-  height: 36px;
-  border-radius: 12px;
-  background: linear-gradient(145deg, #a67c52 0%, #3d6b5c 70%), #3d6b5c;
-  box-shadow: 0 10px 24px -12px rgba(166, 124, 82, 0.8);
-  flex-shrink: 0;
-}
-
-.brand-name {
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: #f7f3ec;
-}
-
 .brand-sub {
-  margin-top: 2px;
+  margin-top: 6px;
   font-size: 0.72rem;
   color: rgba(197, 203, 198, 0.72);
   letter-spacing: 0.04em;
@@ -238,7 +328,7 @@ function logout() {
 
 .portal-link:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: #f5f0e8;
+  color: #f2e6d2;
 }
 
 .system-label {
@@ -279,14 +369,14 @@ function logout() {
 
 .nav-item:hover {
   background: rgba(255, 255, 255, 0.05);
-  color: #f5f0e8;
+  color: #f2e6d2;
 }
 
 .nav-item.is-active,
 .nav-item--home.is-active {
-  background: linear-gradient(90deg, rgba(61, 107, 92, 0.45), rgba(61, 107, 92, 0.12));
-  color: #f5f0e8;
-  box-shadow: inset 3px 0 0 #a67c52;
+  background: rgba(243, 107, 33, 0.22);
+  color: #f2e6d2;
+  box-shadow: inset 3px 0 0 #f26a21;
   font-weight: 600;
 }
 
@@ -302,15 +392,15 @@ function logout() {
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
-  background: #3d6b5c;
+  background: #1ec8c3;
 }
 
 .nav-dot[data-system='gym'] {
-  background: #a67c52;
+  background: #f26a21;
 }
 
 .nav-dot[data-system='catering'] {
-  background: #7a8f6e;
+  background: #1ec8c3;
 }
 
 .nav-text {
@@ -356,49 +446,100 @@ function logout() {
 
 .side-menu :deep(.el-menu-item:hover) {
   background: rgba(255, 255, 255, 0.05) !important;
-  color: #f5f0e8 !important;
+  color: #f2e6d2 !important;
 }
 
 .side-menu :deep(.el-menu-item.is-active) {
-  background: linear-gradient(90deg, rgba(61, 107, 92, 0.45), rgba(61, 107, 92, 0.12)) !important;
-  color: #f5f0e8 !important;
-  box-shadow: inset 3px 0 0 #a67c52;
+  background: rgba(243, 107, 33, 0.22) !important;
+  color: #f2e6d2 !important;
+  box-shadow: inset 3px 0 0 #f26a21;
   font-weight: 600;
 }
 
 .workspace {
   min-width: 0;
+  overflow: hidden;
 }
 
 .header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 28px;
+  gap: 16px;
+  height: auto !important;
+  min-height: 72px;
+  padding: 12px 28px;
+  box-sizing: border-box;
+  overflow: hidden;
   background: rgba(251, 248, 243, 0.72);
   backdrop-filter: blur(14px);
   border-bottom: 1px solid rgba(28, 25, 23, 0.06);
 }
 
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  flex: 1;
+}
+
+.header-titles {
+  min-width: 0;
+}
+
 .eyebrow {
   font-size: 0.72rem;
   letter-spacing: 0.08em;
+  line-height: 1.2;
   color: var(--admin-copper);
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .page-title {
   margin: 2px 0 0;
-  font-size: 1.45rem;
+  font-size: 1.25rem;
   font-weight: 700;
   letter-spacing: -0.03em;
+  line-height: 1.3;
   color: var(--admin-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ops-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.side-menu :deep(.el-sub-menu__title) {
+  height: 44px;
+  line-height: 44px;
+  margin: 3px 0;
+  border-radius: 12px;
+  color: #c5cbc6 !important;
+}
+
+.side-menu :deep(.el-sub-menu__title:hover) {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #f2e6d2 !important;
+}
+
+.side-menu :deep(.el-sub-menu.is-active > .el-sub-menu__title) {
+  color: #f2e6d2 !important;
 }
 
 .header-right {
   display: flex;
   align-items: center;
   gap: 14px;
+  flex-shrink: 0;
 }
 
 .user-chip {
@@ -417,8 +558,8 @@ function logout() {
   border-radius: 50%;
   display: grid;
   place-items: center;
-  background: linear-gradient(145deg, #3d6b5c, #2f5549);
-  color: #f7f3ec;
+  background: #f36b21;
+  color: #f2e6d2;
   font-weight: 700;
   font-size: 0.85rem;
 }

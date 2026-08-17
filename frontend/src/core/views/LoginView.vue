@@ -3,18 +3,19 @@ import { computed, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../stores/auth'
+import BrandMark from '../components/BrandMark.vue'
 
 /** 按组织角色命名的演示身份（对应商户角色实例） */
 const DEMO_GROUPS = [
   {
-    title: '场地',
+    title: 'SPACE',
     accounts: [
       { label: '场地管理员', username: 'admin', password: 'Admin@123456' },
       { label: '场地运营', username: 'site_ops', password: 'Demo@123456' },
     ],
   },
   {
-    title: '健身房',
+    title: 'FIT',
     accounts: [
       { label: '管理员', username: 'gym_admin', password: 'Demo@123456' },
       { label: '运营', username: 'gym_ops', password: 'Demo@123456' },
@@ -22,7 +23,7 @@ const DEMO_GROUPS = [
     ],
   },
   {
-    title: '清吧',
+    title: 'BAR',
     accounts: [
       { label: '管理人员', username: 'bar_admin', password: 'Demo@123456' },
       { label: '运营', username: 'bar_ops', password: 'Demo@123456' },
@@ -78,13 +79,9 @@ async function onSubmit() {
 
     <div class="login-shell">
       <section class="hero-copy">
-        <div class="mark" aria-hidden="true" />
-        <p class="eyebrow">Huilongguan · Venue</p>
-        <h1>
-          <span class="title-line">回龙观</span>
-          <span class="title-line">综合场地经营</span>
-        </h1>
-        <p class="lead">一处场地，多业态共生。<br />会籍与门禁、课程与清吧，同归一处。</p>
+        <BrandMark variant="space" show-tagline />
+        <h1 class="system-name">综合管理平台</h1>
+        <p class="lead">观野SPACE · 观野FIT · 观野BAR<br />会籍与门禁、课程与酒吧，同归一处。</p>
         <p class="hero-foot">以秩序承载运营，以权限守护边界</p>
       </section>
 
@@ -160,10 +157,8 @@ async function onSubmit() {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(1200px 640px at 12% 8%, rgba(166, 124, 82, 0.22), transparent 58%),
-    radial-gradient(900px 520px at 88% 18%, rgba(61, 107, 92, 0.32), transparent 55%),
-    radial-gradient(700px 480px at 50% 100%, rgba(20, 40, 34, 0.9), transparent 50%),
-    linear-gradient(155deg, #0a0d0b 0%, #121814 42%, #1a2420 100%);
+    radial-gradient(900px 480px at 12% 0%, rgba(242, 230, 210, 0.06), transparent 58%),
+    #171b1f;
 }
 
 .orb {
@@ -179,7 +174,7 @@ async function onSubmit() {
   height: 280px;
   left: 8%;
   top: 18%;
-  background: rgba(166, 124, 82, 0.35);
+  background: rgba(243, 107, 33, 0.22);
 }
 
 .orb-b {
@@ -187,7 +182,7 @@ async function onSubmit() {
   height: 340px;
   right: 6%;
   bottom: 12%;
-  background: rgba(61, 107, 92, 0.4);
+  background: rgba(20, 184, 212, 0.18);
   animation-delay: -4s;
 }
 
@@ -230,38 +225,17 @@ async function onSubmit() {
   min-height: 560px;
 }
 
-.mark {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
-  margin-bottom: 36px;
-  background: linear-gradient(145deg, #c4a074, #3d6b5c 72%);
-  box-shadow: 0 16px 36px -16px rgba(166, 124, 82, 0.95);
-  animation: glow 3.6s ease-in-out infinite;
+.hero-copy :deep(.brand-mark) {
+  margin-bottom: 28px;
 }
 
-.eyebrow {
-  margin: 0 0 18px;
-  font-family: 'Cormorant Garamond', 'Noto Serif SC', serif;
-  font-size: 0.95rem;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: #c4a074;
-  font-weight: 500;
-}
-
-.hero-copy h1 {
-  margin: 0;
-  font-family: 'Noto Serif SC', 'Songti SC', serif;
-  font-size: clamp(2rem, 3.4vw, 2.65rem);
-  line-height: 1.28;
-  letter-spacing: 0.04em;
+.system-name {
+  margin: 22px 0 0;
+  font-family: 'Noto Sans SC', 'PingFang SC', sans-serif;
+  font-size: 1.15rem;
   font-weight: 600;
+  letter-spacing: 0.18em;
   color: #faf6ef;
-}
-
-.title-line {
-  display: block;
 }
 
 .lead {
@@ -283,8 +257,7 @@ async function onSubmit() {
 
 .form-panel {
   padding: 48px 40px 44px;
-  background:
-    linear-gradient(180deg, rgba(255, 253, 249, 0.98) 0%, #f3eee4 100%);
+  background: #f2e6d2;
 }
 
 .form-kicker {
@@ -293,7 +266,7 @@ async function onSubmit() {
   font-size: 0.88rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: #a67c52;
+  color: #f36b21;
 }
 
 .form-panel h2 {
@@ -333,14 +306,14 @@ async function onSubmit() {
 
 .identity-head em {
   font-style: normal;
-  color: #3d6b5c;
+  color: #f36b21;
   font-weight: 600;
   letter-spacing: 0.02em;
 }
 
 .identity-group {
   display: grid;
-  grid-template-columns: 52px 1fr;
+  grid-template-columns: 56px 1fr;
   gap: 8px;
   align-items: start;
   margin-bottom: 8px;
@@ -376,14 +349,14 @@ async function onSubmit() {
 }
 
 .demo-chip:hover {
-  border-color: #3d6b5c;
-  color: #2f5549;
+  border-color: #f36b21;
+  color: #d85a16;
   transform: translateY(-1px);
 }
 
 .demo-chip.active {
   border-color: transparent;
-  background: linear-gradient(135deg, #3d6b5c, #2f5549);
+  background: #f36b21;
   color: #f7f3ec;
   font-weight: 600;
   box-shadow: 0 8px 18px -12px rgba(47, 85, 73, 0.9);
@@ -413,7 +386,7 @@ async function onSubmit() {
 
 .form-panel :deep(.el-input__wrapper:hover),
 .form-panel :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 1px #3d6b5c inset !important;
+  box-shadow: 0 0 0 1px #f36b21 inset !important;
 }
 
 @keyframes rise {

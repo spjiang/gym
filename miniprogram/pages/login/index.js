@@ -1,10 +1,16 @@
 Page({
-  data: { phone: '', code: '' },
+  data: { phone: '', code: '', password: '', mode: 'otp' },
+  setMode(e) {
+    this.setData({ mode: e.currentTarget.dataset.mode })
+  },
   onPhone(e) {
     this.setData({ phone: e.detail.value })
   },
   onCode(e) {
     this.setData({ code: e.detail.value })
+  },
+  onPassword(e) {
+    this.setData({ password: e.detail.value })
   },
   async send() {
     const { request } = require('../../utils/api')
@@ -19,11 +25,18 @@ Page({
     const { request } = require('../../utils/api')
     const app = getApp()
     try {
-      const data = await request({
-        url: '/member/auth/otp/verify',
-        method: 'POST',
-        data: { phone: this.data.phone, code: this.data.code },
-      })
+      const data =
+        this.data.mode === 'password'
+          ? await request({
+              url: '/member/auth/password',
+              method: 'POST',
+              data: { phone: this.data.phone, password: this.data.password },
+            })
+          : await request({
+              url: '/member/auth/otp/verify',
+              method: 'POST',
+              data: { phone: this.data.phone, code: this.data.code },
+            })
       app.globalData.token = data.access_token
       wx.setStorageSync('member_token', data.access_token)
       // 登录后绑定小程序 openid（支付 JSAPI 需要）

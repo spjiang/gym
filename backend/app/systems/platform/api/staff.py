@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.db import get_db
 from app.core.deps import ROLE_SITE_ADMIN, RequestContext, get_current_context
 from app.core.errors import AppError
-from app.core.schemas.common import RoleAssignIn, StaffCreateIn, StaffOut
+from app.core.schemas.common import PasswordResetIn, RoleAssignIn, StaffCreateIn, StaffOut, StaffUpdateIn
 from app.core.schemas.paging import PageOut
 from app.core.security import hash_password
 from app.systems.platform.models.identity import Role, StaffRole, StaffUser
@@ -26,6 +26,12 @@ def _to_out(staff: StaffUser) -> StaffOut:
         is_active=staff.is_active,
         role_codes=[sr.role.code for sr in staff.roles],
     )
+
+
+def _assert_staff_in_scope(ctx: RequestContext, staff: StaffUser) -> None:
+    """非场地超管仅能操作本商户后台账号。"""
+    if not ctx.is_site_admin and staff.merchant_id != ctx.merchant_id:
+        raise AppError("forbidden", "禁止跨商户操作", status_code=403)
 
 
 def _resolve_roles(db: Session, role_codes: list[str], merchant_id: int | None) -> list[Role]:
@@ -53,6 +59,7 @@ def list_staff(
     page_size: int = Query(20, ge=1, le=100),
     q: str | None = None,
     merchant_id: int | None = None,
+    is_active: bool | None = None,
     db: Session = Depends(get_db),
     ctx: RequestContext = Depends(get_current_context),
 ):
@@ -66,6 +73,8 @@ def list_staff(
     if keyword:
         like = f"%{keyword}%"
         filters.append(or_(StaffUser.username.ilike(like), StaffUser.display_name.ilike(like)))
+    if is_active is not None:
+        filters.append(StaffUser.is_active.is_(is_active))
     total = db.scalar(select(func.count()).select_from(StaffUser).where(*filters)) or 0
     rows = list(
         db.scalars(
@@ -146,8 +155,7 @@ def assign_roles(
     )
     if staff is None:
         raise AppError("not_found", "员工不存在", status_code=404)
-    if not ctx.is_site_admin and staff.merchant_id != ctx.merchant_id:
-        raise AppError("forbidden", "禁止跨商户操作", status_code=403)
+    _assert_staff_in_scope(ctx, staff)
     if ROLE_SITE_ADMIN in body.role_codes and not ctx.is_site_admin:
         raise AppError("forbidden", "不可分配场地超管角色", status_code=403)
 
@@ -176,3 +184,97 @@ def assign_roles(
         .where(StaffUser.id == staff_id)
     )
     return _to_out(staff)
+
+
+@router.patch("/{staff_id}", response_model=StaffOut)
+def update_staff(
+    staff_id: int,
+    body: StaffUpdateIn,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    """编辑员工资料、角色，或快捷启停。"""
+    ctx.require_permission("staff:manage", "org:manage")
+    staff = db.scalar(
+        select(StaffUser)
+        .options(selectinload(StaffUser.roles).selectinload(StaffRole.role))
+        .where(StaffUser.id == staff_id, StaffUser.site_id == ctx.site_id)
+    )
+    if staff is None:
+        raise AppError("not_found", "员工不存在", status_code=404)
+    _assert_staff_in_scope(ctx, staff)
+    if staff.id == ctx.staff.id and body.is_active is False:
+        raise AppError("invalid_state", "不能禁用当前登录账号", status_code=400)
+
+    if body.display_name is not None:
+        staff.display_name = body.display_name.strip()
+    if body.password:
+        staff.password_hash = hash_password(body.password)
+    if body.is_active is not None:
+        staff.is_active = body.is_active
+    if "merchant_id" in body.model_fields_set:
+        if ROLE_SITE_ADMIN in (body.role_codes or [sr.role.code for sr in staff.roles]):
+            if not ctx.is_site_admin:
+                raise AppError("forbidden", "不可分配场地超管角色", status_code=403)
+            staff.merchant_id = None
+        elif body.merchant_id is None:
+            staff.merchant_id = None if ctx.is_site_admin else ctx.merchant_id
+        else:
+            staff.merchant_id = ctx.resolve_merchant_id(body.merchant_id)
+
+    if body.role_codes is not None:
+        if ROLE_SITE_ADMIN in body.role_codes and not ctx.is_site_admin:
+            raise AppError("forbidden", "不可分配场地超管角色", status_code=403)
+        roles = _resolve_roles(db, body.role_codes, staff.merchant_id)
+        for sr in list(staff.roles):
+            db.delete(sr)
+        db.flush()
+        for role in roles:
+            db.add(StaffRole(staff_id=staff.id, role_id=role.id))
+
+    write_audit(
+        db,
+        action="staff.update",
+        target_type="staff",
+        target_id=staff.id,
+        summary=f"更新员工 {staff.username} active={staff.is_active}",
+        actor_staff_id=ctx.staff.id,
+        site_id=ctx.site_id,
+        merchant_id=staff.merchant_id,
+    )
+    db.commit()
+    staff = db.scalar(
+        select(StaffUser)
+        .options(selectinload(StaffUser.roles).selectinload(StaffRole.role))
+        .where(StaffUser.id == staff_id)
+    )
+    return _to_out(staff)
+
+
+@router.post("/{staff_id}/password")
+def reset_staff_password(
+    staff_id: int,
+    body: PasswordResetIn,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    """场地超管可改全部后台密码；业务系统超管仅可改本商户员工。"""
+    ctx.require_permission("staff:manage", "org:manage")
+    ctx.require_password_reset()
+    staff = db.scalar(select(StaffUser).where(StaffUser.id == staff_id, StaffUser.site_id == ctx.site_id))
+    if staff is None:
+        raise AppError("not_found", "员工不存在", status_code=404)
+    _assert_staff_in_scope(ctx, staff)
+    staff.password_hash = hash_password(body.password)
+    write_audit(
+        db,
+        action="staff.password_reset",
+        target_type="staff",
+        target_id=staff.id,
+        summary=f"重置员工登录密码 {staff.username}",
+        actor_staff_id=ctx.staff.id,
+        site_id=ctx.site_id,
+        merchant_id=staff.merchant_id,
+    )
+    db.commit()
+    return {"ok": True}

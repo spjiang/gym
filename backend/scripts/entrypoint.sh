@@ -23,4 +23,9 @@ PY
 
 alembic upgrade head
 python -m app.seed
-exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+reload_args=()
+if [ "${UVICORN_RELOAD:-}" = "1" ]; then
+  reload_args+=(--reload)
+fi
+exec uvicorn app.main:app --host 0.0.0.0 --port 8000 "${reload_args[@]}"

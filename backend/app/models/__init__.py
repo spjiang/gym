@@ -6,7 +6,7 @@ from app.systems.platform.models.commerce import Order, Payment
 from app.systems.platform.models.identity import Role, StaffRole, StaffUser
 from app.systems.platform.models.member import Member, MerchantMember
 from app.systems.platform.models.notification import Notification
-from app.systems.platform.models.org import Merchant, MerchantSubsystem, MerchantType, Site
+from app.systems.platform.models.org import Merchant, MerchantContact, MerchantSubsystem, MerchantType, Site
 from app.systems.platform.models.payment_settings import (
     MemberWechatBinding,
     PaymentIntent,
@@ -14,6 +14,7 @@ from app.systems.platform.models.payment_settings import (
     SitePaymentSettings,
 )
 from app.systems.platform.models.rbac_catalog import MenuDef, PermissionDef, RoleMenu, RolePermission, Subsystem
+from app.systems.platform.models.sms import SiteSmsSettings, SmsTemplate
 from app.systems.platform.models.visit import VisitPass
 from app.systems.gym.models.coupon import CouponTemplate, MemberCoupon, OrderCouponLink
 from app.systems.gym.models.course import (
@@ -46,6 +47,7 @@ __all__ = [
     "Site",
     "MerchantType",
     "Merchant",
+    "MerchantContact",
     "MerchantSubsystem",
     "CateringMenuItem",
     "CateringOrderItem",
@@ -90,6 +92,8 @@ __all__ = [
     "EquipmentAsset",
     "EquipmentRepairTicket",
     "VisitPass",
+    "SiteSmsSettings",
+    "SmsTemplate",
     "Notification",
     "SitePaymentSettings",
     "MemberWechatBinding",

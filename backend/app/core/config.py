@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     member_otp_sms_token: str = Field(default="", alias="MEMBER_OTP_SMS_TOKEN")
     # 会员 H5 公网/局域网根地址（商户获客二维码）
     member_web_public_url: str = Field(default="http://localhost:8081", alias="MEMBER_WEB_PUBLIC_URL")
+    upload_dir: str = Field(default="uploads", alias="UPLOAD_DIR")
+    upload_max_bytes: int = Field(default=8 * 1024 * 1024, alias="UPLOAD_MAX_BYTES")
 
     seed_admin_username: str = Field(default="admin", alias="SEED_ADMIN_USERNAME")
     seed_admin_password: str = Field(default="Admin@123456", alias="SEED_ADMIN_PASSWORD")

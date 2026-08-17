@@ -41,6 +41,7 @@ npm-debug.log*
 # Docker / 本地数据
 postgres-data/
 .docker-data/
+backend/uploads/
 
 # 杂项
 *.sqlite3

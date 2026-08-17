@@ -59,7 +59,7 @@ onMounted(() => {
     <header class="me__head">
       <button class="me__back" type="button" @click="goStores">← 选店</button>
       <h1>我的</h1>
-      <p class="me__site">回龙观公园综合场地 · 会员中心</p>
+      <p class="me__site">观野SPACE · 会员中心</p>
     </header>
 
     <div class="me__card me__profile">

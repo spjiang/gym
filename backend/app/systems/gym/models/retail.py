@@ -18,6 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
+from app.systems.platform.models.identity import JSONType
 
 
 class StockMovementType(str, Enum):
@@ -54,6 +55,8 @@ class RetailSku(Base):
     promo_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     promo_starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     promo_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    remark: Mapped[str | None] = mapped_column(Text)
+    image_urls: Mapped[list] = mapped_column(JSONType, default=list, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

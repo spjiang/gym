@@ -99,3 +99,68 @@ def consume_pt_package(db: Session, package: PtPackage, *, actor_staff_id: int |
         merchant_id=package.merchant_id,
     )
     return package
+
+
+_EDITABLE_STATUS = {
+    PtPackageStatus.ACTIVE.value,
+    PtPackageStatus.EXHAUSTED.value,
+    PtPackageStatus.EXPIRED.value,
+}
+
+
+def _ensure_aware(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def update_pt_package(
+    db: Session,
+    package: PtPackage,
+    *,
+    actor_staff_id: int,
+    remaining_sessions: int | None = None,
+    starts_at: datetime | None = None,
+    ends_at: datetime | None = None,
+    status: str | None = None,
+    fields_set: set[str] | None = None,
+) -> PtPackage:
+    """前台校正会员课包的课时、有效期与状态。"""
+    if package.status == PtPackageStatus.VOID.value:
+        raise AppError("invalid_state", "已作废课包不可编辑", status_code=400)
+    changed = fields_set or set()
+
+    if "remaining_sessions" in changed:
+        if remaining_sessions is None or remaining_sessions < 0:
+            raise AppError("invalid_sessions", "剩余课时不能为负数", status_code=400)
+        package.remaining_sessions = remaining_sessions
+    if "starts_at" in changed:
+        package.starts_at = _ensure_aware(starts_at)
+    if "ends_at" in changed:
+        package.ends_at = _ensure_aware(ends_at)
+    if "status" in changed:
+        if status not in _EDITABLE_STATUS:
+            raise AppError("invalid_status", "课包状态无效", status_code=400)
+        package.status = status
+    elif "remaining_sessions" in changed:
+        if package.remaining_sessions <= 0:
+            package.status = PtPackageStatus.EXHAUSTED.value
+            package.remaining_sessions = 0
+        elif package.status == PtPackageStatus.EXHAUSTED.value:
+            package.status = PtPackageStatus.ACTIVE.value
+
+    write_audit(
+        db,
+        action="pt.update",
+        target_type="pt_package",
+        target_id=package.id,
+        summary=(
+            f"更新课包 remaining={package.remaining_sessions} status={package.status}"
+        ),
+        actor_staff_id=actor_staff_id,
+        site_id=None,
+        merchant_id=package.merchant_id,
+    )
+    return package
