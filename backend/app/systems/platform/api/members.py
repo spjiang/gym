@@ -17,23 +17,41 @@ from app.core.schemas.common import (
     MemberImportOut,
     MemberLinkIn,
     MemberOut,
+    MemberReferrerMixin,
     MemberUpdateIn,
     PasswordResetIn,
 )
 from app.core.schemas.paging import PageOut
 from app.core.security import hash_password
+from app.systems.platform.models.identity import StaffUser
 from app.systems.platform.models.member import AcquisitionSource, FaceStatus, Member, MerchantMember
 from app.systems.platform.models.org import Merchant
 from app.systems.platform.models.otp import MemberOtpChallenge
+from app.systems.platform.models.promoter import PromoterCode
 from app.systems.platform.services.audit import write_audit
+from app.systems.platform.services.promotion import ensure_member_promoter_code
 from app.systems.platform.services.member_import import (
     XLSX_MIME,
     build_member_import_template,
     import_members_for_merchant,
     parse_member_import,
 )
+from app.systems.platform.api.uploads import save_upload_file
 
 router = APIRouter(prefix="/members", tags=["members"])
+
+
+def _referrer_display(db: Session, m: Member) -> str | None:
+    """推荐人展示名：会员优先，其次员工，最后人工登记姓名。"""
+    if m.referrer_member_id is not None:
+        ref = db.get(Member, m.referrer_member_id)
+        if ref is not None:
+            return f"会员 {ref.name} {ref.phone}"
+    if m.referrer_staff_id is not None:
+        staff = db.get(StaffUser, m.referrer_staff_id)
+        if staff is not None:
+            return f"员工 {staff.display_name}"
+    return m.referrer_note
 
 
 def _member_out(db: Session, m: Member) -> MemberOut:
@@ -42,6 +60,12 @@ def _member_out(db: Session, m: Member) -> MemberOut:
     if m.first_merchant_id is not None:
         fm = db.get(Merchant, m.first_merchant_id)
         first_name = fm.name if fm else None
+    referred_count = int(
+        db.scalar(
+            select(func.count()).select_from(Member).where(Member.referrer_member_id == m.id)
+        )
+        or 0
+    )
     return MemberOut(
         id=m.id,
         site_id=m.site_id,
@@ -54,12 +78,74 @@ def _member_out(db: Session, m: Member) -> MemberOut:
         first_merchant_id=m.first_merchant_id,
         first_merchant_name=first_name,
         has_password=bool(m.password_hash),
+        referrer_member_id=m.referrer_member_id,
+        referrer_staff_id=m.referrer_staff_id,
+        referrer_note=m.referrer_note,
+        referral_code=m.referral_code,
+        referrer_display=_referrer_display(db, m),
+        referred_count=referred_count,
+        avatar_url=m.avatar_url,
     )
+
+
+def _assert_no_referrer_cycle(db: Session, member: Member, referrer_id: int) -> None:
+    """推荐链不能自指或成环。"""
+    if referrer_id == member.id:
+        raise AppError("invalid_referrer", "推荐人不能是本人", status_code=400)
+    seen = {member.id}
+    cursor_id: int | None = referrer_id
+    while cursor_id is not None:
+        if cursor_id in seen:
+            raise AppError("invalid_referrer", "推荐关系不能形成环", status_code=400)
+        seen.add(cursor_id)
+        cursor = db.get(Member, cursor_id)
+        if cursor is None:
+            break
+        cursor_id = cursor.referrer_member_id
+
+
+def _apply_referrer(
+    db: Session,
+    ctx: RequestContext,
+    member: Member,
+    body: MemberReferrerMixin,
+    *,
+    fields_set: set[str],
+) -> None:
+    """校验并写入推荐关系；推广码需存在且启用。"""
+    if "referrer_member_id" in fields_set:
+        if body.referrer_member_id is not None:
+            ref = db.get(Member, body.referrer_member_id)
+            if ref is None or ref.site_id != ctx.site_id:
+                raise AppError("not_found", "推荐会员不存在", status_code=404)
+            _assert_no_referrer_cycle(db, member, body.referrer_member_id)
+        member.referrer_member_id = body.referrer_member_id
+    if "referrer_staff_id" in fields_set:
+        if body.referrer_staff_id is not None:
+            staff = db.get(StaffUser, body.referrer_staff_id)
+            if staff is None or staff.site_id != ctx.site_id:
+                raise AppError("not_found", "推荐员工不存在", status_code=404)
+        member.referrer_staff_id = body.referrer_staff_id
+    if "referrer_note" in fields_set:
+        member.referrer_note = (body.referrer_note or "").strip() or None
+    if "referral_code" in fields_set:
+        code = (body.referral_code or "").strip().upper()
+        if code:
+            promoter = db.scalar(select(PromoterCode).where(PromoterCode.code == code))
+            if promoter is None or promoter.site_id != ctx.site_id:
+                raise AppError("not_found", "推广码不存在", status_code=404)
+            if not promoter.is_active:
+                raise AppError("invalid_code", "推广码已停用", status_code=400)
+            if promoter.subject_member_id:
+                _assert_no_referrer_cycle(db, member, promoter.subject_member_id)
+            member.referral_code = code
+        else:
+            member.referral_code = None
 
 
 def _assert_member_in_scope(db: Session, ctx: RequestContext, member: Member) -> None:
     """非场地超管仅能操作已挂靠本商户的会员。"""
-    if ctx.is_site_admin:
+    if ctx.is_site_wide:
         return
     mid = ctx.resolve_merchant_id()
     linked = db.scalar(
@@ -78,10 +164,14 @@ def _member_filters(
     merchant_id: int | None = None,
     face_status: str | None = None,
     has_password: bool | None = None,
+    referrer_member_id: int | None = None,
+    referrer_staff_id: int | None = None,
+    referral_code: str | None = None,
+    has_referrer: bool | None = None,
 ):
     """构造会员列表过滤条件。"""
     filters = [Member.site_id == ctx.site_id]
-    if not ctx.is_site_admin:
+    if not ctx.is_site_wide:
         mid = ctx.resolve_merchant_id()
         member_ids = select(MerchantMember.member_id).where(MerchantMember.merchant_id == mid)
         filters.append(Member.id.in_(member_ids))
@@ -98,6 +188,22 @@ def _member_filters(
         filters.append(Member.password_hash.is_not(None))
     elif has_password is False:
         filters.append(Member.password_hash.is_(None))
+    if referrer_member_id is not None:
+        filters.append(Member.referrer_member_id == referrer_member_id)
+    if referrer_staff_id is not None:
+        filters.append(Member.referrer_staff_id == referrer_staff_id)
+    if referral_code:
+        filters.append(Member.referral_code == referral_code.strip().upper())
+    referred = or_(
+        Member.referrer_member_id.is_not(None),
+        Member.referrer_staff_id.is_not(None),
+        Member.referrer_note.is_not(None),
+        Member.referral_code.is_not(None),
+    )
+    if has_referrer is True:
+        filters.append(referred)
+    elif has_referrer is False:
+        filters.append(~referred)
     return filters
 
 
@@ -109,6 +215,10 @@ def list_members(
     merchant_id: int | None = None,
     face_status: str | None = None,
     has_password: bool | None = None,
+    referrer_member_id: int | None = None,
+    referrer_staff_id: int | None = None,
+    referral_code: str | None = None,
+    has_referrer: bool | None = None,
     db: Session = Depends(get_db),
     ctx: RequestContext = Depends(get_current_context),
 ):
@@ -119,6 +229,10 @@ def list_members(
         merchant_id=merchant_id,
         face_status=face_status,
         has_password=has_password,
+        referrer_member_id=referrer_member_id,
+        referrer_staff_id=referrer_staff_id,
+        referral_code=referral_code,
+        has_referrer=has_referrer,
     )
     total = db.scalar(select(func.count()).select_from(Member).where(*filters)) or 0
     rows = list(
@@ -254,6 +368,9 @@ def create_member(
         db.rollback()
         raise AppError("conflict", "该手机号已存在于本场地", status_code=409) from exc
 
+    _apply_referrer(db, ctx, member, body, fields_set=set(body.model_fields_set))
+    ensure_member_promoter_code(db, member)
+
     if link_mid is not None:
         db.add(MerchantMember(merchant_id=link_mid, member_id=member.id))
 
@@ -279,19 +396,80 @@ def update_member(
     db: Session = Depends(get_db),
     ctx: RequestContext = Depends(get_current_context),
 ):
-    """编辑会员姓名。"""
+    """编辑会员姓名与推荐关系。"""
     ctx.require_permission("member:write")
     member = db.get(Member, member_id)
     if member is None or member.site_id != ctx.site_id:
         raise AppError("not_found", "会员不存在", status_code=404)
     _assert_member_in_scope(db, ctx, member)
-    member.name = body.name.strip()
+    fields_set = set(body.model_fields_set)
+    if "name" in fields_set:
+        if not body.name or not body.name.strip():
+            raise AppError("validation_error", "会员姓名不能为空", status_code=422)
+        member.name = body.name.strip()
+    _apply_referrer(db, ctx, member, body, fields_set=fields_set)
     write_audit(
         db,
         action="member.update",
         target_type="member",
         target_id=member.id,
-        summary=f"更新会员姓名 {member.name}",
+        summary=f"更新会员档案 {member.name}",
+        actor_staff_id=ctx.staff.id,
+        site_id=ctx.site_id,
+    )
+    db.commit()
+    db.refresh(member)
+    return _member_out(db, member)
+
+
+@router.post("/{member_id}/avatar", response_model=MemberOut)
+async def upload_member_avatar(
+    member_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    """员工为会员上传展示头像。"""
+    ctx.require_permission("member:write")
+    member = db.get(Member, member_id)
+    if member is None or member.site_id != ctx.site_id:
+        raise AppError("not_found", "会员不存在", status_code=404)
+    _assert_member_in_scope(db, ctx, member)
+    saved = await save_upload_file(file, images_only=True)
+    member.avatar_url = saved["url"]
+    write_audit(
+        db,
+        action="member.avatar",
+        target_type="member",
+        target_id=member.id,
+        summary=f"更新会员头像 {member.phone}",
+        actor_staff_id=ctx.staff.id,
+        site_id=ctx.site_id,
+    )
+    db.commit()
+    db.refresh(member)
+    return _member_out(db, member)
+
+
+@router.delete("/{member_id}/avatar", response_model=MemberOut)
+def clear_member_avatar(
+    member_id: int,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    """员工清除会员展示头像。"""
+    ctx.require_permission("member:write")
+    member = db.get(Member, member_id)
+    if member is None or member.site_id != ctx.site_id:
+        raise AppError("not_found", "会员不存在", status_code=404)
+    _assert_member_in_scope(db, ctx, member)
+    member.avatar_url = None
+    write_audit(
+        db,
+        action="member.avatar_clear",
+        target_type="member",
+        target_id=member.id,
+        summary=f"清除会员头像 {member.phone}",
         actor_staff_id=ctx.staff.id,
         site_id=ctx.site_id,
     )

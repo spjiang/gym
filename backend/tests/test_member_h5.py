@@ -156,7 +156,47 @@ def test_member_portal_book_and_purchase(client: TestClient, admin_headers: dict
         headers=mheaders,
     )
     assert sessions.status_code == 200
-    assert any(s["id"] == session["id"] for s in sessions.json())
+    listed = sessions.json()
+    hit = next(s for s in listed if s["id"] == session["id"])
+    assert hit["course_name"] == "燃脂操"
+    assert hit["coach_name"] == "H5教练"
+    assert "remaining" in hit
+
+    started = client.post(
+        "/api/v1/group-sessions",
+        headers=admin_headers,
+        json={
+            "merchant_id": gym_id,
+            "course_id": course["id"],
+            "coach_id": coach["id"],
+            "starts_at": (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
+            "ends_at": datetime.now(timezone.utc).isoformat(),
+            "capacity": 10,
+        },
+    ).json()
+    listed_again = client.get(
+        f"/api/v1/member/group-sessions?merchant_id={gym_id}",
+        headers=mheaders,
+    ).json()
+    assert all(s["id"] != started["id"] for s in listed_again)
+
+    detail = client.get(f"/api/v1/member/group-sessions/{session['id']}", headers=mheaders)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["course_name"] == "燃脂操"
+    assert detail.json()["coach_id"] == coach["id"]
+
+    coach_detail = client.get(f"/api/v1/member/coaches/{coach['id']}", headers=mheaders)
+    assert coach_detail.status_code == 200, coach_detail.text
+    assert coach_detail.json()["display_name"] == "H5教练"
+    assert "pt_commission_rate" not in coach_detail.json()
+
+    home = client.get(f"/api/v1/member/home?merchant_id={gym_id}", headers=mheaders)
+    assert home.status_code == 200, home.text
+    home_body = home.json()
+    assert home_body["merchant"]["id"] == gym_id
+    assert any(c["id"] == coach["id"] for c in home_body["coaches"])
+    assert any(p["id"] == product["id"] for p in home_body["memberships"])
+    assert any(s["id"] == session["id"] for s in home_body["sessions"])
 
     booking = client.post(
         "/api/v1/member/group-bookings",
@@ -164,6 +204,7 @@ def test_member_portal_book_and_purchase(client: TestClient, admin_headers: dict
         json={"merchant_id": gym_id, "session_id": session["id"]},
     )
     assert booking.status_code == 200, booking.text
+    assert booking.json()["course_name"] == "燃脂操"
     booking_id = booking.json()["id"]
 
     cancelled = client.delete(f"/api/v1/member/group-bookings/{booking_id}", headers=mheaders)

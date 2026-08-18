@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage, type FormInstance, type FormRules, type UploadRequestOptions } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules, type UploadRequestOptions, type UploadUserFile } from 'element-plus'
+import { Plus } from '@element-plus/icons-vue'
 import http from '../../../core/api/http'
 import { BUSINESS_SYSTEM_OPTIONS, defaultSubsystemsForTypeCode } from '../../../core/nav/systems'
 import { merchantStatusLabel } from '../../../core/labels'
@@ -31,6 +32,9 @@ type Merchant = {
   contact_email?: string | null
   business_hours?: string | null
   description?: string | null
+  tagline?: string | null
+  cover_image_url?: string | null
+  gallery_image_urls?: string[]
   contacts?: Array<Contact & { id?: number }>
   has_license?: boolean
   emergency_contact_count?: number
@@ -81,6 +85,9 @@ const merchantFormRef = ref<FormInstance>()
 const editingId = ref<number | null>(null)
 const detail = ref<Merchant | null>(null)
 const activeTab = ref('base')
+const GALLERY_LIMIT = 9
+const coverList = ref<UploadUserFile[]>([])
+const galleryList = ref<UploadUserFile[]>([])
 
 function emptyContact(kind: Contact['kind'] = 'emergency'): Contact {
   return { name: '', phone: '', title: '', kind, remark: '' }
@@ -102,6 +109,9 @@ const merchantForm = reactive({
   contact_email: '',
   business_hours: '',
   description: '',
+  tagline: '',
+  cover_image_url: '',
+  gallery_image_urls: [] as string[],
   lease_starts_on: '',
   lease_ends_on: '',
   contacts: [emptyContact('primary'), emptyContact('emergency')] as Contact[],
@@ -210,6 +220,9 @@ function fillForm(row?: Merchant) {
   merchantForm.contact_email = row?.contact_email || ''
   merchantForm.business_hours = row?.business_hours || ''
   merchantForm.description = row?.description || ''
+  merchantForm.tagline = row?.tagline || ''
+  merchantForm.cover_image_url = row?.cover_image_url || ''
+  merchantForm.gallery_image_urls = [...(row?.gallery_image_urls || [])]
   merchantForm.lease_starts_on = row?.lease_starts_on || ''
   merchantForm.lease_ends_on = row?.lease_ends_on || ''
   merchantForm.contacts = (row?.contacts || []).map((c) => ({
@@ -222,6 +235,7 @@ function fillForm(row?: Merchant) {
   if (!merchantForm.contacts.length) {
     merchantForm.contacts = [emptyContact('primary'), emptyContact('emergency')]
   }
+  syncShowcaseLists()
 }
 
 function openMerchantDialog(row?: Merchant) {
@@ -266,6 +280,67 @@ function clearLicense() {
   merchantForm.license_image_url = ''
 }
 
+function syncShowcaseLists() {
+  coverList.value = merchantForm.cover_image_url
+    ? [{ name: '封面', url: merchantForm.cover_image_url, uid: 1 }]
+    : []
+  galleryList.value = merchantForm.gallery_image_urls.map((url, i) => ({
+    name: `环境${i + 1}`,
+    url,
+    uid: i + 1,
+  }))
+}
+
+async function uploadStoreImage(opt: UploadRequestOptions): Promise<string> {
+  const fd = new FormData()
+  fd.append('file', opt.file as File)
+  const { data } = await http.post<{ url: string }>('/uploads', fd, { timeout: 30000 })
+  return data.url
+}
+
+async function uploadCover(opt: UploadRequestOptions) {
+  uploading.value = true
+  try {
+    merchantForm.cover_image_url = await uploadStoreImage(opt)
+    syncShowcaseLists()
+  } catch (e: unknown) {
+    ElMessage.error(e instanceof Error ? e.message : '封面上传失败')
+  } finally {
+    uploading.value = false
+  }
+}
+
+function removeCover() {
+  merchantForm.cover_image_url = ''
+  syncShowcaseLists()
+}
+
+async function uploadGallery(opt: UploadRequestOptions) {
+  if (merchantForm.gallery_image_urls.length >= GALLERY_LIMIT) {
+    ElMessage.warning(`环境图最多 ${GALLERY_LIMIT} 张`)
+    return
+  }
+  uploading.value = true
+  try {
+    const url = await uploadStoreImage(opt)
+    merchantForm.gallery_image_urls.push(url)
+    syncShowcaseLists()
+  } catch (e: unknown) {
+    ElMessage.error(e instanceof Error ? e.message : '环境图上传失败')
+  } finally {
+    uploading.value = false
+  }
+}
+
+function removeGallery(file: UploadUserFile) {
+  merchantForm.gallery_image_urls = merchantForm.gallery_image_urls.filter((url) => url !== file.url)
+  syncShowcaseLists()
+}
+
+function onGalleryExceed() {
+  ElMessage.warning(`环境图最多 ${GALLERY_LIMIT} 张`)
+}
+
 function isImageUrl(url: string) {
   return /\.(png|jpe?g|webp)(\?|$)/i.test(url)
 }
@@ -307,6 +382,9 @@ async function saveMerchant() {
       contact_email: merchantForm.contact_email.trim() || null,
       business_hours: merchantForm.business_hours.trim() || null,
       description: merchantForm.description.trim() || null,
+      tagline: merchantForm.tagline.trim() || null,
+      cover_image_url: merchantForm.cover_image_url.trim() || null,
+      gallery_image_urls: merchantForm.gallery_image_urls,
       contacts,
     }
     if (isSiteAdmin.value) {
@@ -544,8 +622,15 @@ onMounted(load)
           <el-descriptions-item label="对外电话">{{ detail.contact_phone || '—' }}</el-descriptions-item>
           <el-descriptions-item label="邮箱">{{ detail.contact_email || '—' }}</el-descriptions-item>
           <el-descriptions-item label="营业时间">{{ detail.business_hours || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="口号">{{ detail.tagline || '—' }}</el-descriptions-item>
           <el-descriptions-item label="简介">{{ detail.description || '—' }}</el-descriptions-item>
         </el-descriptions>
+        <div v-if="detail.cover_image_url" class="detail-cover">
+          <img :src="detail.cover_image_url" alt="封面" />
+        </div>
+        <div v-if="detail.gallery_image_urls?.length" class="detail-gallery">
+          <img v-for="url in detail.gallery_image_urls" :key="url" :src="url" alt="" />
+        </div>
         <div v-if="detail.license_image_url" class="license-preview">
           <img v-if="isImageUrl(detail.license_image_url)" :src="detail.license_image_url" alt="营业执照" />
           <a v-else :href="detail.license_image_url" target="_blank" rel="noreferrer">查看营业执照文件</a>
@@ -644,6 +729,43 @@ onMounted(load)
             </el-form-item>
             <el-form-item label="简介">
               <el-input v-model="merchantForm.description" type="textarea" :rows="3" maxlength="500" show-word-limit />
+            </el-form-item>
+          </el-tab-pane>
+
+          <el-tab-pane label="店铺展示" name="showcase">
+            <el-form-item label="对外口号">
+              <el-input v-model="merchantForm.tagline" maxlength="64" show-word-limit placeholder="如：训练即生活" />
+            </el-form-item>
+            <el-form-item label="封面图">
+              <el-upload
+                list-type="picture-card"
+                accept=".jpg,.jpeg,.png,.webp"
+                :limit="1"
+                :file-list="coverList"
+                :http-request="uploadCover"
+                :on-remove="removeCover"
+                :disabled="uploading"
+                :class="{ 'hide-uploader': !!merchantForm.cover_image_url }"
+              >
+                <el-icon><Plus /></el-icon>
+              </el-upload>
+              <p class="hint">一张，会员端首页主图，不超过 8MB。</p>
+            </el-form-item>
+            <el-form-item label="环境相册">
+              <el-upload
+                list-type="picture-card"
+                accept=".jpg,.jpeg,.png,.webp"
+                :limit="GALLERY_LIMIT"
+                :file-list="galleryList"
+                :http-request="uploadGallery"
+                :on-remove="removeGallery"
+                :on-exceed="onGalleryExceed"
+                :disabled="uploading"
+                :class="{ 'hide-uploader': merchantForm.gallery_image_urls.length >= GALLERY_LIMIT }"
+              >
+                <el-icon><Plus /></el-icon>
+              </el-upload>
+              <p class="hint">最多 {{ GALLERY_LIMIT }} 张，展示器械区、操房、更衣室等环境。</p>
             </el-form-item>
           </el-tab-pane>
 
@@ -781,6 +903,31 @@ onMounted(load)
   border-radius: 8px;
   border: 1px solid var(--el-border-color-light);
   margin-bottom: 8px;
+}
+.detail-cover {
+  margin-top: 12px;
+}
+.detail-cover img {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--el-border-color-light);
+}
+.detail-gallery {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+}
+.detail-gallery img {
+  width: 100%;
+  height: 88px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+.hide-uploader :deep(.el-upload--picture-card) {
+  display: none;
 }
 .block-title {
   margin: 18px 0 10px;

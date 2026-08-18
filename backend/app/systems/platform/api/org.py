@@ -34,6 +34,8 @@ from app.systems.platform.services.merchant_lease import lease_metrics
 
 CONTACT_KINDS = {"primary", "emergency", "other"}
 CREDIT_CODE_RE = re.compile(r"^[0-9A-Z]{18}$")
+STORE_IMAGE_RE = re.compile(r"^/api/v1/files/[0-9a-f]{32}\.(jpg|png|webp)$")
+MAX_GALLERY_IMAGES = 9
 PROFILE_FIELDS = (
     "legal_name",
     "license_no",
@@ -44,6 +46,7 @@ PROFILE_FIELDS = (
     "contact_phone",
     "business_hours",
     "description",
+    "tagline",
 )
 
 router = APIRouter(tags=["organization"])
@@ -82,6 +85,27 @@ def _validate_email(value: str | None) -> str | None:
     if "@" not in email or "." not in email.rsplit("@", 1)[-1]:
         raise AppError("invalid_email", "邮箱格式不正确", status_code=400)
     return email
+
+
+def _normalize_store_image(url: str | None, *, field: str) -> str | None:
+    text = _opt(url)
+    if text is None:
+        return None
+    if not STORE_IMAGE_RE.match(text):
+        raise AppError("invalid_image", f"{field}地址无效，请通过系统上传", status_code=400)
+    return text
+
+
+def _normalize_gallery(urls: list[str] | None) -> list[str]:
+    """店铺环境图只接受本系统上传地址，去重且最多 9 张。"""
+    out: list[str] = []
+    for raw in urls or []:
+        url = _normalize_store_image(raw, field="环境图")
+        if url and url not in out:
+            out.append(url)
+    if len(out) > MAX_GALLERY_IMAGES:
+        raise AppError("too_many_images", "环境图最多 9 张", status_code=400)
+    return out
 
 
 def _replace_contacts(db: Session, merchant_id: int, contacts: list[MerchantContactIn] | None) -> None:
@@ -132,6 +156,10 @@ def _apply_profile(row: Merchant, payload: dict) -> None:
         if field in payload:
             value = payload.get(field)
             setattr(row, field, _opt(value) if isinstance(value, str) else value)
+    if "cover_image_url" in payload:
+        row.cover_image_url = _normalize_store_image(payload.get("cover_image_url"), field="封面图")
+    if "gallery_image_urls" in payload:
+        row.gallery_image_urls = _normalize_gallery(payload.get("gallery_image_urls"))
     _apply_lease(row, payload)
 
 
@@ -166,6 +194,9 @@ def _merchant_out(db: Session, row: Merchant) -> MerchantOut:
         contact_email=row.contact_email,
         business_hours=row.business_hours,
         description=row.description,
+        tagline=row.tagline,
+        cover_image_url=row.cover_image_url,
+        gallery_image_urls=list(row.gallery_image_urls or []),
         lease_starts_on=row.lease_starts_on,
         lease_ends_on=row.lease_ends_on,
         **lease_metrics(row.lease_starts_on, row.lease_ends_on),

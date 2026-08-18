@@ -38,6 +38,19 @@ class MembershipOrderAction(str, Enum):
     RENEW = "renew"
 
 
+class ConsumptionKind(str, Enum):
+    """销次 = 扣次卡次数；计费 = 扣储值卡余额。"""
+
+    SESSION = "session"
+    VALUE = "value"
+
+
+class ConsumptionSource(str, Enum):
+    FRONT_DESK = "front_desk"
+    ACCESS = "access"
+    COURSE = "course"
+
+
 class MembershipProduct(Base):
     __tablename__ = "membership_products"
 
@@ -86,6 +99,26 @@ class Membership(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class MembershipConsumption(Base):
+    """会籍销次/计费流水，供前台销次与对账追溯。"""
+
+    __tablename__ = "membership_consumptions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    merchant_id: Mapped[int] = mapped_column(ForeignKey("merchants.id"), nullable=False, index=True)
+    membership_id: Mapped[int] = mapped_column(ForeignKey("memberships.id"), nullable=False, index=True)
+    member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    sessions: Mapped[int | None] = mapped_column(Integer)
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    remaining_sessions_after: Mapped[int | None] = mapped_column(Integer)
+    balance_after: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default=ConsumptionSource.FRONT_DESK.value)
+    note: Mapped[str | None] = mapped_column(String(255))
+    actor_staff_id: Mapped[int | None] = mapped_column(ForeignKey("staff_users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 
 class MembershipOrderLink(Base):

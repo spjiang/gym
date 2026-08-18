@@ -5,8 +5,18 @@
     "pages/stores/index",
     "pages/memberships/index",
     "pages/classes/index",
+    "pages/classes/detail",
+    "pages/activities/index",
+    "pages/activities/detail",
+    "pages/coaches/detail",
     "pages/shop/index",
-    "pages/coupons/index"
+    "pages/catering/menu",
+    "pages/catering/checkout",
+    "pages/catering/orders",
+    "pages/catering/detail",
+    "pages/coupons/index",
+    "pages/promotion/index",
+    "pages/me/index"
   ],
   "window": {
     "navigationBarTitleText": "观野SPACE",

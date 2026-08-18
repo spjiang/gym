@@ -13,9 +13,19 @@ from app.systems.platform.models.payment_settings import (
     RefundIntent,
     SitePaymentSettings,
 )
+from app.systems.platform.models.payout import Payout, PayoutItem
+from app.systems.platform.models.promoter import PromoterCode
+from app.systems.platform.models.rebate import (
+    MemberRebateAccount,
+    MemberRebateLedger,
+    SitePromotionSettings,
+)
 from app.systems.platform.models.rbac_catalog import MenuDef, PermissionDef, RoleMenu, RolePermission, Subsystem
 from app.systems.platform.models.sms import SiteSmsSettings, SmsTemplate
 from app.systems.platform.models.visit import VisitPass
+from app.systems.gym.models.activity import Activity, ActivityRegistration
+from app.systems.gym.models.appointment import PtAppointment
+from app.systems.gym.models.commission import CommissionRecord, CommissionRule
 from app.systems.gym.models.coupon import CouponTemplate, MemberCoupon, OrderCouponLink
 from app.systems.gym.models.course import (
     Coach,
@@ -30,6 +40,7 @@ from app.systems.gym.models.course import (
 from app.systems.gym.models.equipment import EquipmentAsset, EquipmentRepairTicket
 from app.systems.gym.models.membership import (
     Membership,
+    MembershipConsumption,
     MembershipOrderLink,
     MembershipProduct,
     MembershipProductAccessPoint,
@@ -41,7 +52,12 @@ from app.systems.gym.models.retail import (
     RetailSku,
     StockMovement,
 )
-from app.systems.catering.models.catering import CateringMenuItem, CateringOrderItem
+from app.systems.catering.models.catering import (
+    CateringMenuCategory,
+    CateringMenuItem,
+    CateringOrderItem,
+    CateringTable,
+)
 
 __all__ = [
     "Site",
@@ -49,8 +65,10 @@ __all__ = [
     "Merchant",
     "MerchantContact",
     "MerchantSubsystem",
+    "CateringMenuCategory",
     "CateringMenuItem",
     "CateringOrderItem",
+    "CateringTable",
     "Subsystem",
     "PermissionDef",
     "MenuDef",
@@ -71,6 +89,7 @@ __all__ = [
     "MembershipProduct",
     "MembershipProductAccessPoint",
     "Membership",
+    "MembershipConsumption",
     "MembershipOrderLink",
     "Coach",
     "PtPackageProduct",
@@ -80,6 +99,17 @@ __all__ = [
     "GroupCourse",
     "GroupSession",
     "GroupBooking",
+    "PtAppointment",
+    "Activity",
+    "ActivityRegistration",
+    "CommissionRule",
+    "CommissionRecord",
+    "PromoterCode",
+    "SitePromotionSettings",
+    "MemberRebateAccount",
+    "MemberRebateLedger",
+    "Payout",
+    "PayoutItem",
     "ProductCategory",
     "RetailSku",
     "StockMovement",

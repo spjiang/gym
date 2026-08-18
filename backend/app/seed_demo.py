@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session
 
 import app.models  # noqa: F401 — 注册 Order 等表，满足 StockMovement.order_id 外键解析
 from app.systems.platform.models.access import AccessDevice, AccessPoint
-from app.systems.gym.models.coupon import ApplicableTo, CouponTemplate, DiscountType
+from app.systems.gym.models.coupon import ApplicableTo, CouponTemplate, DiscountType, MemberCoupon, MemberCouponStatus
+from app.systems.gym.models.activity import Activity, ActivityStatus
 from app.systems.gym.models.course import Coach, GroupCourse, GroupSession, GroupSessionStatus, PtPackageProduct
 from app.systems.gym.models.equipment import EquipmentAsset, EquipmentStatus
 from app.systems.platform.models.identity import Role, StaffRole, StaffUser
@@ -23,7 +24,8 @@ from app.systems.gym.models.membership import MembershipProduct, MembershipProdu
 from app.systems.platform.models.notification import Notification
 from app.systems.platform.models.org import Merchant, MerchantStatus, MerchantType, Site
 from app.systems.gym.models.retail import ProductCategory, RetailSku, StockMovement, StockMovementType
-from app.systems.catering.models.catering import CateringMenuItem
+from app.systems.catering.models.catering import CateringMenuCategory, CateringMenuItem, CateringTable
+from app.systems.catering.services.tables import generate_table_code
 from app.core.security import hash_device_api_key, hash_password
 
 UTC = timezone.utc
@@ -717,12 +719,63 @@ def seed_demo_catalog(db: Session, *, site: Site, gym: Merchant, role_map: dict[
     ensure_asset("EQ-SG-001", "史密斯机", "strength", "力量区")
     db.flush()
 
+    # —— 活动：会员 H5 / 小程序首页可见 ——
+    demo_activity = db.scalar(
+        select(Activity).where(Activity.merchant_id == gym.id, Activity.name == "夏季体测")
+    )
+    if demo_activity is None:
+        starts = _now() + timedelta(days=10)
+        db.add(
+            Activity(
+                merchant_id=gym.id,
+                name="夏季体测",
+                category="赛事",
+                location="多功能厅",
+                description="体脂、力量与有氧指标检测。发布后会员可在观野FIT 首页与活动页报名。",
+                starts_at=starts,
+                ends_at=starts + timedelta(days=1),
+                register_ends_at=starts - timedelta(days=1),
+                capacity=50,
+                price=Decimal("0"),
+                requires_payment=False,
+                status=ActivityStatus.PUBLISHED.value,
+            )
+        )
+        db.flush()
+
     # —— 清吧 Demo 菜单 ——
     if bar is not None:
-        for name, category, price in (
-            ("特调气泡水", "饮品", "28.00"),
-            ("经典莫吉托", "鸡尾酒", "48.00"),
-            ("炸薯条", "小食", "22.00"),
+        def ensure_menu_category(name: str, sort_order: int) -> CateringMenuCategory:
+            row = db.scalar(
+                select(CateringMenuCategory).where(
+                    CateringMenuCategory.merchant_id == bar.id,
+                    CateringMenuCategory.name == name,
+                )
+            )
+            if row is None:
+                row = CateringMenuCategory(
+                    merchant_id=bar.id,
+                    name=name,
+                    sort_order=sort_order,
+                    is_active=True,
+                )
+                db.add(row)
+                db.flush()
+            return row
+
+        demo_cats = {
+            "饮品": ensure_menu_category("饮品", 10),
+            "鸡尾酒": ensure_menu_category("鸡尾酒", 20),
+            "酒水": ensure_menu_category("酒水", 30),
+            "小食": ensure_menu_category("小食", 40),
+        }
+        for name, category, price, description in (
+            ("特调气泡水", "饮品", "28.00", "苏打气泡底，清爽微甜，适合佐餐或解腻。"),
+            ("美式咖啡", "饮品", "22.00", "深烘浓缩拉热美式，可做冰饮。"),
+            ("经典莫吉托", "鸡尾酒", "48.00", "朗姆、青柠与薄荷，冰镇后口感清爽。"),
+            ("精酿啤酒", "酒水", "38.00", "店内精选生啤，酒花香气明显。"),
+            ("炸薯条", "小食", "22.00", "外脆里软，可配番茄酱或蒜香黄油。"),
+            ("香辣鸡翅", "小食", "32.00", "现炸鸡翅，微辣，配甜辣酱。"),
         ):
             exists = db.scalar(
                 select(CateringMenuItem).where(
@@ -730,17 +783,91 @@ def seed_demo_catalog(db: Session, *, site: Site, gym: Merchant, role_map: dict[
                     CateringMenuItem.name == name,
                 )
             )
+            cat = demo_cats[category]
             if exists is None:
                 db.add(
                     CateringMenuItem(
                         merchant_id=bar.id,
                         name=name,
-                        category=category,
+                        category_id=cat.id,
+                        category=cat.name,
                         price=Decimal(price),
+                        description=description,
                         is_active=True,
                     )
                 )
+            else:
+                exists.category_id = cat.id
+                exists.category = cat.name
+                if not exists.description:
+                    exists.description = description
         db.flush()
+
+        dining_tpl = db.scalar(
+            select(CouponTemplate).where(
+                CouponTemplate.merchant_id == bar.id,
+                CouponTemplate.name == "满20减5",
+            )
+        )
+        if dining_tpl is None:
+            now = _now()
+            dining_tpl = CouponTemplate(
+                merchant_id=bar.id,
+                name="满20减5",
+                discount_type=DiscountType.FIXED.value,
+                threshold_amount=Decimal("20.00"),
+                fixed_amount=Decimal("5.00"),
+                percent_off=None,
+                applicable_to=ApplicableTo.DINING.value,
+                starts_at=now - timedelta(days=1),
+                ends_at=now + timedelta(days=60),
+                total_limit=500,
+                issued_count=0,
+                claimable=True,
+                per_member_limit=1,
+                is_active=True,
+            )
+            db.add(dining_tpl)
+            db.flush()
+        if members:
+            owned = db.scalar(
+                select(MemberCoupon).where(
+                    MemberCoupon.member_id == members[0].id,
+                    MemberCoupon.template_id == dining_tpl.id,
+                )
+            )
+            if owned is None:
+                db.add(
+                    MemberCoupon(
+                        merchant_id=bar.id,
+                        template_id=dining_tpl.id,
+                        member_id=members[0].id,
+                        status=MemberCouponStatus.UNUSED.value,
+                        starts_at=dining_tpl.starts_at,
+                        ends_at=dining_tpl.ends_at,
+                    )
+                )
+                dining_tpl.issued_count = int(dining_tpl.issued_count or 0) + 1
+                db.flush()
+
+        for idx, table_name in enumerate(["吧台", "A1", "A2", "A3", "B1", "卡座1", "卡座2"]):
+            table = db.scalar(
+                select(CateringTable).where(
+                    CateringTable.merchant_id == bar.id,
+                    CateringTable.name == table_name,
+                )
+            )
+            if table is None:
+                db.add(
+                    CateringTable(
+                        merchant_id=bar.id,
+                        name=table_name,
+                        code=generate_table_code(db),
+                        sort_order=(idx + 1) * 10,
+                        is_active=True,
+                    )
+                )
+                db.flush()
 
     # —— 站内通知 ——
     notice_title = "【Demo】欢迎体验综合场地管理系统"

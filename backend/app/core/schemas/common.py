@@ -1,7 +1,7 @@
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 
 class ORMModel(BaseModel):
@@ -71,6 +71,9 @@ class MerchantProfileMixin(BaseModel):
     contact_email: str | None = Field(default=None, max_length=128)
     business_hours: str | None = Field(default=None, max_length=128)
     description: str | None = None
+    tagline: str | None = Field(default=None, max_length=64)
+    cover_image_url: str | None = Field(default=None, max_length=255)
+    gallery_image_urls: list[str] | None = None
     lease_starts_on: date | None = None
     lease_ends_on: date | None = None
     contacts: list[MerchantContactIn] | None = None
@@ -104,6 +107,9 @@ class MerchantOut(ORMModel):
     contact_email: str | None = None
     business_hours: str | None = None
     description: str | None = None
+    tagline: str | None = None
+    cover_image_url: str | None = None
+    gallery_image_urls: list[str] = []
     lease_starts_on: date | None = None
     lease_ends_on: date | None = None
     lease_days_total: int | None = None
@@ -161,7 +167,16 @@ class RoleAssignIn(BaseModel):
     role_codes: list[str]
 
 
-class MemberCreateIn(BaseModel):
+class MemberReferrerMixin(BaseModel):
+    """推荐人：可挂推广会员，或仅登记姓名。"""
+
+    referrer_member_id: int | None = None
+    referrer_staff_id: int | None = None
+    referrer_note: str | None = Field(default=None, max_length=128)
+    referral_code: str | None = Field(default=None, max_length=32)
+
+
+class MemberCreateIn(MemberReferrerMixin):
     phone: str = Field(min_length=1, max_length=32)
     name: str = Field(min_length=1, max_length=128)
     merchant_id: int | None = None
@@ -180,14 +195,21 @@ class MemberOut(ORMModel):
     first_merchant_id: int | None = None
     first_merchant_name: str | None = None
     has_password: bool = False
+    referrer_member_id: int | None = None
+    referrer_staff_id: int | None = None
+    referrer_note: str | None = None
+    referral_code: str | None = None
+    referrer_display: str | None = None
+    referred_count: int = 0
+    avatar_url: str | None = None
 
 
 class MemberLinkIn(BaseModel):
     merchant_id: int
 
 
-class MemberUpdateIn(BaseModel):
-    name: str = Field(min_length=1, max_length=128)
+class MemberUpdateIn(MemberReferrerMixin):
+    name: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class MemberImportErrorOut(BaseModel):
@@ -307,12 +329,25 @@ class OrderOut(ORMModel):
     order_type: str
     title: str
     amount: Decimal
+    original_amount: Decimal | None = None
+    promotion_discount_amount: Decimal = Decimal("0")
+    promoter_code: str | None = None
     refunded_amount: Decimal = Decimal("0")
     status: str
     pickup_code: str | None = None
     customer_note: str | None = None
+    dining_status: str | None = None
     created_at: datetime
     member: MemberBrief | None = None
+
+    @field_serializer(
+        "amount", "original_amount", "promotion_discount_amount", "refunded_amount"
+    )
+    def _money(self, value: Decimal | None) -> Decimal | None:
+        """金额统一按分输出，避免同一字段出现 0 与 0.00 两种写法。"""
+        if value is None:
+            return None
+        return Decimal(value).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 class OfflinePayIn(BaseModel):

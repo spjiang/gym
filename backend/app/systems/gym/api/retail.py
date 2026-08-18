@@ -21,8 +21,8 @@ from app.systems.platform.models.member import Member
 from app.systems.gym.models.retail import ProductCategory, RetailOrderItem, RetailOrderLink, RetailSku, StockMovement
 from app.systems.platform.services.audit import write_audit
 from app.systems.gym.services.retail_stock import stock_adjust, stock_in, stock_out
-from app.systems.gym.services.coupon import attach_coupon_to_order
 from app.systems.gym.services.pricing import effective_price
+from app.systems.platform.services.order_pricing import price_order
 
 router = APIRouter(prefix="/retail", tags=["retail"])
 
@@ -522,19 +522,13 @@ def create_retail_order(
         title="零售收银",
         amount=total,
         status=OrderStatus.PENDING.value,
+        seller_staff_id=ctx.staff.id,
     )
     db.add(order)
     db.flush()
     if body.member_coupon_id is not None:
         ctx.require_permission("coupon:redeem", "coupon:manage", "retail:sell", "retail:manage")
-        payable = attach_coupon_to_order(
-            db,
-            order=order,
-            member_coupon_id=body.member_coupon_id,
-            original_amount=total,
-            member_id=body.member_id,
-        )
-        order.amount = payable
+    price_order(db, order=order, original_amount=total, member_coupon_id=body.member_coupon_id)
     link = RetailOrderLink(order_id=order.id, member_id=body.member_id, fulfilled=False)
     db.add(link)
     db.flush()

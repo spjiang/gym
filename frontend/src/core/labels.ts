@@ -9,6 +9,7 @@ export const ORDER_TYPE_LABELS: Record<string, string> = {
   dining: '餐饮消费',
   coupon: '优惠券',
   course_pack: '课程包',
+  activity: '活动报名',
 }
 
 export const PAYMENT_CHANNEL_LABELS: Record<string, string> = {
@@ -24,6 +25,12 @@ export const ORDER_STATUS_LABELS: Record<string, string> = {
   paid: '已收款',
   refunded: '已退款',
   cancelled: '已取消',
+}
+
+export const DINING_STATUS_LABELS: Record<string, string> = {
+  preparing: '制作中',
+  ready: '待取餐',
+  completed: '已完成',
 }
 
 export const PAYMENT_MODE_LABELS: Record<string, string> = {
@@ -93,6 +100,11 @@ export function orderStatusLabel(code: string | null | undefined): string {
   return ORDER_STATUS_LABELS[code] || code
 }
 
+export function diningStatusLabel(code: string | null | undefined): string {
+  if (!code) return '—'
+  return DINING_STATUS_LABELS[code] || code
+}
+
 export function paymentModeLabel(code: string | null | undefined): string {
   if (!code) return '—'
   return PAYMENT_MODE_LABELS[code] || code
@@ -138,4 +150,156 @@ export const PT_PACKAGE_STATUS_LABELS: Record<string, string> = {
 export function ptPackageStatusLabel(code: string | null | undefined): string {
   if (!code) return '—'
   return PT_PACKAGE_STATUS_LABELS[code] || code
+}
+
+export const ACTIVITY_STATUS_LABELS: Record<string, string> = {
+  draft: '草稿',
+  published: '报名中',
+  closed: '已停止报名',
+  cancelled: '已取消',
+}
+
+export const REGISTRATION_STATUS_LABELS: Record<string, string> = {
+  pending: '待付款',
+  confirmed: '已确认',
+  attended: '已签到',
+  cancelled: '已取消',
+  no_show: '未到场',
+}
+
+export const PT_APPOINTMENT_STATUS_LABELS: Record<string, string> = {
+  booked: '待上课',
+  completed: '已完成',
+  cancelled: '已取消',
+  no_show: '未到场',
+}
+
+export const COMMISSION_SCOPE_LABELS: Record<string, string> = {
+  membership_sale: '会籍销售',
+  pt_sale: '私教课包销售',
+  retail_sale: '零售销售',
+  activity_sale: '活动报名',
+  group_session: '团课课时',
+  pt_session: '私教课时',
+  referral: '推荐成交',
+}
+
+export const COMMISSION_BENEFICIARY_LABELS: Record<string, string> = {
+  seller: '销售员工',
+  coach: '教练',
+  referrer: '推荐人',
+}
+
+export const COMMISSION_BASIS_LABELS: Record<string, string> = {
+  percent: '按金额比例',
+  fixed: '按笔固定',
+  per_head: '按出席人头',
+  per_session: '按课时',
+}
+
+export const COMMISSION_STATUS_LABELS: Record<string, string> = {
+  pending: '待确认',
+  confirmed: '已确认',
+  paid: '已结算',
+  void: '已作废',
+}
+
+export const BENEFICIARY_TYPE_LABELS: Record<string, string> = {
+  staff: '员工',
+  coach: '教练',
+  member: '会员',
+}
+
+export const REBATE_LEDGER_KIND_LABELS: Record<string, string> = {
+  earn: '下级消费入账',
+  reverse: '退款冲回',
+  withdraw_freeze: '提现冻结',
+  withdraw_paid: '提现打款',
+  withdraw_revert: '提现退回',
+  adjust: '人工调整',
+}
+
+export const PAYOUT_STATUS_LABELS: Record<string, string> = {
+  requested: '待审核',
+  approved: '已通过待打款',
+  paid: '已打款',
+  rejected: '已驳回',
+}
+
+export const PAYOUT_SOURCE_LABELS: Record<string, string> = {
+  commission: '教练佣金',
+  rebate: '会员返点',
+}
+
+export const PAYOUT_METHOD_LABELS: Record<string, string> = {
+  offline_cash: '现金',
+  offline_transfer: '转账',
+  other: '其他',
+}
+
+export function activityStatusLabel(code: string | null | undefined): string {
+  if (!code) return '—'
+  return ACTIVITY_STATUS_LABELS[code] || code
+}
+
+export function registrationStatusLabel(code: string | null | undefined): string {
+  if (!code) return '—'
+  return REGISTRATION_STATUS_LABELS[code] || code
+}
+
+export function ptAppointmentStatusLabel(code: string | null | undefined): string {
+  if (!code) return '—'
+  return PT_APPOINTMENT_STATUS_LABELS[code] || code
+}
+
+export function commissionScopeLabel(code: string | null | undefined): string {
+  if (!code) return '—'
+  return COMMISSION_SCOPE_LABELS[code] || code
+}
+
+export function commissionBeneficiaryLabel(code: string | null | undefined): string {
+  if (!code) return '—'
+  return COMMISSION_BENEFICIARY_LABELS[code] || code
+}
+
+export function commissionBasisLabel(code: string | null | undefined): string {
+  if (!code) return '—'
+  return COMMISSION_BASIS_LABELS[code] || code
+}
+
+export function commissionStatusLabel(code: string | null | undefined): string {
+  if (!code) return '—'
+  return COMMISSION_STATUS_LABELS[code] || code
+}
+
+export function beneficiaryTypeLabel(code: string | null | undefined): string {
+  if (!code) return '—'
+  return BENEFICIARY_TYPE_LABELS[code] || code
+}
+
+export function rebateLedgerKindLabel(code: string | null | undefined): string {
+  if (!code) return '—'
+  return REBATE_LEDGER_KIND_LABELS[code] || code
+}
+
+export function payoutStatusLabel(code: string | null | undefined): string {
+  if (!code) return '—'
+  return PAYOUT_STATUS_LABELS[code] || code
+}
+
+export function payoutSourceLabel(code: string | null | undefined): string {
+  if (!code) return '—'
+  return PAYOUT_SOURCE_LABELS[code] || code
+}
+
+export function payoutMethodLabel(code: string | null | undefined): string {
+  if (!code) return '—'
+  return PAYOUT_METHOD_LABELS[code] || code
+}
+
+/** 小数比例展示为百分数，0.05 → 5% */
+export function percentLabel(rate: string | number | null | undefined): string {
+  const n = Number(rate || 0)
+  if (!Number.isFinite(n)) return '—'
+  return `${(n * 100).toFixed(2).replace(/\.?0+$/, '')}%`
 }

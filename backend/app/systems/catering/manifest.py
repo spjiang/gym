@@ -13,6 +13,13 @@ SYSTEM = {
     ],
     "menus": [
         {
+            "code": "catering.categories",
+            "path": "/catering/categories",
+            "name": "菜单分类",
+            "required_any": ["catering:menu", "*"],
+            "sort_order": 8,
+        },
+        {
             "code": "catering.menu",
             "path": "/catering/menu",
             "name": "餐饮菜单",
@@ -20,9 +27,30 @@ SYSTEM = {
             "sort_order": 10,
         },
         {
+            "code": "catering.tables",
+            "path": "/catering/tables",
+            "name": "桌号管理",
+            "required_any": ["catering:menu", "*"],
+            "sort_order": 12,
+        },
+        {
+            "code": "catering.kitchen",
+            "path": "/catering/kitchen",
+            "name": "出餐看板",
+            "required_any": ["catering:order", "*"],
+            "sort_order": 15,
+        },
+        {
+            "code": "catering.pos",
+            "path": "/catering/pos",
+            "name": "吧台点单",
+            "required_any": ["catering:order", "*"],
+            "sort_order": 18,
+        },
+        {
             "code": "catering.orders",
             "path": "/catering/orders",
-            "name": "点单收款",
+            "name": "餐饮订单",
             "required_any": ["catering:order", "*"],
             "sort_order": 20,
         },

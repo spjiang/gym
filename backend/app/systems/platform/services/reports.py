@@ -4,13 +4,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from app.systems.platform.models.audit import AuditLog
 from app.systems.platform.models.commerce import Order, Payment, PaymentKind
+from app.systems.gym.models.activity import (
+    OCCUPYING_REGISTRATION_STATUS,
+    Activity,
+    ActivityRegistration,
+    RegistrationStatus,
+)
+from app.systems.gym.models.appointment import PtAppointment, PtAppointmentStatus
 from app.systems.gym.models.course import (
     GroupBooking,
     GroupBookingStatus,
@@ -25,6 +32,11 @@ from app.systems.gym.models.membership import (
 )
 from app.systems.platform.models.org import Merchant
 from app.systems.gym.models.retail import RetailSku, StockMovement, StockMovementType
+
+
+def _money(value: Decimal | int | None) -> Decimal:
+    """金额统一保留两位小数，避免报表出现 0 与 0.00 混排。"""
+    return Decimal(value or 0).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def _day_bounds(date_from: date, date_to: date) -> tuple[datetime, datetime]:
@@ -222,6 +234,8 @@ class CourseSummary:
     full_session_count: int
     attended_count: int
     pt_consume_count: int
+    pt_appointment_count: int = 0
+    pt_completed_count: int = 0
 
 
 def summarize_course(
@@ -283,12 +297,159 @@ def summarize_course(
         pt_q = pt_q.where(AuditLog.merchant_id.in_(mids))
     pt_consume_count = int(db.scalar(pt_q) or 0)
 
+    appointments = list(
+        db.scalars(
+            select(PtAppointment).where(
+                PtAppointment.merchant_id.in_(mids),
+                PtAppointment.starts_at >= start,
+                PtAppointment.starts_at < end,
+                PtAppointment.status != PtAppointmentStatus.CANCELLED.value,
+            )
+        ).all()
+    )
+    pt_completed = sum(
+        1 for a in appointments if a.status == PtAppointmentStatus.COMPLETED.value
+    )
+
     return CourseSummary(
         session_count=len(sessions),
         booking_count=booking_count,
         full_session_count=full_session_count,
         attended_count=attended_count,
         pt_consume_count=pt_consume_count,
+        pt_appointment_count=len(appointments),
+        pt_completed_count=pt_completed,
+    )
+
+
+# 收入口径：会员收入含办卡续卡，私教收入含课包核销销售，饮品收入取观野BAR 餐饮单
+REVENUE_CATEGORIES: list[tuple[str, str, set[str]]] = [
+    ("membership", "会员收入", {"membership"}),
+    ("pt", "私教收入", {"pt_package", "pt"}),
+    ("group", "团课收入", {"group"}),
+    ("activity", "活动收入", {"activity"}),
+    ("retail", "零售收入", {"retail"}),
+    ("dining", "饮品收入", {"dining"}),
+]
+
+
+@dataclass
+class RevenueSplitRow:
+    category: str
+    label: str
+    charge_total: Decimal
+    refund_total: Decimal
+    net_total: Decimal
+
+
+def summarize_revenue_split(
+    db: Session,
+    *,
+    site_id: int,
+    date_from: date,
+    date_to: date,
+    merchant_id: int | None,
+) -> list[RevenueSplitRow]:
+    """按业务线拆分收入：会员 / 私教 / 团课 / 活动 / 零售 / 饮品。"""
+    start, end = _day_bounds(date_from, date_to)
+    stmt = (
+        select(Order.order_type, Payment.kind, func.coalesce(func.sum(Payment.amount), 0))
+        .join(Order, Order.id == Payment.order_id)
+        .where(
+            Order.site_id == site_id,
+            Payment.created_at >= start,
+            Payment.created_at < end,
+        )
+        .group_by(Order.order_type, Payment.kind)
+    )
+    if merchant_id is not None:
+        stmt = stmt.where(Order.merchant_id == merchant_id)
+
+    charge_by_type: dict[str, Decimal] = {}
+    refund_by_type: dict[str, Decimal] = {}
+    for order_type, kind, amount in db.execute(stmt).all():
+        bucket = charge_by_type if kind == PaymentKind.CHARGE.value else refund_by_type
+        bucket[order_type] = bucket.get(order_type, Decimal("0")) + Decimal(amount or 0)
+
+    rows: list[RevenueSplitRow] = []
+    covered: set[str] = set()
+    for category, label, order_types in REVENUE_CATEGORIES:
+        covered |= order_types
+        charge = sum((charge_by_type.get(t, Decimal("0")) for t in order_types), Decimal("0"))
+        refund = sum((refund_by_type.get(t, Decimal("0")) for t in order_types), Decimal("0"))
+        rows.append(
+            RevenueSplitRow(
+                category=category,
+                label=label,
+                charge_total=_money(charge),
+                refund_total=_money(refund),
+                net_total=_money(charge - refund),
+            )
+        )
+    other_charge = sum((v for k, v in charge_by_type.items() if k not in covered), Decimal("0"))
+    other_refund = sum((v for k, v in refund_by_type.items() if k not in covered), Decimal("0"))
+    if other_charge or other_refund:
+        rows.append(
+            RevenueSplitRow(
+                category="other",
+                label="其他收入",
+                charge_total=_money(other_charge),
+                refund_total=_money(other_refund),
+                net_total=_money(other_charge - other_refund),
+            )
+        )
+    return rows
+
+
+@dataclass
+class ActivitySummary:
+    activity_count: int
+    registered_count: int
+    attended_count: int
+    cancelled_count: int
+
+
+def summarize_activity(
+    db: Session,
+    *,
+    site_id: int,
+    date_from: date,
+    date_to: date,
+    merchant_id: int | None,
+) -> ActivitySummary:
+    """区间内开场的活动与报名出席情况。"""
+    start, end = _day_bounds(date_from, date_to)
+    mids = _merchant_ids_for_site(db, site_id, merchant_id)
+    if not mids:
+        return ActivitySummary(0, 0, 0, 0)
+
+    activity_ids = list(
+        db.scalars(
+            select(Activity.id).where(
+                Activity.merchant_id.in_(mids),
+                Activity.starts_at >= start,
+                Activity.starts_at < end,
+            )
+        ).all()
+    )
+    if not activity_ids:
+        return ActivitySummary(0, 0, 0, 0)
+
+    registrations = list(
+        db.scalars(
+            select(ActivityRegistration).where(
+                ActivityRegistration.activity_id.in_(activity_ids)
+            )
+        ).all()
+    )
+    registered = sum(1 for r in registrations if r.status in OCCUPYING_REGISTRATION_STATUS)
+    attended = sum(1 for r in registrations if r.status == RegistrationStatus.ATTENDED.value)
+    cancelled = sum(1 for r in registrations if r.status == RegistrationStatus.CANCELLED.value)
+    return ActivitySummary(
+        activity_count=len(activity_ids),
+        registered_count=registered,
+        attended_count=attended,
+        cancelled_count=cancelled,
     )
 
 

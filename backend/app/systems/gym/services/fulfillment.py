@@ -12,7 +12,10 @@ from app.core.errors import AppError
 from app.systems.platform.models.access import AccessGrant
 from app.systems.platform.models.commerce import Order
 from app.systems.gym.models.membership import (
+    ConsumptionKind,
+    ConsumptionSource,
     Membership,
+    MembershipConsumption,
     MembershipOrderAction,
     MembershipOrderLink,
     MembershipProduct,
@@ -355,6 +358,91 @@ def freeze_membership(db: Session, membership: Membership, *, actor_staff_id: in
     )
     db.flush()
     return membership
+
+
+def consume_membership(
+    db: Session,
+    membership: Membership,
+    *,
+    actor_staff_id: int | None,
+    site_id: int | None = None,
+    sessions: int | None = None,
+    amount: Decimal | None = None,
+    source: str = ConsumptionSource.FRONT_DESK.value,
+    note: str | None = None,
+) -> MembershipConsumption:
+    """次卡销次 / 储值卡按次计费；期限卡不参与销次。
+
+    次卡传 sessions（默认 1），储值卡传 amount。扣减到 0 时自动置为已过期状态并撤授权。
+    """
+    if membership.status != MembershipStatus.ACTIVE.value:
+        raise AppError("invalid_state", "仅生效中会籍可销次", status_code=400)
+
+    now = _now()
+    ends = _ensure_aware(membership.ends_at)
+    if ends is not None and ends < now:
+        membership.status = MembershipStatus.EXPIRED.value
+        sync_grants_for_membership(db, membership, revoke=True)
+        db.flush()
+        raise AppError("membership_expired", "会籍已到期，不可销次", status_code=400)
+
+    if membership.product_type == ProductType.COUNT.value:
+        count = 1 if sessions is None else int(sessions)
+        if count <= 0:
+            raise AppError("invalid_sessions", "销次数量必须大于 0", status_code=400)
+        remaining = membership.remaining_sessions or 0
+        if remaining < count:
+            raise AppError("no_sessions", f"剩余次数不足，当前剩余 {remaining} 次", status_code=400)
+        membership.remaining_sessions = remaining - count
+        kind = ConsumptionKind.SESSION.value
+        used_sessions: int | None = count
+        used_amount: Decimal | None = None
+        if membership.remaining_sessions <= 0:
+            membership.status = MembershipStatus.EXPIRED.value
+    elif membership.product_type == ProductType.VALUE.value:
+        if amount is None or amount <= 0:
+            raise AppError("invalid_amount", "储值卡计费金额必须大于 0", status_code=400)
+        balance = membership.balance or Decimal("0")
+        if balance < amount:
+            raise AppError("insufficient_balance", f"余额不足，当前余额 ¥{balance}", status_code=400)
+        membership.balance = balance - amount
+        kind = ConsumptionKind.VALUE.value
+        used_sessions = None
+        used_amount = Decimal(amount)
+        if membership.balance <= 0:
+            membership.status = MembershipStatus.EXPIRED.value
+    else:
+        raise AppError("unsupported_product", "期限卡按时段通行，无需销次", status_code=400)
+
+    record = MembershipConsumption(
+        merchant_id=membership.merchant_id,
+        membership_id=membership.id,
+        member_id=membership.member_id,
+        kind=kind,
+        sessions=used_sessions,
+        amount=used_amount,
+        remaining_sessions_after=membership.remaining_sessions,
+        balance_after=membership.balance,
+        source=source,
+        note=(note or "").strip() or None,
+        actor_staff_id=actor_staff_id,
+    )
+    db.add(record)
+    if membership.status == MembershipStatus.EXPIRED.value:
+        sync_grants_for_membership(db, membership, revoke=True)
+    detail = f"{used_sessions} 次" if used_sessions is not None else f"¥{used_amount}"
+    write_audit(
+        db,
+        action="membership.consume",
+        target_type="membership",
+        target_id=membership.id,
+        summary=f"销次 {detail}，剩余次数 {membership.remaining_sessions}，余额 {membership.balance}",
+        actor_staff_id=actor_staff_id,
+        site_id=site_id,
+        merchant_id=membership.merchant_id,
+    )
+    db.flush()
+    return record
 
 
 def void_membership(db: Session, membership: Membership, *, actor_staff_id: int, site_id: int) -> Membership:

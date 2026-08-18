@@ -1,0 +1,28 @@
+<view class="wrap">
+  <view class="title">点餐</view>
+  <view wx:if="{{tableLocked && tableNo}}" class="seat">当前桌号 {{tableNo}} · 下单后厨房按此出餐</view>
+  <view class="muted" bindtap="goOrders">我的餐饮订单 ›</view>
+  <view wx:if="{{loading}}" class="muted">加载中…</view>
+  <view wx:elif="{{err}}" class="muted">{{err}}</view>
+  <block wx:else>
+    <block wx:for="{{groups}}" wx:key="category">
+      <view class="section">{{item.category}}</view>
+      <view class="card row" wx:for="{{item.items}}" wx:for-item="dish" wx:key="id">
+        <view class="main">
+          <view class="name">{{dish.name}}</view>
+          <view class="price">¥{{dish.price}}</view>
+        </view>
+        <view class="qty">
+          <button size="mini" wx:if="{{dish.quantity}}" data-id="{{dish.id}}" bindtap="sub">−</button>
+          <text wx:if="{{dish.quantity}}" class="qty-n">{{dish.quantity}}</text>
+          <button size="mini" data-id="{{dish.id}}" bindtap="add">+</button>
+        </view>
+      </view>
+    </block>
+    <view wx:if="{{!groups.length}}" class="muted">暂无上架菜品</view>
+  </block>
+  <view class="bar" wx:if="{{cartCount}}">
+    <view>¥{{subtotal}} · {{cartCount}} 件</view>
+    <button size="mini" bindtap="goCheckout">去结算</button>
+  </view>
+</view>

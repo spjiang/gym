@@ -1,0 +1,30 @@
+.section {
+  margin: 24rpx 0 16rpx;
+  font-size: 26rpx;
+  color: #7d8389;
+}
+.tight {
+  margin-bottom: 0;
+}
+.booking {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+.cover {
+  width: 100%;
+  height: 240rpx;
+  border-radius: 8rpx;
+  margin-bottom: 16rpx;
+}
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+.row button {
+  margin-bottom: 0;
+}

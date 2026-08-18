@@ -16,9 +16,14 @@ import NotificationsView from '../systems/platform/views/NotificationsView.vue'
 import SubsystemsView from '../systems/platform/views/SubsystemsView.vue'
 import RolesView from '../systems/platform/views/RolesView.vue'
 import PaymentSettingsView from '../systems/platform/views/PaymentSettingsView.vue'
+import SiteProfileView from '../systems/platform/views/SiteProfileView.vue'
 import SmsSettingsView from '../systems/platform/views/SmsSettingsView.vue'
 import OpsWorkbenchView from '../systems/platform/views/OpsWorkbenchView.vue'
 import PaymentReconcileView from '../systems/platform/views/PaymentReconcileView.vue'
+import PromotionConfigView from '../systems/platform/views/PromotionConfigView.vue'
+import PromotionSettingsView from '../systems/platform/views/PromotionSettingsView.vue'
+import RebatesView from '../systems/platform/views/RebatesView.vue'
+import PayoutsView from '../systems/platform/views/PayoutsView.vue'
 import ProductsView from '../systems/gym/views/ProductsView.vue'
 import MembershipsView from '../systems/gym/views/MembershipsView.vue'
 import CoachesView from '../systems/gym/views/CoachesView.vue'
@@ -35,8 +40,18 @@ import CouponTemplatesView from '../systems/gym/views/CouponTemplatesView.vue'
 import CouponIssueView from '../systems/gym/views/CouponIssueView.vue'
 import EquipmentView from '../systems/gym/views/EquipmentView.vue'
 import EquipmentRepairsView from '../systems/gym/views/EquipmentRepairsView.vue'
+import PtAppointmentsView from '../systems/gym/views/PtAppointmentsView.vue'
+import ActivitiesView from '../systems/gym/views/ActivitiesView.vue'
+import ActivityRegistrationsView from '../systems/gym/views/ActivityRegistrationsView.vue'
+import CommissionRulesView from '../systems/gym/views/CommissionRulesView.vue'
+import CommissionRecordsView from '../systems/gym/views/CommissionRecordsView.vue'
+import MyCommissionView from '../systems/gym/views/MyCommissionView.vue'
+import CateringCategoriesView from '../systems/catering/views/CateringCategoriesView.vue'
 import CateringMenuView from '../systems/catering/views/CateringMenuView.vue'
 import CateringOrdersView from '../systems/catering/views/CateringOrdersView.vue'
+import CateringPosView from '../systems/catering/views/CateringPosView.vue'
+import CateringKitchenView from '../systems/catering/views/CateringKitchenView.vue'
+import CateringTablesView from '../systems/catering/views/CateringTablesView.vue'
 
 const children: RouteRecordRaw[] = [
   { path: '', redirect: '/portal' },
@@ -52,6 +67,12 @@ const children: RouteRecordRaw[] = [
     name: 'platform-roles',
     component: RolesView,
     meta: { system: 'platform', anyOf: ['rbac:manage', 'staff:manage', '*'] },
+  },
+  {
+    path: 'platform/site-profile',
+    name: 'platform-site-profile',
+    component: SiteProfileView,
+    meta: { system: 'platform', anyOf: ['org:read', 'org:write', '*'] },
   },
   {
     path: 'platform/payment-settings',
@@ -79,6 +100,30 @@ const children: RouteRecordRaw[] = [
     meta: { system: 'platform', anyOf: ['org:read', '*'] },
   },
   { path: 'staff', name: 'staff', component: StaffView, meta: { system: 'platform', anyOf: ['staff:manage', '*'] } },
+  {
+    path: 'platform/promotion-config',
+    name: 'platform-promotion-config',
+    component: PromotionConfigView,
+    meta: { system: 'platform', anyOf: ['promoter:read', 'promoter:manage', '*'] },
+  },
+  {
+    path: 'platform/promotion-settings',
+    name: 'platform-promotion-settings',
+    component: PromotionSettingsView,
+    meta: { system: 'platform', anyOf: ['promoter:read', 'promoter:manage', '*'] },
+  },
+  {
+    path: 'rebates',
+    name: 'rebates',
+    component: RebatesView,
+    meta: { system: 'platform', anyOf: ['promoter:read', 'promoter:manage', '*'] },
+  },
+  {
+    path: 'payouts',
+    name: 'payouts',
+    component: PayoutsView,
+    meta: { system: 'platform', anyOf: ['payout:read', 'payout:manage', '*'] },
+  },
   { path: 'members', name: 'members', component: MembersView, meta: { system: 'platform', anyOf: ['member:read', '*'] } },
   { path: 'access', name: 'access', component: AccessView, meta: { system: 'platform', anyOf: ['access:read', '*'] } },
   {
@@ -125,6 +170,42 @@ const children: RouteRecordRaw[] = [
     name: 'pt-packages',
     component: PtPackagesView,
     meta: { system: 'gym', anyOf: ['pt:sell', 'course:checkin', 'course:manage', '*'] },
+  },
+  {
+    path: 'pt-appointments',
+    name: 'pt-appointments',
+    component: PtAppointmentsView,
+    meta: { system: 'gym', anyOf: ['pt:book', 'pt:sell', 'course:checkin', 'course:manage', '*'] },
+  },
+  {
+    path: 'activities',
+    name: 'activities',
+    component: ActivitiesView,
+    meta: { system: 'gym', anyOf: ['activity:manage', '*'] },
+  },
+  {
+    path: 'activity-registrations',
+    name: 'activity-registrations',
+    component: ActivityRegistrationsView,
+    meta: { system: 'gym', anyOf: ['activity:register', 'activity:manage', '*'] },
+  },
+  {
+    path: 'commission-rules',
+    name: 'commission-rules',
+    component: CommissionRulesView,
+    meta: { system: 'gym', anyOf: ['commission:manage', '*'] },
+  },
+  {
+    path: 'commission-records',
+    name: 'commission-records',
+    component: CommissionRecordsView,
+    meta: { system: 'gym', anyOf: ['commission:read', 'commission:manage', '*'] },
+  },
+  {
+    path: 'my-commission',
+    name: 'my-commission',
+    component: MyCommissionView,
+    meta: { system: 'gym', anyOf: ['commission:self', '*'] },
   },
   {
     path: 'group-templates',
@@ -195,16 +276,40 @@ const children: RouteRecordRaw[] = [
     meta: { system: 'gym', anyOf: ['equipment:read', 'equipment:manage', 'equipment:repair', '*'] },
   },
   {
+    path: 'catering/categories',
+    name: 'catering-categories',
+    component: CateringCategoriesView,
+    meta: { system: 'catering', anyOf: ['catering:menu', '*'] },
+  },
+  {
     path: 'catering/menu',
     name: 'catering-menu',
     component: CateringMenuView,
-    meta: { system: 'catering', anyOf: ['catering:menu', 'order:write', '*'] },
+    meta: { system: 'catering', anyOf: ['catering:menu', '*'] },
+  },
+  {
+    path: 'catering/tables',
+    name: 'catering-tables',
+    component: CateringTablesView,
+    meta: { system: 'catering', anyOf: ['catering:menu', '*'] },
+  },
+  {
+    path: 'catering/pos',
+    name: 'catering-pos',
+    component: CateringPosView,
+    meta: { system: 'catering', anyOf: ['catering:order', '*'] },
   },
   {
     path: 'catering/orders',
     name: 'catering-orders',
     component: CateringOrdersView,
-    meta: { system: 'catering', anyOf: ['catering:order', 'order:read', 'order:write', '*'] },
+    meta: { system: 'catering', anyOf: ['catering:order', 'order:read', '*'] },
+  },
+  {
+    path: 'catering/kitchen',
+    name: 'catering-kitchen',
+    component: CateringKitchenView,
+    meta: { system: 'catering', anyOf: ['catering:order', '*'] },
   },
 ]
 

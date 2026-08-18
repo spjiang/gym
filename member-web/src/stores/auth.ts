@@ -7,6 +7,8 @@ export type MemberMerchant = {
   name: string
   subsystem_codes: string[]
   primary_system: string | null
+  tagline?: string | null
+  cover_image_url?: string | null
 }
 
 export type MemberMe = {
@@ -20,6 +22,7 @@ export type MemberMe = {
   acquisition_source?: string
   first_merchant_id?: number | null
   first_merchant_name?: string | null
+  avatar_url?: string | null
 }
 
 export function pathForMerchant(m: MemberMerchant) {

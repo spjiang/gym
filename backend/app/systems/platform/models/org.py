@@ -7,6 +7,7 @@ from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text, Unique
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
+from app.systems.platform.models.identity import JSONType
 
 
 class MerchantStatus(str, Enum):
@@ -21,6 +22,13 @@ class Site(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     address: Mapped[str | None] = mapped_column(String(255))
+    tagline: Mapped[str | None] = mapped_column(String(128))
+    description: Mapped[str | None] = mapped_column(Text)
+    service_phone: Mapped[str | None] = mapped_column(String(32))
+    business_hours: Mapped[str | None] = mapped_column(String(128))
+    cover_image_url: Mapped[str | None] = mapped_column(String(255))
+    banner_image_urls: Mapped[list] = mapped_column(JSONType, default=list, nullable=False)
+    gallery_image_urls: Mapped[list] = mapped_column(JSONType, default=list, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     merchants: Mapped[list["Merchant"]] = relationship(back_populates="site")
@@ -57,6 +65,9 @@ class Merchant(Base):
     contact_email: Mapped[str | None] = mapped_column(String(128))
     business_hours: Mapped[str | None] = mapped_column(String(128))
     description: Mapped[str | None] = mapped_column(Text)
+    tagline: Mapped[str | None] = mapped_column(String(64))
+    cover_image_url: Mapped[str | None] = mapped_column(String(255))
+    gallery_image_urls: Mapped[list] = mapped_column(JSONType, default=list, nullable=False)
     lease_starts_on: Mapped[date | None] = mapped_column(Date)
     lease_ends_on: Mapped[date | None] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

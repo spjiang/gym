@@ -33,6 +33,14 @@ class Member(Base):
         String(32), default=AcquisitionSource.PLATFORM.value, nullable=False
     )
     first_merchant_id: Mapped[int | None] = mapped_column(ForeignKey("merchants.id"), nullable=True, index=True)
+    # 推荐关系：会员推广 / 人工登记姓名；教练本人也是会员，不再单独挂员工推荐
+    referrer_member_id: Mapped[int | None] = mapped_column(ForeignKey("members.id"), nullable=True, index=True)
+    referrer_staff_id: Mapped[int | None] = mapped_column(ForeignKey("staff_users.id"), nullable=True, index=True)
+    referrer_note: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # 注册时命中的推广位编码，便于回溯推广渠道
+    referral_code: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    # 会员自己上传的展示头像，与门禁人脸照分开
+    avatar_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

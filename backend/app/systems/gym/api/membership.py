@@ -18,24 +18,28 @@ from app.systems.platform.models.access import AccessPoint
 from app.systems.platform.models.commerce import Order, OrderStatus
 from app.systems.platform.models.member import Member, MerchantMember
 from app.systems.gym.models.membership import (
+    ConsumptionSource,
     Membership,
+    MembershipConsumption,
     MembershipOrderAction,
     MembershipOrderLink,
     MembershipProduct,
     MembershipProductAccessPoint,
     ProductType,
 )
+from app.systems.platform.models.identity import StaffUser
 from app.systems.platform.models.org import Merchant
 from app.systems.platform.services.audit import write_audit
 from app.systems.gym.services.fulfillment import (
+    consume_membership,
     freeze_membership,
     product_access_point_ids,
     update_membership,
     validate_product_for_sale,
     void_membership,
 )
-from app.systems.gym.services.coupon import attach_coupon_to_order
 from app.systems.gym.services.pricing import effective_price
+from app.systems.platform.services.order_pricing import price_order
 
 router = APIRouter(tags=["membership"])
 
@@ -107,6 +111,34 @@ class RenewIn(BaseModel):
     product_id: int | None = None
     merchant_id: int | None = None
     member_coupon_id: int | None = None
+
+
+class ConsumeIn(BaseModel):
+    """次卡传 sessions，储值卡传 amount。"""
+
+    sessions: int | None = Field(default=None, ge=1, le=100)
+    amount: Decimal | None = None
+    note: str | None = Field(default=None, max_length=255)
+
+
+class ConsumptionOut(ORMModel):
+    id: int
+    membership_id: int
+    member_id: int
+    kind: str
+    sessions: int | None
+    amount: Decimal | None
+    remaining_sessions_after: int | None
+    balance_after: Decimal | None
+    source: str
+    note: str | None
+    actor_name: str | None = None
+    created_at: datetime
+
+
+class MembershipConsumeOut(BaseModel):
+    membership: MembershipOut
+    consumption: ConsumptionOut
 
 
 class MembershipPatch(BaseModel):
@@ -503,19 +535,13 @@ def purchase_membership(
         title=f"办卡-{product.name}",
         amount=price,
         status=OrderStatus.PENDING.value,
+        seller_staff_id=ctx.staff.id,
     )
     db.add(order)
     db.flush()
     if body.member_coupon_id is not None:
         ctx.require_permission("coupon:redeem", "coupon:manage", "membership:sell", "membership:manage")
-        payable = attach_coupon_to_order(
-            db,
-            order=order,
-            member_coupon_id=body.member_coupon_id,
-            original_amount=price,
-            member_id=body.member_id,
-        )
-        order.amount = payable
+    price_order(db, order=order, original_amount=price, member_coupon_id=body.member_coupon_id)
     db.add(
         MembershipOrderLink(
             order_id=order.id,
@@ -569,19 +595,13 @@ def renew_membership(
         title=f"续卡-{product.name}",
         amount=price,
         status=OrderStatus.PENDING.value,
+        seller_staff_id=ctx.staff.id,
     )
     db.add(order)
     db.flush()
     if body.member_coupon_id is not None:
         ctx.require_permission("coupon:redeem", "coupon:manage", "membership:sell", "membership:manage")
-        payable = attach_coupon_to_order(
-            db,
-            order=order,
-            member_coupon_id=body.member_coupon_id,
-            original_amount=price,
-            member_id=membership.member_id,
-        )
-        order.amount = payable
+    price_order(db, order=order, original_amount=price, member_coupon_id=body.member_coupon_id)
     db.add(
         MembershipOrderLink(
             order_id=order.id,
@@ -620,7 +640,94 @@ def api_freeze(
     freeze_membership(db, membership, actor_staff_id=ctx.staff.id, site_id=ctx.site_id)
     db.commit()
     db.refresh(membership)
-    return membership
+    return _membership_out(db, membership)
+
+
+def _consumption_out(row: MembershipConsumption, actor_name: str | None) -> ConsumptionOut:
+    return ConsumptionOut(
+        id=row.id,
+        membership_id=row.membership_id,
+        member_id=row.member_id,
+        kind=row.kind,
+        sessions=row.sessions,
+        amount=row.amount,
+        remaining_sessions_after=row.remaining_sessions_after,
+        balance_after=row.balance_after,
+        source=row.source,
+        note=row.note,
+        actor_name=actor_name,
+        created_at=row.created_at,
+    )
+
+
+@router.post("/memberships/{membership_id}/consume", response_model=MembershipConsumeOut)
+def api_consume(
+    membership_id: int,
+    body: ConsumeIn | None = None,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    """次卡销次 / 储值卡按次计费。"""
+    ctx.require_permission("membership:manage", "membership:sell")
+    membership = db.get(Membership, membership_id)
+    if membership is None:
+        raise AppError("not_found", "会籍不存在", status_code=404)
+    ctx.resolve_merchant_id(membership.merchant_id)
+    body = body or ConsumeIn()
+    record = consume_membership(
+        db,
+        membership,
+        actor_staff_id=ctx.staff.id,
+        site_id=ctx.site_id,
+        sessions=body.sessions,
+        amount=body.amount,
+        source=ConsumptionSource.FRONT_DESK.value,
+        note=body.note,
+    )
+    db.commit()
+    db.refresh(membership)
+    db.refresh(record)
+    return MembershipConsumeOut(
+        membership=_membership_out(db, membership),
+        consumption=_consumption_out(record, ctx.staff.display_name),
+    )
+
+
+@router.get("/memberships/{membership_id}/consumptions", response_model=PageOut[ConsumptionOut])
+def list_membership_consumptions(
+    membership_id: int,
+    from_date: datetime | None = None,
+    to_date: datetime | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    """查看会籍销次流水。"""
+    ctx.require_permission("membership:manage", "membership:sell", "member:read")
+    membership = db.get(Membership, membership_id)
+    if membership is None:
+        raise AppError("not_found", "会籍不存在", status_code=404)
+    ctx.resolve_merchant_id(membership.merchant_id)
+    stmt = select(MembershipConsumption).where(MembershipConsumption.membership_id == membership_id)
+    if from_date is not None:
+        stmt = stmt.where(MembershipConsumption.created_at >= from_date)
+    if to_date is not None:
+        stmt = stmt.where(MembershipConsumption.created_at <= to_date)
+    rows, total = paginate(
+        db, stmt.order_by(MembershipConsumption.id.desc()), page=page, page_size=page_size
+    )
+    staff_ids = {r.actor_staff_id for r in rows if r.actor_staff_id}
+    names: dict[int, str] = {}
+    if staff_ids:
+        names = {
+            s.id: s.display_name
+            for s in db.scalars(select(StaffUser).where(StaffUser.id.in_(staff_ids))).all()
+        }
+    items = [
+        _consumption_out(r, names.get(r.actor_staff_id) if r.actor_staff_id else None) for r in rows
+    ]
+    return PageOut(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.post("/memberships/{membership_id}/void", response_model=MembershipOut)
@@ -637,4 +744,4 @@ def api_void(
     void_membership(db, membership, actor_staff_id=ctx.staff.id, site_id=ctx.site_id)
     db.commit()
     db.refresh(membership)
-    return membership
+    return _membership_out(db, membership)

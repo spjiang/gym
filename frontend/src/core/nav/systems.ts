@@ -25,6 +25,11 @@ export const PLATFORM_MENU_GROUPS: { key: string; label: string; paths: string[]
     paths: ['/coupons/templates', '/coupons/issue'],
   },
   {
+    key: 'promoter',
+    label: '推广管理',
+    paths: ['/platform/promotion-config', '/platform/promotion-settings', '/rebates', '/payouts'],
+  },
+  {
     key: 'notify',
     label: '站内通知',
     paths: ['/notifications'],
@@ -48,7 +53,7 @@ export const PLATFORM_MENU_GROUPS: { key: string; label: string; paths: string[]
   {
     key: 'base',
     label: '基础配置',
-    paths: ['/platform/subsystems', '/platform/payment-settings', '/platform/sms-settings'],
+    paths: ['/platform/site-profile', '/platform/subsystems', '/platform/payment-settings', '/platform/sms-settings'],
   },
 ]
 
@@ -84,7 +89,17 @@ export const GYM_MENU_GROUPS: { key: string; label: string; paths: string[]; fla
   {
     key: 'pt',
     label: '私教课管理',
-    paths: ['/pt-packages', '/pt-products'],
+    paths: ['/pt-packages', '/pt-products', '/pt-appointments'],
+  },
+  {
+    key: 'activity',
+    label: '活动管理',
+    paths: ['/activities', '/activity-registrations'],
+  },
+  {
+    key: 'commission',
+    label: '分成管理',
+    paths: ['/commission-rules', '/commission-records', '/my-commission'],
   },
   {
     key: 'coach',

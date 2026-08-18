@@ -1,10 +1,23 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import http from '../api/http'
 import { pathForMerchant, useAuthStore, type MemberMerchant } from '../stores/auth'
+
+type AccessEvent = {
+  id: number
+  access_point_id: number
+  allowed: boolean
+  reason: string | null
+  created_at: string
+}
 
 const auth = useAuthStore()
 const router = useRouter()
+const events = ref<AccessEvent[]>([])
+const fileInput = ref<HTMLInputElement | null>(null)
+const uploading = ref(false)
+const avatarTip = ref('')
 
 const faceLabel: Record<string, string> = {
   not_enrolled: '未录入',
@@ -26,6 +39,11 @@ function labelFor(m: MemberMerchant) {
   return systemLabel[sys] || m.subsystem_codes.map((c) => systemLabel[c] || c).join('·') || '门店'
 }
 
+function fmtTime(iso?: string) {
+  if (!iso) return '—'
+  return iso.slice(0, 16).replace('T', ' ')
+}
+
 const faceText = computed(() => faceLabel[auth.me?.face_status || ''] || auth.me?.face_status || '未知')
 const faceOk = computed(() => auth.me?.face_status === 'enrolled')
 const sourceText = computed(() => {
@@ -44,13 +62,48 @@ function goStores() {
   router.push({ name: 'stores' })
 }
 
+function goPromotion() {
+  router.push({ name: 'me-promotion' })
+}
+
 function logout() {
   auth.logout()
   router.push({ name: 'login' })
 }
 
-onMounted(() => {
+function pickAvatar() {
+  avatarTip.value = ''
+  fileInput.value?.click()
+}
+
+async function onAvatarFile(ev: Event) {
+  const input = ev.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  uploading.value = true
+  avatarTip.value = ''
+  try {
+    const fd = new FormData()
+    fd.append('file', file)
+    const { data } = await http.post('/member/avatar', fd, { timeout: 30000 })
+    await auth.fetchMe()
+    avatarTip.value = '头像已更新'
+  } catch (e: unknown) {
+    avatarTip.value = e instanceof Error ? e.message : '上传失败'
+  } finally {
+    uploading.value = false
+  }
+}
+
+onMounted(async () => {
   void auth.fetchMe().catch(() => undefined)
+  try {
+    const { data } = await http.get<AccessEvent[]>('/member/access-events')
+    events.value = data.slice(0, 8)
+  } catch {
+    events.value = []
+  }
 })
 </script>
 
@@ -63,10 +116,24 @@ onMounted(() => {
     </header>
 
     <div class="me__card me__profile">
-      <div class="me__avatar" aria-hidden="true">{{ auth.me?.name?.slice(0, 1) || '会' }}</div>
+      <input
+        ref="fileInput"
+        class="me__file"
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        @change="onAvatarFile"
+      />
+      <button class="me__avatar" type="button" :disabled="uploading" @click="pickAvatar">
+        <img v-if="auth.me?.avatar_url" :src="auth.me.avatar_url" alt="" />
+        <span v-else>{{ auth.me?.name?.slice(0, 1) || '会' }}</span>
+      </button>
       <div class="me__info">
         <div class="me__name">{{ auth.me?.name || '—' }}</div>
         <div class="me__phone">{{ maskPhone(auth.me?.phone) }}</div>
+        <button class="me__avatar-btn" type="button" :disabled="uploading" @click="pickAvatar">
+          {{ uploading ? '上传中…' : auth.me?.avatar_url ? '更换头像' : '上传头像' }}
+        </button>
+        <p v-if="avatarTip" class="me__hint me__hint--tight">{{ avatarTip }}</p>
       </div>
     </div>
 
@@ -76,6 +143,21 @@ onMounted(() => {
         <span :class="faceOk ? 'me__pill me__pill--ok' : 'me__pill'">{{ faceText }}</span>
       </div>
       <p class="me__hint">人脸采集请到店内 Pad 完成，此处仅展示状态。</p>
+      <div v-if="events.length" class="me__events">
+        <div v-for="e in events" :key="e.id" class="me__event">
+          <div>
+            <div class="me__event-title">门禁点 {{ e.access_point_id }}</div>
+            <div class="me__event-meta">
+              {{ fmtTime(e.created_at) }}
+              <template v-if="e.reason"> · {{ e.reason }}</template>
+            </div>
+          </div>
+          <span class="me__pill" :class="e.allowed ? 'me__pill--ok' : 'me__pill--danger'">
+            {{ e.allowed ? '放行' : '拒绝' }}
+          </span>
+        </div>
+      </div>
+      <p v-else class="me__hint me__hint--tight">暂无通行记录</p>
     </div>
 
     <div class="me__card">
@@ -101,6 +183,7 @@ onMounted(() => {
       <span class="me__store-go">进入</span>
     </button>
 
+    <button class="me__card me__link" type="button" @click="goPromotion">我的推广</button>
     <button class="me__card me__link" type="button" @click="goStores">全部门店 / 切换业态</button>
 
     <button class="mw-btn mw-btn--ghost mw-btn--block me__logout" type="button" @click="logout">退出登录</button>
@@ -168,6 +251,39 @@ onMounted(() => {
   font-weight: 700;
   font-size: 18px;
   flex-shrink: 0;
+  border: 0;
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.me__avatar:disabled {
+  opacity: 0.7;
+}
+
+.me__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.me__file {
+  display: none;
+}
+
+.me__avatar-btn {
+  margin-top: 8px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--mw-brand);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .me__name {
@@ -205,6 +321,42 @@ onMounted(() => {
 .me__pill--ok {
   background: var(--mw-success-muted);
   color: var(--mw-success);
+}
+
+.me__pill--danger {
+  background: var(--mw-danger-muted);
+  color: var(--mw-danger);
+}
+
+.me__hint--tight {
+  margin-top: var(--mw-space-2);
+}
+
+.me__events {
+  margin-top: var(--mw-space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--mw-space-2);
+}
+
+.me__event {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mw-space-3);
+  padding-top: var(--mw-space-2);
+  border-top: 1px solid var(--mw-border);
+}
+
+.me__event-title {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.me__event-meta {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--mw-text-tertiary);
 }
 
 .me__source {

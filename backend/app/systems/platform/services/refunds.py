@@ -20,6 +20,8 @@ from app.systems.gym.models.membership import (
     MembershipStatus,
     ProductType,
 )
+from app.systems.gym.models.activity import ActivityRegistration, RegistrationStatus
+from app.systems.gym.services.commission import scale_records_for_partial_refund, void_records_for_order
 from app.systems.gym.services.coupon import restore_coupon_for_order
 from app.systems.gym.services.fulfillment import void_membership
 from app.systems.gym.services.retail_fulfillment import restock_retail_order
@@ -28,6 +30,7 @@ from app.systems.platform.models.commerce import Order, OrderStatus, Payment, Pa
 from app.systems.platform.models.payment_settings import PaymentIntent, RefundIntent
 from app.systems.platform.services.audit import write_audit
 from app.systems.platform.services.payment_settings import resolve_payment_settings
+from app.systems.platform.services.rebate import reverse_order_rebate
 from app.systems.platform.services.wechat_pay import create_wechat_refund
 
 
@@ -355,9 +358,12 @@ def apply_refund_success(
     if order is None:
         raise AppError("not_found", "订单不存在", status_code=404)
 
+    this_amount = _money(intent.amount)
+    suggested = _money(preview_refund(db, order)["suggested_amount"])
+
     intent.status = "succeeded"
     intent.succeeded_at = _now()
-    order.refunded_amount = _money(getattr(order, "refunded_amount", None) or 0) + _money(intent.amount)
+    order.refunded_amount = _money(getattr(order, "refunded_amount", None) or 0) + this_amount
     db.add(
         Payment(
             order_id=order.id,
@@ -368,12 +374,27 @@ def apply_refund_success(
         )
     )
 
+    # 会员返点按本次退款占比冲回，部分退也生效
+    reverse_order_rebate(db, order, refund_id=intent.id, refund_amount=this_amount)
+
     full = _money(order.refunded_amount) >= _money(order.amount)
     if full:
         order.status = OrderStatus.REFUNDED.value
+        # 全额退：未结算与已打款提成一并作废（已打款需人工扣回）
+        void_records_for_order(db, order.id)
+        if order.order_type == "dining":
+            order.dining_status = None
+    else:
+        scale_records_for_partial_refund(db, order, refund_amount=this_amount)
 
-    if order.order_type in ("membership", "pt_package"):
-        _void_entitlements(db, order, actor_staff_id=actor_staff_id)
+    if order.order_type == "activity":
+        if full:
+            _cancel_activity_registration(db, order, actor_staff_id=actor_staff_id)
+            restore_coupon_for_order(db, order, actor_staff_id=actor_staff_id)
+    elif order.order_type in ("membership", "pt_package"):
+        # 全额退或退满建议剩余价值时终止权益；force 部分退保留卡/课包
+        if full or this_amount >= suggested:
+            _void_entitlements(db, order, actor_staff_id=actor_staff_id)
         if full:
             restore_coupon_for_order(db, order, actor_staff_id=actor_staff_id)
     elif order.order_type in ("retail", "dining") or order.order_type == "retail":
@@ -390,6 +411,26 @@ def apply_refund_success(
                 pass
 
     return order
+
+
+def _cancel_activity_registration(db: Session, order: Order, *, actor_staff_id: int | None) -> None:
+    """活动订单全额退款后释放名额。"""
+    registration = db.scalar(
+        select(ActivityRegistration).where(ActivityRegistration.order_id == order.id)
+    )
+    if registration is None or registration.status == RegistrationStatus.CANCELLED.value:
+        return
+    registration.status = RegistrationStatus.CANCELLED.value
+    write_audit(
+        db,
+        action="activity.registration_refunded",
+        target_type="activity_registration",
+        target_id=registration.id,
+        summary=f"退款取消报名 order={order.id}",
+        actor_staff_id=actor_staff_id,
+        site_id=order.site_id,
+        merchant_id=order.merchant_id,
+    )
 
 
 def _void_entitlements(db: Session, order: Order, *, actor_staff_id: int | None) -> None:

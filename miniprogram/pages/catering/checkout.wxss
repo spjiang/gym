@@ -1,0 +1,28 @@
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.price {
+  color: #14b8d4;
+  font-weight: 700;
+  margin-top: 8rpx;
+}
+.qty {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+.qty-n {
+  min-width: 36rpx;
+  text-align: center;
+  font-weight: 700;
+}
+.seat {
+  margin-bottom: 16rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 8rpx;
+  background: rgba(20, 184, 212, 0.16);
+  color: #14b8d4;
+  font-weight: 650;
+}

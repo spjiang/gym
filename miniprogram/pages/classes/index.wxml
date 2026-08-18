@@ -1,1 +1,27 @@
-<view class="wrap"><view class="title">{{title}}</view><block wx:for="{{items}}" wx:key="id"><view class="card">{{item.name || item.title || ('#' + item.id)}}</view></block></view>
+<view class="wrap">
+  <view class="title">团课预约</view>
+  <view class="muted">预约前请确认场次时间与取消规则</view>
+  <view wx:if="{{err}}" class="muted">{{err}}</view>
+
+  <view class="section">我的预约</view>
+  <view wx:if="{{!bookings.length}}" class="muted">暂无预约</view>
+  <view class="card booking" wx:for="{{bookings}}" wx:key="id">
+    <view bindtap="goDetail" data-id="{{item.session_id}}">
+      <view class="name">{{item.course_name || ('场次 #' + item.session_id)}}</view>
+      <view class="muted tight">{{item.timeText}} · {{item.statusText}}</view>
+    </view>
+    <button wx:if="{{item.status === 'booked'}}" size="mini" bindtap="cancel" data-id="{{item.id}}">取消</button>
+  </view>
+
+  <view class="section">可约场次</view>
+  <view wx:if="{{!sessions.length}}" class="muted">暂无可约场次</view>
+  <view class="card" wx:for="{{sessions}}" wx:key="id">
+    <view class="name" bindtap="goDetail" data-id="{{item.id}}">{{item.course_name}}</view>
+    <view class="muted tight">{{item.timeText}} · {{item.coach_name || ''}}</view>
+    <view class="muted tight">剩余 {{item.remaining}}/{{item.capacity}} <text wx:if="{{item.room}}">· {{item.room}}</text></view>
+    <view class="row">
+      <button size="mini" bindtap="goDetail" data-id="{{item.id}}">详情</button>
+      <button bindtap="book" data-id="{{item.id}}">预约</button>
+    </view>
+  </view>
+</view>

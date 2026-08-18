@@ -8,7 +8,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.systems.catering.api import catering, member_catering
-from app.systems.gym.api import coupons, course, equipment, membership, retail
+from app.systems.gym.api import (
+    activity,
+    coach_self,
+    commission,
+    coupons,
+    course,
+    equipment,
+    member_activity,
+    membership,
+    pt_appointment,
+    retail,
+)
 from app.systems.platform.api import (
     access,
     auth,
@@ -16,13 +27,18 @@ from app.systems.platform.api import (
     device,
     member_auth,
     member_portal,
+    member_promotion,
     members,
     notifications,
     org,
     payment_notify,
     payment_reconcile,
     payment_settings,
+    payouts,
+    promoters,
+    promotion,
     reports,
+    site_profile,
     sms,
     staff,
     uploads,
@@ -58,6 +74,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router, prefix="/api/v1")
     app.include_router(member_auth.router, prefix="/api/v1")
     app.include_router(member_portal.router, prefix="/api/v1")
+    app.include_router(member_activity.router, prefix="/api/v1")
     app.include_router(org.router, prefix="/api/v1")
     app.include_router(staff.router, prefix="/api/v1")
     app.include_router(members.router, prefix="/api/v1")
@@ -72,12 +89,21 @@ def create_app() -> FastAPI:
     app.include_router(retail.router, prefix="/api/v1")
     app.include_router(coupons.router, prefix="/api/v1")
     app.include_router(equipment.router, prefix="/api/v1")
+    app.include_router(activity.router, prefix="/api/v1")
+    app.include_router(pt_appointment.router, prefix="/api/v1")
+    app.include_router(commission.router, prefix="/api/v1")
+    app.include_router(promoters.public_router, prefix="/api/v1")
+    app.include_router(promotion.router, prefix="/api/v1")
+    app.include_router(payouts.router, prefix="/api/v1")
+    app.include_router(coach_self.router, prefix="/api/v1")
+    app.include_router(member_promotion.router, prefix="/api/v1")
     app.include_router(visits.router, prefix="/api/v1")
     app.include_router(notifications.router, prefix="/api/v1")
     app.include_router(notifications.member_router, prefix="/api/v1")
     app.include_router(platform_rbac.router, prefix="/api/v1")
     app.include_router(platform_navigation.router, prefix="/api/v1")
     app.include_router(payment_settings.router, prefix="/api/v1")
+    app.include_router(site_profile.router, prefix="/api/v1")
     app.include_router(sms.router, prefix="/api/v1")
     app.include_router(uploads.router, prefix="/api/v1")
     app.include_router(payment_notify.router, prefix="/api/v1")

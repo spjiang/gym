@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import http from '../api/http'
 import { pathForMerchant, useAuthStore } from '../stores/auth'
@@ -16,11 +16,29 @@ const tip = ref('')
 const err = ref('')
 const sending = ref(false)
 const logging = ref(false)
+const promoterName = ref('')
 
 const merchantId = computed(() => {
   const raw = route.query.merchant_id
   const n = Number(Array.isArray(raw) ? raw[0] : raw)
   return n && !Number.isNaN(n) ? n : undefined
+})
+
+/** 推广码来自扫码链接，仅首次注册时绑定推荐关系 */
+const referralCode = computed(() => {
+  const raw = route.query.promoter ?? route.query.referral_code
+  const value = Array.isArray(raw) ? raw[0] : raw
+  return typeof value === 'string' && value.trim() ? value.trim().toUpperCase() : undefined
+})
+
+onMounted(async () => {
+  if (!referralCode.value) return
+  try {
+    const { data } = await http.get(`/promotions/${referralCode.value}`)
+    promoterName.value = data.name
+  } catch {
+    promoterName.value = ''
+  }
 })
 
 async function send() {
@@ -71,6 +89,7 @@ async function login() {
             phone: phone.value.trim(),
             code: code.value.trim(),
             merchant_id: merchantId.value ?? null,
+            referral_code: referralCode.value ?? null,
           })
     auth.setToken(data.access_token)
     const me = await auth.fetchMe()
@@ -104,6 +123,9 @@ async function login() {
       <p class="login__desc">
         <template v-if="merchantId">扫码加入门店 · 登录后自动关联本店</template>
         <template v-else>验证码可自动开通；已设密码的会员也可直接登录</template>
+      </p>
+      <p v-if="promoterName" class="login__promoter">
+        来自「{{ promoterName }}」推荐 · 验证码注册后自动绑定
       </p>
     </header>
 
@@ -208,6 +230,12 @@ async function login() {
   font-size: 14px;
   color: var(--mw-text-secondary);
   max-width: 28em;
+}
+
+.login__promoter {
+  margin: var(--mw-space-2) 0 0;
+  font-size: 13px;
+  color: var(--mw-brand);
 }
 
 .login__form {

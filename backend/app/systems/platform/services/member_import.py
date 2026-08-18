@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
 from app.systems.platform.models.member import AcquisitionSource, FaceStatus, Member, MerchantMember
+from app.systems.platform.services.promotion import ensure_member_promoter_code
 
 PHONE_RE = re.compile(r"^1[3-9]\d{9}$")
 PHONE_HEADERS = {"手机号", "手机", "电话", "会员手机", "phone", "mobile"}
@@ -206,6 +207,7 @@ def import_members_for_merchant(
             )
             db.add(member)
             db.flush()
+            ensure_member_promoter_code(db, member)
             existing[row.phone] = member
             db.add(MerchantMember(merchant_id=merchant_id, member_id=member.id))
             created += 1

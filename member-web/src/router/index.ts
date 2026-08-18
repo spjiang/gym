@@ -8,14 +8,21 @@ import MembershipsView from '../views/MembershipsView.vue'
 import MembershipDetailView from '../views/MembershipDetailView.vue'
 import PtPackageDetailView from '../views/PtPackageDetailView.vue'
 import ClassesView from '../views/ClassesView.vue'
+import ClassesDetailView from '../views/ClassesDetailView.vue'
+import ActivitiesView from '../views/ActivitiesView.vue'
+import ActivityDetailView from '../views/ActivityDetailView.vue'
+import CoachDetailView from '../views/CoachDetailView.vue'
 import ShopView from '../views/ShopView.vue'
 import AccessView from '../views/AccessView.vue'
 import NotificationsView from '../views/NotificationsView.vue'
 import CouponsView from '../views/CouponsView.vue'
 import CateringMenuView from '../views/catering/MenuView.vue'
+import CateringDishDetailView from '../views/catering/DishDetailView.vue'
+import CateringCheckoutView from '../views/catering/CheckoutView.vue'
 import CateringOrdersView from '../views/catering/OrdersView.vue'
 import CateringOrderDetailView from '../views/catering/OrderDetailView.vue'
 import ProfileView from '../views/ProfileView.vue'
+import PromotionView from '../views/PromotionView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -23,6 +30,7 @@ const router = createRouter({
     { path: '/login', name: 'login', component: LoginView, meta: { public: true } },
     { path: '/stores', name: 'stores', component: StoresView },
     { path: '/me', name: 'me', component: ProfileView },
+    { path: '/me/promotion', name: 'me-promotion', component: PromotionView },
     {
       path: '/m/:merchantId',
       component: LayoutView,
@@ -42,6 +50,25 @@ const router = createRouter({
           meta: { system: 'gym' },
         },
         { path: 'gym/classes', name: 'gym-classes', component: ClassesView, meta: { system: 'gym' } },
+        {
+          path: 'gym/classes/:sessionId',
+          name: 'gym-class-detail',
+          component: ClassesDetailView,
+          meta: { system: 'gym' },
+        },
+        { path: 'gym/activities', name: 'gym-activities', component: ActivitiesView, meta: { system: 'gym' } },
+        {
+          path: 'gym/activities/:activityId',
+          name: 'gym-activity-detail',
+          component: ActivityDetailView,
+          meta: { system: 'gym' },
+        },
+        {
+          path: 'gym/coaches/:coachId',
+          name: 'gym-coach-detail',
+          component: CoachDetailView,
+          meta: { system: 'gym' },
+        },
         { path: 'gym/shop', name: 'gym-shop', component: ShopView, meta: { system: 'gym' } },
         { path: 'gym/coupons', name: 'gym-coupons', component: CouponsView, meta: { system: 'gym' } },
         { path: 'gym/access', name: 'gym-access', component: AccessView, meta: { system: 'gym' } },
@@ -52,6 +79,24 @@ const router = createRouter({
           meta: { system: 'gym' },
         },
         { path: 'catering', name: 'catering-menu', component: CateringMenuView, meta: { system: 'catering' } },
+        {
+          path: 'catering/items/:itemId',
+          name: 'catering-dish',
+          component: CateringDishDetailView,
+          meta: { system: 'catering' },
+        },
+        {
+          path: 'catering/checkout',
+          name: 'catering-checkout',
+          component: CateringCheckoutView,
+          meta: { system: 'catering' },
+        },
+        {
+          path: 'catering/coupons',
+          name: 'catering-coupons',
+          component: CouponsView,
+          meta: { system: 'catering' },
+        },
         {
           path: 'catering/orders',
           name: 'catering-orders',
@@ -79,7 +124,11 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
   if (to.meta.public) return true
-  if (!auth.token) return { name: 'login', query: { redirect: to.fullPath } }
+  if (!auth.token) {
+    const query: Record<string, string> = { redirect: to.fullPath }
+    if (to.params.merchantId) query.merchant_id = String(to.params.merchantId)
+    return { name: 'login', query }
+  }
   if (!auth.me) {
     try {
       await auth.fetchMe()
@@ -89,7 +138,7 @@ router.beforeEach(async (to) => {
     }
   }
 
-  if (to.name === 'stores' || to.name === 'me') return true
+  if (to.name === 'stores' || to.name === 'me' || to.name === 'me-promotion') return true
 
   const mid = Number(to.params.merchantId)
   if (!mid || Number.isNaN(mid)) return { name: 'stores' }

@@ -30,10 +30,16 @@ class RequestContext:
     merchant_id: int | None
     role_codes: set[str]
     permissions: set[str]
+    site_scoped: bool = False
 
     @property
     def is_site_admin(self) -> bool:
         return ROLE_SITE_ADMIN in self.role_codes
+
+    @property
+    def is_site_wide(self) -> bool:
+        """场地超管或场地运营：可按场地查看全部商户，写操作仍受权限约束。"""
+        return self.is_site_admin or self.site_scoped
 
     @property
     def can_reset_account_password(self) -> bool:
@@ -55,9 +61,9 @@ class RequestContext:
     def resolve_merchant_id(self, requested: int | None = None, *, required: bool = True) -> int | None:
         """非超管强制本商户；超管可指定商户。
 
-        required=False 时超管可不传商户，表示「全部商户」列表筛选。
+        required=False 时场地级账号可不传商户，表示「全部商户」列表筛选。
         """
-        if self.is_site_admin:
+        if self.is_site_wide:
             mid = requested if requested is not None else self.merchant_id
             if mid is None and required:
                 raise AppError("merchant_required", "请指定 merchant_id", status_code=400)
@@ -67,6 +73,13 @@ class RequestContext:
         if requested is not None and requested != self.merchant_id:
             raise AppError("forbidden", "禁止跨商户访问", status_code=403)
         return self.merchant_id
+
+    def assert_merchant_access(self, merchant_id: int) -> None:
+        """非场地级账号只能操作本商户。"""
+        if self.is_site_wide:
+            return
+        if self.merchant_id != merchant_id:
+            raise AppError("forbidden", "禁止跨商户访问", status_code=403)
 
 
 @dataclass
@@ -111,8 +124,10 @@ def get_current_context(
 
     role_codes: set[str] = set()
     permissions: set[str] = set()
+    site_scoped = False
     for sr in staff.roles:
         role_codes.add(sr.role.code)
+        site_scoped = site_scoped or bool(sr.role.is_site_scope)
         # 优先读规范表；无 grants 时回退 JSON
         from app.systems.platform.models.rbac_catalog import RolePermission
 
@@ -134,6 +149,7 @@ def get_current_context(
         merchant_id=staff.merchant_id,
         role_codes=role_codes,
         permissions=permissions,
+        site_scoped=site_scoped,
     )
 
 

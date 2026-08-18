@@ -1,0 +1,62 @@
+<view class="wrap">
+  <view class="title">我的推广</view>
+  <view class="muted">分享推广码邀请新会员，下级消费返点进入余额，仅可提现。</view>
+
+  <view class="card" wx:if="{{me}}">
+    <view class="code">{{me.code || '暂无推广码'}}</view>
+    <view class="muted">返点 {{rebateText}} · 下级折扣 {{discountText}}</view>
+    <view class="muted" wx:if="{{me.upline_name}}">推荐人 {{me.upline_name}} · 我享折扣 {{myDiscountText}}</view>
+    <button size="mini" bindtap="copyLink">复制推广链接</button>
+  </view>
+
+  <view class="kpis">
+    <view class="kpi">
+      <view class="kpi-n">¥{{me.available_balance || me.balance || '0.00'}}</view>
+      <view class="muted">可提现</view>
+    </view>
+    <view class="kpi">
+      <view class="kpi-n">{{me.downline_count || 0}}</view>
+      <view class="muted">一级下级</view>
+    </view>
+    <view class="kpi">
+      <view class="kpi-n">¥{{me.total_earned || '0.00'}}</view>
+      <view class="muted">累计入账</view>
+    </view>
+  </view>
+  <view class="muted" wx:if="{{me.frozen_amount > 0}}">提现冻结 ¥{{me.frozen_amount}}</view>
+  <view class="muted" wx:if="{{me.held_amount > 0}}">冷却中 ¥{{me.held_amount}}（满 {{me.withdraw_hold_days}} 天可提）</view>
+
+  <view class="card">
+    <input type="digit" placeholder="提现金额" value="{{amount}}" bindinput="onAmount" />
+    <button bindtap="withdraw">申请提现</button>
+    <view class="muted">打款在线下完成，审核通过后运营登记即为到账。</view>
+  </view>
+
+  <view class="tabs">
+    <view class="tab {{tab === 'downline' ? 'on' : ''}}" data-tab="downline" bindtap="switchTab">下级</view>
+    <view class="tab {{tab === 'ledger' ? 'on' : ''}}" data-tab="ledger" bindtap="switchTab">流水</view>
+    <view class="tab {{tab === 'payout' ? 'on' : ''}}" data-tab="payout" bindtap="switchTab">提现</view>
+  </view>
+
+  <block wx:if="{{tab === 'downline'}}">
+    <view class="muted" wx:if="{{!downlines.length}}">还没有下级会员</view>
+    <view class="card" wx:for="{{downlines}}" wx:key="index">
+      <view class="name">{{item.name}} {{item.phone_masked}}</view>
+      <view class="muted">实付 ¥{{item.paid_amount}} · 贡献返点 ¥{{item.rebate_amount}}</view>
+    </view>
+  </block>
+  <block wx:elif="{{tab === 'ledger'}}">
+    <view class="muted" wx:if="{{!ledgers.length}}">暂无流水</view>
+    <view class="card" wx:for="{{ledgers}}" wx:key="id">
+      <view class="name">{{kindMap[item.kind] || item.kind}} ¥{{item.amount}}</view>
+      <view class="muted">余额 ¥{{item.balance_after}}</view>
+    </view>
+  </block>
+  <block wx:else>
+    <view class="muted" wx:if="{{!payouts.length}}">暂无提现记录</view>
+    <view class="card" wx:for="{{payouts}}" wx:key="id">
+      <view class="name">¥{{item.amount}} · {{statusMap[item.status] || item.status}}</view>
+      <view class="muted" wx:if="{{item.reject_reason}}">{{item.reject_reason}}</view>
+    </view>
+  </block>
+</view>

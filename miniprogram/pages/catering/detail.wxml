@@ -1,0 +1,18 @@
+<view class="wrap">
+  <view class="title">订单详情</view>
+  <view wx:if="{{err}}" class="muted">{{err}}</view>
+  <block wx:if="{{order}}">
+    <view class="card">
+      <view class="name">取餐号 {{order.pickup_code || ('#' + order.id)}}</view>
+      <view>金额 ¥{{order.amount}}</view>
+      <view class="muted">{{order.status}} {{order.dining_status || ''}}</view>
+      <view wx:if="{{order.customer_note}}" class="muted">{{order.customer_note}}</view>
+    </view>
+    <view class="card" wx:for="{{order.items}}" wx:key="menu_item_id">
+      {{item.name}} ×{{item.quantity}}
+    </view>
+    <button wx:if="{{order.status === 'pending'}}" disabled="{{busy}}" bindtap="pay">
+      {{busy ? '支付中…' : '继续支付'}}
+    </button>
+  </block>
+</view>

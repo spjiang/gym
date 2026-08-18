@@ -1,0 +1,33 @@
+.cover {
+  width: 100%;
+  height: 280rpx;
+  border-radius: 8rpx;
+  margin-bottom: 24rpx;
+}
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid #343b42;
+  font-size: 28rpx;
+}
+.row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.row text:first-child {
+  color: #7d8389;
+}
+.desc {
+  margin: 24rpx 0 32rpx;
+  font-size: 28rpx;
+  line-height: 1.7;
+  color: #7d8389;
+  white-space: pre-wrap;
+}
+.cancel {
+  background: transparent !important;
+  color: #f2e6d2 !important;
+  border: 1rpx solid #7d8389 !important;
+}

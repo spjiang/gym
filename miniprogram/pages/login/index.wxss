@@ -1,3 +1,8 @@
+.promoter {
+  margin-bottom: 20rpx;
+  font-size: 24rpx;
+  color: #f36b21;
+}
 .modes {
   display: flex;
   gap: 16rpx;

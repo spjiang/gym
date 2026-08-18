@@ -96,7 +96,9 @@ async function loadOptions() {
   const [m, mem, t] = await Promise.all([
     http.get('/merchants'),
     http.get<Page<Member>>('/members', { params: { page: 1, page_size: 100 } }),
-    http.get('/coupons/templates', { params: { merchant_id: query.merchant_id, page: 1, page_size: 100 } }),
+    http.get('/coupons/templates', {
+      params: { merchant_id: query.merchant_id, system: system.value, page: 1, page_size: 100 },
+    }),
   ])
   allMerchants.value = m.data
   members.value = mem.data.items
@@ -113,6 +115,7 @@ async function load() {
         member_id: query.member_id || undefined,
         template_id: query.template_id || undefined,
         status: query.status || undefined,
+        system: system.value,
         q: query.q.trim() || undefined,
         page: page.value,
         page_size: pageSize.value,

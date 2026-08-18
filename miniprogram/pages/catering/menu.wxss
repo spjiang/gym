@@ -1,0 +1,49 @@
+.section {
+  margin: 24rpx 0 12rpx;
+  font-weight: 700;
+  color: #f2e6d2;
+}
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16rpx;
+}
+.main {
+  flex: 1;
+  min-width: 0;
+}
+.price {
+  color: #14b8d4;
+  font-weight: 700;
+  margin-top: 8rpx;
+}
+.qty {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  flex-shrink: 0;
+}
+.qty-n {
+  min-width: 36rpx;
+  text-align: center;
+  font-weight: 700;
+}
+.seat {
+  margin-bottom: 16rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 8rpx;
+  background: rgba(20, 184, 212, 0.16);
+  color: #14b8d4;
+  font-weight: 650;
+}
+.bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20rpx 0 8rpx;
+  background: #171b1f;
+  font-weight: 700;
+}

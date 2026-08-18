@@ -1,5 +1,19 @@
 Page({
-  data: { phone: '', code: '', password: '', mode: 'otp' },
+  data: { phone: '', code: '', password: '', mode: 'otp', referralCode: '', merchantId: null },
+  onLoad(options) {
+    const app = getApp()
+    const fromPage = app.resolveReferralCode(options)
+    if (fromPage) {
+      app.globalData.referralCode = fromPage
+      wx.setStorageSync('referral_code', fromPage)
+    }
+    const merchantId = options && options.merchant_id ? Number(options.merchant_id) : null
+    if (merchantId) app.globalData.merchantId = merchantId
+    this.setData({
+      referralCode: app.globalData.referralCode || '',
+      merchantId: merchantId || app.globalData.merchantId || null,
+    })
+  },
   setMode(e) {
     this.setData({ mode: e.currentTarget.dataset.mode })
   },
@@ -15,7 +29,11 @@ Page({
   async send() {
     const { request } = require('../../utils/api')
     try {
-      await request({ url: '/member/auth/otp/send', method: 'POST', data: { phone: this.data.phone } })
+      await request({
+        url: '/member/auth/otp/send',
+        method: 'POST',
+        data: { phone: this.data.phone, merchant_id: this.data.merchantId || null },
+      })
       wx.showToast({ title: '已发送', icon: 'success' })
     } catch (e) {
       wx.showToast({ title: (e && e.message) || '发送失败', icon: 'none' })
@@ -30,12 +48,17 @@ Page({
           ? await request({
               url: '/member/auth/password',
               method: 'POST',
-              data: { phone: this.data.phone, password: this.data.password },
+              data: { phone: this.data.phone, password: this.data.password, merchant_id: this.data.merchantId || null },
             })
           : await request({
               url: '/member/auth/otp/verify',
               method: 'POST',
-              data: { phone: this.data.phone, code: this.data.code },
+              data: {
+                phone: this.data.phone,
+                code: this.data.code,
+                merchant_id: this.data.merchantId || null,
+                referral_code: this.data.referralCode || null,
+              },
             })
       app.globalData.token = data.access_token
       wx.setStorageSync('member_token', data.access_token)

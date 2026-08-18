@@ -37,7 +37,7 @@ SYSTEM_CATALOG: dict[str, dict] = {
 
 # 线下通用建单时，各业态允许的订单类型
 ORDER_TYPES_BY_SYSTEM: dict[str, set[str]] = {
-    "gym": {"retail", "membership", "pt", "group"},
+    "gym": {"retail", "membership", "pt", "group", "activity"},
     "catering": {"dining", "retail"},
 }
 
@@ -54,6 +54,7 @@ ORDER_TYPE_LABELS = {
     "group": "团课",
     "dining": "餐饮消费",
     "pt_package": "私教课包",
+    "activity": "活动报名",
 }
 
 

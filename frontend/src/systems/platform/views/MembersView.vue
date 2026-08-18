@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type UploadRequestOptions } from 'element-plus'
 import http from '../../../core/api/http'
 import { useAuthStore } from '../../../core/stores/auth'
@@ -10,11 +11,18 @@ type Member = {
   name: string
   face_status: string
   merchant_ids: number[]
+  avatar_url?: string | null
   acquisition_source?: string
   first_merchant_id?: number | null
   first_merchant_name?: string | null
   created_at?: string
   has_password?: boolean
+  referrer_member_id?: number | null
+  referrer_staff_id?: number | null
+  referrer_note?: string | null
+  referral_code?: string | null
+  referrer_display?: string | null
+  referred_count?: number
 }
 type Merchant = { id: number; name: string }
 type Page<T> = { items: T[]; total: number; page: number; page_size: number }
@@ -31,12 +39,17 @@ type ImportResult = {
 }
 
 const auth = useAuthStore()
+const router = useRouter()
 const isSiteAdmin = computed(() => auth.isSiteAdmin())
 const canWrite = computed(
   () =>
     (auth.me?.permissions || []).includes('member:write') ||
     (auth.me?.permissions || []).includes('*'),
 )
+const canPromote = computed(() => {
+  const perms = auth.me?.permissions || []
+  return perms.includes('promoter:read') || perms.includes('promoter:manage') || perms.includes('*')
+})
 const canResetPassword = computed(() => {
   const perms = auth.me?.permissions || []
   const roles = auth.me?.role_codes || []
@@ -54,6 +67,8 @@ const query = reactive({
   merchant_id: undefined as number | undefined,
   face_status: '' as string,
   has_password: '' as '' | 'true' | 'false',
+  has_referrer: '' as '' | 'true' | 'false',
+  referral_code: '',
 })
 
 const createDialog = ref(false)
@@ -78,15 +93,26 @@ const form = reactive({
   merchant_id: undefined as number | undefined,
   password: '',
   confirm: '',
+  referrer_type: '' as '' | 'member' | 'note',
+  referrer_member_id: undefined as number | undefined,
+  referrer_note: '',
+  referral_code: '',
 })
 const linkForm = reactive({ merchant_id: undefined as number | undefined })
-const editForm = reactive({ name: '', password: '' })
+const editForm = reactive({
+  name: '',
+  password: '',
+  referrer_type: '' as '' | 'member' | 'note',
+  referrer_member_id: undefined as number | undefined,
+  referrer_note: '',
+})
 const pwdForm = reactive({ password: '', confirm: '' })
 const linkTarget = ref<Member | null>(null)
 const editTarget = ref<Member | null>(null)
 const pwdTarget = ref<Member | null>(null)
 const pwdVisible = ref(false)
 const detail = ref<Member | null>(null)
+const uploadingAvatar = ref(false)
 
 const rules: FormRules = {
   phone: [{ required: true, message: '请填写手机号', trigger: 'blur' }],
@@ -156,6 +182,8 @@ async function load() {
           merchant_id: query.merchant_id,
           face_status: query.face_status || undefined,
           has_password: query.has_password === '' ? undefined : query.has_password === 'true',
+          has_referrer: query.has_referrer === '' ? undefined : query.has_referrer === 'true',
+          referral_code: query.referral_code.trim() || undefined,
         },
       }),
       http.get('/merchants'),
@@ -180,8 +208,41 @@ function resetSearch() {
   query.merchant_id = undefined
   query.face_status = ''
   query.has_password = ''
+  query.has_referrer = ''
+  query.referral_code = ''
   page.value = 1
   void load()
+}
+
+/** 推荐人下拉：只选推广会员 */
+const referrerCandidates = ref<Member[]>([])
+const referrerLoading = ref(false)
+
+async function searchReferrerMembers(keyword: string) {
+  referrerLoading.value = true
+  try {
+    const { data } = await http.get<Page<Member>>('/members', {
+      params: { page: 1, page_size: 20, q: keyword.trim() || undefined },
+    })
+    referrerCandidates.value = data.items
+  } catch {
+    referrerCandidates.value = []
+  } finally {
+    referrerLoading.value = false
+  }
+}
+
+function goPromotion(row: Member) {
+  router.push({
+    path: '/platform/promotion-settings',
+    query: { member_id: String(row.id) },
+  })
+}
+
+function referrerText(row: Member) {
+  if (row.referrer_display) return row.referrer_display
+  if (row.referral_code) return `推广码 ${row.referral_code}`
+  return '—'
 }
 
 function openImport() {
@@ -244,8 +305,26 @@ function openCreate() {
   form.merchant_id = merchants.value[0]?.id
   form.password = ''
   form.confirm = ''
+  form.referrer_type = ''
+  form.referrer_member_id = undefined
+  form.referrer_note = ''
+  form.referral_code = ''
+  referrerCandidates.value = []
   formRef.value?.clearValidate()
   createDialog.value = true
+}
+
+/** 推荐来源：会员推广 / 登记姓名；员工推荐已下线，保存时清空。 */
+function referrerPayload(src: {
+  referrer_type: '' | 'member' | 'note'
+  referrer_member_id?: number
+  referrer_note: string
+}) {
+  return {
+    referrer_member_id: src.referrer_type === 'member' ? (src.referrer_member_id ?? null) : null,
+    referrer_staff_id: null,
+    referrer_note: src.referrer_type === 'note' ? src.referrer_note.trim() || null : null,
+  }
 }
 
 async function create() {
@@ -257,6 +336,8 @@ async function create() {
       phone: form.phone.trim(),
       name: form.name.trim(),
       merchant_id: form.merchant_id,
+      ...referrerPayload(form),
+      referral_code: form.referral_code.trim().toUpperCase() || null,
       ...(canResetPassword.value && form.password ? { password: form.password } : {}),
     })
     ElMessage.success('会员已创建')
@@ -274,10 +355,51 @@ function openDetail(row: Member) {
   detailVisible.value = true
 }
 
+async function uploadAvatar(opt: UploadRequestOptions, target?: Member | null) {
+  const row = target || editTarget.value || detail.value
+  if (!row) return
+  const fd = new FormData()
+  fd.append('file', opt.file)
+  uploadingAvatar.value = true
+  try {
+    const { data } = await http.post<Member>(`/members/${row.id}/avatar`, fd, { timeout: 30000 })
+    opt.onSuccess(data)
+    ElMessage.success('头像已更新')
+    if (editTarget.value?.id === data.id) editTarget.value = data
+    if (detail.value?.id === data.id) detail.value = data
+    await load()
+  } catch (e: unknown) {
+    ElMessage.error(e instanceof Error ? e.message : '头像上传失败')
+  } finally {
+    uploadingAvatar.value = false
+  }
+}
+
+async function clearAvatar(row: Member) {
+  uploadingAvatar.value = true
+  try {
+    const { data } = await http.delete<Member>(`/members/${row.id}/avatar`)
+    ElMessage.success('已清除头像')
+    if (editTarget.value?.id === data.id) editTarget.value = data
+    if (detail.value?.id === data.id) detail.value = data
+    await load()
+  } catch (e: unknown) {
+    ElMessage.error(e instanceof Error ? e.message : '清除失败')
+  } finally {
+    uploadingAvatar.value = false
+  }
+}
+
 function openEdit(row: Member) {
   editTarget.value = row
   editForm.name = row.name
   editForm.password = ''
+  editForm.referrer_member_id = row.referrer_member_id ?? undefined
+  editForm.referrer_note = row.referrer_note ?? ''
+  editForm.referrer_type = row.referrer_member_id ? 'member' : row.referrer_note ? 'note' : ''
+  referrerCandidates.value = row.referrer_member_id
+    ? [{ id: row.referrer_member_id, phone: '', name: row.referrer_display || `#${row.referrer_member_id}` } as Member]
+    : []
   editFormRef.value?.clearValidate()
   editDialog.value = true
 }
@@ -294,6 +416,7 @@ async function saveEdit() {
   try {
     const { data } = await http.patch<Member>(`/members/${editTarget.value.id}`, {
       name: editForm.name.trim(),
+      ...referrerPayload(editForm),
     })
     if (canResetPassword.value && editForm.password) {
       await http.post(`/members/${editTarget.value.id}/password`, { password: editForm.password })
@@ -414,12 +537,29 @@ onMounted(load)
         <el-option label="已设置" value="true" />
         <el-option label="未设置" value="false" />
       </el-select>
+      <el-select v-model="query.has_referrer" clearable placeholder="推荐关系" style="width: 130px">
+        <el-option label="有推荐人" value="true" />
+        <el-option label="无推荐人" value="false" />
+      </el-select>
+      <el-input
+        v-model="query.referral_code"
+        clearable
+        placeholder="推广码"
+        style="width: 130px"
+        @keyup.enter="search"
+      />
       <el-button type="primary" @click="search">查询</el-button>
       <el-button @click="resetSearch">重置</el-button>
     </div>
 
     <el-table :data="members" v-loading="loading" stripe>
       <el-table-column prop="id" label="ID" width="70" />
+      <el-table-column label="头像" width="76">
+        <template #default="{ row }">
+          <img v-if="row.avatar_url" class="avatar" :src="row.avatar_url" alt="" />
+          <div v-else class="avatar avatar-fallback">{{ (row.name || '?').slice(0, 1) }}</div>
+        </template>
+      </el-table-column>
       <el-table-column prop="phone" label="手机号" />
       <el-table-column prop="name" label="姓名" />
       <el-table-column label="登录密码" width="110">
@@ -442,6 +582,12 @@ onMounted(load)
       <el-table-column label="首次来源" min-width="140">
         <template #default="{ row }">{{ sourceLabel(row) }}</template>
       </el-table-column>
+      <el-table-column label="推荐人" min-width="160">
+        <template #default="{ row }">
+          <div>{{ referrerText(row) }}</div>
+          <div v-if="row.referred_count" class="sub">已推荐 {{ row.referred_count }} 人</div>
+        </template>
+      </el-table-column>
       <el-table-column label="关联商户">
         <template #default="{ row }">
           <el-tag
@@ -456,10 +602,11 @@ onMounted(load)
           <span v-if="!row.merchant_ids.length">—</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="300" fixed="right">
+      <el-table-column label="操作" width="340" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openDetail(row)">详情</el-button>
           <el-button v-if="canWrite" link type="primary" @click="openEdit(row)">编辑</el-button>
+          <el-button v-if="canPromote" link type="primary" @click="goPromotion(row)">推广</el-button>
           <el-button v-if="canResetPassword" link type="primary" @click="openResetPwd(row)">改密</el-button>
           <el-button v-if="canWrite" link type="primary" @click="openLink(row)">关联商户</el-button>
           <el-button v-if="canWrite" link type="danger" @click="remove(row)">删除</el-button>
@@ -488,6 +635,10 @@ onMounted(load)
     <el-drawer v-model="detailVisible" title="会员详情" size="420px">
       <template v-if="detail">
         <el-descriptions :column="1" border>
+          <el-descriptions-item label="头像">
+            <img v-if="detail.avatar_url" class="detail-avatar" :src="detail.avatar_url" alt="" />
+            <div v-else class="detail-avatar avatar-fallback">{{ (detail.name || '?').slice(0, 1) }}</div>
+          </el-descriptions-item>
           <el-descriptions-item label="ID">{{ detail.id }}</el-descriptions-item>
           <el-descriptions-item label="手机号">{{ detail.phone }}</el-descriptions-item>
           <el-descriptions-item label="姓名">{{ detail.name }}</el-descriptions-item>
@@ -496,6 +647,9 @@ onMounted(load)
             {{ detail.has_password ? '已设置' : '未设置（仅可用验证码登录）' }}
           </el-descriptions-item>
           <el-descriptions-item label="首次来源">{{ sourceLabel(detail) }}</el-descriptions-item>
+          <el-descriptions-item label="推荐人">{{ referrerText(detail) }}</el-descriptions-item>
+          <el-descriptions-item label="推广码">{{ detail.referral_code || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="累计推荐">{{ detail.referred_count ?? 0 }} 人</el-descriptions-item>
           <el-descriptions-item label="关联商户">
             <template v-if="detail.merchant_ids.length">
               <el-tag
@@ -510,8 +664,9 @@ onMounted(load)
             <span v-else>—</span>
           </el-descriptions-item>
         </el-descriptions>
-        <div v-if="canWrite || canResetPassword" class="drawer-actions">
+        <div v-if="canWrite || canResetPassword || canPromote" class="drawer-actions">
           <el-button v-if="canWrite" type="primary" @click="openEdit(detail)">编辑</el-button>
+          <el-button v-if="canPromote" plain @click="goPromotion(detail)">推广配置</el-button>
           <el-button v-if="canResetPassword" type="warning" plain @click="openResetPwd(detail)">
             修改密码
           </el-button>
@@ -580,6 +735,36 @@ onMounted(load)
             <el-option v-for="m in merchants" :key="m.id" :label="m.name" :value="m.id" />
           </el-select>
         </el-form-item>
+        <el-form-item label="推荐来源">
+          <el-select v-model="form.referrer_type" clearable placeholder="无推荐人" style="width: 100%">
+            <el-option label="会员推广" value="member" />
+            <el-option label="登记姓名" value="note" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="form.referrer_type === 'member'" label="推广会员">
+          <el-select
+            v-model="form.referrer_member_id"
+            filterable
+            remote
+            :remote-method="searchReferrerMembers"
+            :loading="referrerLoading"
+            placeholder="输入手机号或姓名搜索"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="x in referrerCandidates"
+              :key="x.id"
+              :label="`${x.name} ${x.phone}`"
+              :value="x.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="form.referrer_type === 'note'" label="推荐人姓名">
+          <el-input v-model="form.referrer_note" maxlength="128" placeholder="仅登记，不参与返点结算" />
+        </el-form-item>
+        <el-form-item label="推广码">
+          <el-input v-model="form.referral_code" maxlength="32" placeholder="选填，扫码注册会自动写入" />
+        </el-form-item>
         <template v-if="canResetPassword">
           <el-form-item label="登录密码" prop="password">
             <el-input
@@ -603,8 +788,59 @@ onMounted(load)
 
     <el-dialog v-model="editDialog" title="编辑会员" width="420px" destroy-on-close>
       <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-width="80px">
+        <el-form-item label="头像">
+          <div class="avatar-edit">
+            <img v-if="editTarget?.avatar_url" class="detail-avatar" :src="editTarget.avatar_url" alt="" />
+            <div v-else class="detail-avatar avatar-fallback">{{ (editForm.name || '?').slice(0, 1) }}</div>
+            <div>
+              <el-upload :show-file-list="false" accept="image/jpeg,image/png,image/webp" :http-request="uploadAvatar">
+                <el-button :loading="uploadingAvatar">上传头像</el-button>
+              </el-upload>
+              <el-button
+                v-if="editTarget?.avatar_url"
+                link
+                type="danger"
+                :disabled="uploadingAvatar"
+                @click="editTarget && clearAvatar(editTarget)"
+              >
+                清除
+              </el-button>
+              <p class="hint">JPG / PNG / WEBP，不超过 8MB。会员也可在 H5 / 小程序自行更换。</p>
+            </div>
+          </div>
+        </el-form-item>
         <el-form-item label="姓名" prop="name">
           <el-input v-model="editForm.name" maxlength="128" />
+        </el-form-item>
+        <el-form-item label="推荐来源">
+          <el-select v-model="editForm.referrer_type" clearable placeholder="无推荐人" style="width: 100%">
+            <el-option label="会员推广" value="member" />
+            <el-option label="登记姓名" value="note" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="editForm.referrer_type === 'member'" label="推广会员">
+          <el-select
+            v-model="editForm.referrer_member_id"
+            filterable
+            remote
+            :remote-method="searchReferrerMembers"
+            :loading="referrerLoading"
+            placeholder="输入手机号或姓名搜索"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="x in referrerCandidates"
+              :key="x.id"
+              :label="x.phone ? `${x.name} ${x.phone}` : x.name"
+              :value="x.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="editForm.referrer_type === 'note'" label="推荐人姓名">
+          <el-input v-model="editForm.referrer_note" maxlength="128" placeholder="仅登记，不参与返点结算" />
+        </el-form-item>
+        <el-form-item v-if="editTarget?.referral_code" label="推广码">
+          <el-input :model-value="editTarget?.referral_code" disabled />
         </el-form-item>
         <el-form-item v-if="canResetPassword" label="新密码">
           <el-input
@@ -721,5 +957,35 @@ onMounted(load)
 }
 .drawer-actions {
   margin-top: 16px;
+}
+.sub {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.avatar,
+.detail-avatar {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 50%;
+  background: var(--el-fill-color-light);
+  flex-shrink: 0;
+}
+.detail-avatar {
+  width: 64px;
+  height: 64px;
+  font-size: 22px;
+}
+.avatar-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--el-text-color-secondary);
+  font-weight: 600;
+}
+.avatar-edit {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
 }
 </style>

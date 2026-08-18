@@ -16,12 +16,13 @@ const gymTabs = computed(() => [
   { to: `/m/${mid.value}/gym/classes`, label: '团课' },
   { to: `/m/${mid.value}/gym/shop`, label: '商城' },
   { to: `/m/${mid.value}/gym/coupons`, label: '卡券' },
-  { to: `/m/${mid.value}/gym/access`, label: '通行' },
+  { to: '/me', label: '我的' },
 ])
 
 const cateringTabs = computed(() => [
   { to: `/m/${mid.value}/catering`, label: '点餐' },
   { to: `/m/${mid.value}/catering/orders`, label: '订单' },
+  { to: `/m/${mid.value}/catering/coupons`, label: '卡券' },
   { to: '/me', label: '我的' },
 ])
 
@@ -35,13 +36,33 @@ function switchStore() {
 function goMe() {
   router.push({ name: 'me' })
 }
+
+function isTabOn(to: string) {
+  const path = route.path
+  if (to.endsWith('/gym/classes')) {
+    return path.includes('/gym/classes') || path.includes('/gym/coaches')
+  }
+  if (to.endsWith('/gym')) {
+    return path === to
+  }
+  if (to.endsWith('/catering')) {
+    return path === to || path.includes('/catering/items') || path.includes('/catering/checkout')
+  }
+  if (to === '/me') {
+    return path === '/me' || path.startsWith('/me/')
+  }
+  return path === to || path.startsWith(`${to}/`)
+}
 </script>
 
 <template>
   <div class="shell">
     <header class="topbar">
       <button class="topbar__user" type="button" @click="goMe" title="个人中心">
-        <div class="topbar__avatar" aria-hidden="true">{{ auth.me?.name?.slice(0, 1) || '会' }}</div>
+        <div class="topbar__avatar" aria-hidden="true">
+          <img v-if="auth.me?.avatar_url" :src="auth.me.avatar_url" alt="" />
+          <template v-else>{{ auth.me?.name?.slice(0, 1) || '会' }}</template>
+        </div>
         <div class="topbar__meta">
           <div class="topbar__name">{{ auth.currentMerchant?.name || '门店' }}</div>
           <div class="topbar__phone">{{ systemLabel }} · {{ auth.me?.name }}</div>
@@ -58,7 +79,15 @@ function goMe() {
     </main>
 
     <nav class="tabbar" aria-label="底部导航">
-      <RouterLink v-for="t in tabs" :key="t.to" :to="t.to" class="tabbar__item">
+      <RouterLink
+        v-for="t in tabs"
+        :key="t.to"
+        :to="t.to"
+        class="tabbar__item"
+        :class="{ 'tabbar__item--on': isTabOn(t.to) }"
+        active-class=""
+        exact-active-class=""
+      >
         {{ t.label }}
       </RouterLink>
     </nav>
@@ -111,6 +140,13 @@ function goMe() {
   color: var(--mw-brand-ink);
   font-weight: 700;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.topbar__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .topbar__name {
@@ -160,7 +196,7 @@ function goMe() {
   text-decoration: none;
 }
 
-.tabbar__item.router-link-active {
+.tabbar__item--on {
   color: var(--mw-brand);
   font-weight: 700;
 }

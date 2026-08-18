@@ -95,6 +95,7 @@ def test_a3_a4_page_contracts(client: TestClient, admin_headers: dict):
         f"/api/v1/group-courses?merchant_id={gym_id}&page=1&page_size=5",
         f"/api/v1/coupons/templates?merchant_id={gym_id}&page=1&page_size=5",
         f"/api/v1/catering/menu-items?page=1&page_size=5",
+        f"/api/v1/catering/tables?page=1&page_size=5",
     ):
         resp = client.get(path, headers=admin_headers)
         assert resp.status_code == 200, f"{path}: {resp.text}"

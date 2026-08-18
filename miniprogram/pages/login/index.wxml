@@ -11,6 +11,7 @@
     </view>
   </view>
   <view class="title">会员登录</view>
+  <view wx:if="{{referralCode}}" class="promoter">推广码 {{referralCode}} · 首次注册自动绑定推荐人</view>
   <view class="modes">
     <view class="mode {{mode === 'otp' ? 'is-active' : ''}}" data-mode="otp" bindtap="setMode">验证码</view>
     <view class="mode {{mode === 'password' ? 'is-active' : ''}}" data-mode="password" bindtap="setMode">密码</view>

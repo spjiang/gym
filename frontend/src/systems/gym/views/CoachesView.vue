@@ -3,6 +3,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, type FormInstance, type FormRules, type UploadRequestOptions, type UploadUserFile } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import http from '../../../core/api/http'
+import { percentLabel } from '../../../core/labels'
 import { merchantsWithSystem } from '../../../core/nav/systems'
 import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
 
@@ -16,6 +17,7 @@ type Coach = {
   phone: string | null
   years_experience: number | null
   hourly_rate: string | null
+  pt_commission_rate: string | null
   specialties: string | null
   certifications: string | null
   bio: string | null
@@ -59,6 +61,7 @@ const form = reactive({
   phone: '',
   years_experience: undefined as number | undefined,
   hourly_rate: '',
+  pt_commission_rate: '',
   specialties: '',
   certifications: '',
   bio: '',
@@ -95,6 +98,7 @@ function resetForm() {
   form.phone = ''
   form.years_experience = undefined
   form.hourly_rate = ''
+  form.pt_commission_rate = ''
   form.specialties = ''
   form.certifications = ''
   form.bio = ''
@@ -164,6 +168,7 @@ function openEdit(row: Coach) {
   form.phone = row.phone || ''
   form.years_experience = row.years_experience ?? undefined
   form.hourly_rate = row.hourly_rate || ''
+  form.pt_commission_rate = row.pt_commission_rate || ''
   form.specialties = row.specialties || ''
   form.certifications = row.certifications || ''
   form.bio = row.bio || ''
@@ -245,6 +250,7 @@ async function saveCoach() {
       phone: form.phone.trim() || null,
       years_experience: form.years_experience ?? null,
       hourly_rate: form.hourly_rate.trim() || null,
+      pt_commission_rate: form.pt_commission_rate.trim() || null,
       specialties: form.specialties.trim() || null,
       certifications: form.certifications.trim() || null,
       bio: form.bio.trim() || null,
@@ -340,6 +346,11 @@ onMounted(refresh)
       <el-table-column label="年限" width="80">
         <template #default="{ row }">{{ row.years_experience != null ? `${row.years_experience} 年` : '—' }}</template>
       </el-table-column>
+      <el-table-column label="私教提成" width="110">
+        <template #default="{ row }">
+          {{ row.pt_commission_rate ? percentLabel(row.pt_commission_rate) : '商户规则' }}
+        </template>
+      </el-table-column>
       <el-table-column label="启用" width="80">
         <template #default="{ row }">
           <el-tag :type="row.is_active ? 'success' : 'info'" size="small">
@@ -402,6 +413,9 @@ onMounted(refresh)
         </el-form-item>
         <el-form-item label="课时参考价">
           <el-input v-model="form.hourly_rate" placeholder="如 300，选填" />
+        </el-form-item>
+        <el-form-item label="私教提成比例">
+          <el-input v-model="form.pt_commission_rate" placeholder="0.4 表示 40%，留空走商户规则" />
         </el-form-item>
         <el-form-item label="擅长">
           <el-input v-model="form.specialties" placeholder="如：减脂 / 力量训练 / 普拉提" maxlength="255" />
@@ -484,6 +498,9 @@ onMounted(refresh)
             {{ detail.years_experience != null ? `${detail.years_experience} 年` : '—' }}
           </el-descriptions-item>
           <el-descriptions-item label="课时参考价">{{ detail.hourly_rate ? `¥${detail.hourly_rate}` : '—' }}</el-descriptions-item>
+          <el-descriptions-item label="私教提成比例">
+            {{ detail.pt_commission_rate ? percentLabel(detail.pt_commission_rate) : '按商户规则' }}
+          </el-descriptions-item>
           <el-descriptions-item label="擅长" :span="2">{{ detail.specialties || '—' }}</el-descriptions-item>
           <el-descriptions-item label="可约时段" :span="2">{{ detail.availability_note || '—' }}</el-descriptions-item>
           <el-descriptions-item label="资质证书" :span="2">{{ detail.certifications || '—' }}</el-descriptions-item>

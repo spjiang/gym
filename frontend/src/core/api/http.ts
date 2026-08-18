@@ -16,7 +16,23 @@ http.interceptors.request.use((config) => {
 
 http.interceptors.response.use(
   (resp) => resp,
-  (error) => {
+  async (error) => {
+    const status = error.response?.status
+    const url = String(error.config?.url || '')
+    if (
+      status === 403 &&
+      !url.includes('/auth/me') &&
+      !url.includes('/me/navigation')
+    ) {
+      const auth = useAuthStore()
+      if (auth.token) {
+        try {
+          await auth.fetchMe()
+        } catch {
+          /* 刷新权限失败时仍把原错误抛给页面 */
+        }
+      }
+    }
     const message = error.response?.data?.message || error.message || '请求失败'
     return Promise.reject(new Error(message))
   },

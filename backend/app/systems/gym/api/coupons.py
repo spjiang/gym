@@ -450,6 +450,7 @@ def list_member_coupons(
     member_id: int | None = None,
     template_id: int | None = None,
     status: str | None = None,
+    system: str | None = None,
     q: str | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -471,6 +472,12 @@ def list_member_coupons(
         mid_sq = select(Member.id).where(or_(Member.phone.ilike(like), Member.name.ilike(like)))
         filters.append(MemberCoupon.member_id.in_(mid_sq))
     base = select(MemberCoupon)
+    if system == "catering" or system == "gym":
+        base = base.join(CouponTemplate, CouponTemplate.id == MemberCoupon.template_id)
+        if system == "catering":
+            base = base.where(CouponTemplate.applicable_to.in_(CATERING_APPLICABLE))
+        else:
+            base = base.where(CouponTemplate.applicable_to.in_(GYM_APPLICABLE))
     if filters:
         base = base.where(*filters)
     total = db.scalar(select(func.count()).select_from(base.subquery())) or 0

@@ -1,0 +1,56 @@
+<view class="wrap me">
+  <view class="site">观野SPACE · 会员中心</view>
+
+  <view class="card profile">
+    <view class="avatar" bindtap="pickAvatar">
+      <image wx:if="{{avatarUrl}}" class="avatar-img" src="{{avatarUrl}}" mode="aspectFill" />
+      <text wx:else>{{avatar}}</text>
+    </view>
+    <view class="info">
+      <view class="name">{{name}}</view>
+      <view class="muted tight">{{phoneMasked}}</view>
+      <view class="avatar-btn" bindtap="pickAvatar">{{uploading ? '上传中…' : avatarUrl ? '更换头像' : '上传头像'}}</view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="row">
+      <text>人脸通行</text>
+      <text class="pill {{faceOk ? 'ok' : ''}}">{{faceText}}</text>
+    </view>
+    <view class="muted tight">人脸采集请到店内 Pad 完成，此处仅展示状态。</view>
+    <block wx:if="{{events.length}}">
+      <view class="event" wx:for="{{events}}" wx:key="id">
+        <view>
+          <view class="event-title">门禁点 {{item.access_point_id}}</view>
+          <view class="muted tight">
+            {{item.timeText}}
+            <block wx:if="{{item.reason}}"> · {{item.reason}}</block>
+          </view>
+        </view>
+        <text class="pill {{item.allowed ? 'ok' : 'danger'}}">{{item.allowed ? '放行' : '拒绝'}}</text>
+      </view>
+    </block>
+    <view wx:else class="muted tight">暂无通行记录</view>
+  </view>
+
+  <view class="card row">
+    <text>首次来源</text>
+    <text>{{sourceText}}</text>
+  </view>
+
+  <view class="section">关联门店</view>
+  <view wx:if="{{!merchants.length}}" class="muted">暂无关联门店</view>
+  <view class="card store" wx:for="{{merchants}}" wx:key="id" bindtap="enterStore" data-id="{{item.id}}">
+    <view>
+      <view class="badge">{{item.badge}}</view>
+      <view class="name">{{item.name}}</view>
+    </view>
+    <text class="muted tight">进入</text>
+  </view>
+
+  <button bindtap="goCatering">扫码点餐</button>
+  <button bindtap="goPromotion">我的推广</button>
+  <button bindtap="goStores">全部门店 / 切换业态</button>
+  <button class="ghost" bindtap="logout">退出登录</button>
+</view>

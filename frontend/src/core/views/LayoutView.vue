@@ -1,6 +1,30 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch, type Component } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import {
+  Bell,
+  Calendar,
+  Collection,
+  CreditCard,
+  DataAnalysis,
+  Document,
+  Expand,
+  Fold,
+  Food,
+  Goods,
+  Grid,
+  House,
+  Lock,
+  Monitor,
+  OfficeBuilding,
+  Postcard,
+  Setting,
+  Share,
+  ShoppingCart,
+  Ticket,
+  TrendCharts,
+  User,
+} from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 import {
   findMenuFromNav,
@@ -101,6 +125,83 @@ const eyebrow = computed(() => {
 
 const brandVariant = computed(() => brandVariantForSystem(isPortal.value ? 'platform' : String(currentSystem.value)))
 
+const ASIDE_KEY = 'admin-aside-collapsed'
+const asideCollapsed = ref(localStorage.getItem(ASIDE_KEY) === '1')
+const asideWidth = computed(() => (asideCollapsed.value ? '72px' : '248px'))
+
+function toggleAside() {
+  asideCollapsed.value = !asideCollapsed.value
+  localStorage.setItem(ASIDE_KEY, asideCollapsed.value ? '1' : '0')
+}
+
+function menuIcon(path: string): Component {
+  const exact: Record<string, Component> = {
+    '/ops': DataAnalysis,
+    '/reports': TrendCharts,
+    '/orders': Document,
+    '/platform/payment-reconcile': Document,
+    '/members': User,
+    '/visits': Postcard,
+    '/coupons/templates': Ticket,
+    '/coupons/issue': Ticket,
+    '/notifications': Bell,
+    '/access': Monitor,
+    '/merchants': OfficeBuilding,
+    '/merchant-types': OfficeBuilding,
+    '/platform/roles': Lock,
+    '/staff': User,
+    '/platform/site-profile': Setting,
+    '/platform/subsystems': Setting,
+    '/platform/payment-settings': Setting,
+    '/platform/sms-settings': Setting,
+    '/catering/categories': Collection,
+    '/catering/menu': Food,
+    '/catering/tables': Grid,
+    '/catering/kitchen': Monitor,
+    '/catering/pos': ShoppingCart,
+    '/catering/orders': Collection,
+    '/memberships': CreditCard,
+    '/products': CreditCard,
+    '/coaches': User,
+    '/retail': Goods,
+    '/equipment': Setting,
+  }
+  if (exact[path]) return exact[path]
+  if (path.startsWith('/group-') || path.includes('coach-desk')) return Calendar
+  if (path.startsWith('/pt-')) return User
+  if (path.startsWith('/activit')) return Calendar
+  if (path.includes('commission')) return TrendCharts
+  if (path.startsWith('/retail')) return Goods
+  if (path.startsWith('/equipment')) return Setting
+  if (path.startsWith('/platform/promotion') || path.startsWith('/rebate') || path.startsWith('/payout')) return Share
+  return Collection
+}
+
+function groupIcon(key: string): Component {
+  const map: Record<string, Component> = {
+    ops: DataAnalysis,
+    order: Document,
+    member: User,
+    visit: Postcard,
+    coupon: Ticket,
+    promoter: Share,
+    notify: Bell,
+    device: Monitor,
+    merchant: OfficeBuilding,
+    rbac: Lock,
+    base: Setting,
+    membership: CreditCard,
+    group: Calendar,
+    pt: User,
+    activity: Calendar,
+    commission: TrendCharts,
+    coach: User,
+    retail: Goods,
+    equipment: Setting,
+  }
+  return map[key] || Collection
+}
+
 function shortName(code: string, fallback: string) {
   return brandLabelForSystem(code) || fallback
 }
@@ -124,7 +225,7 @@ function logout() {
 
 <template>
   <el-container class="layout">
-    <el-aside width="248px" class="aside">
+    <el-aside :width="asideWidth" class="aside" :class="{ 'aside--collapsed': asideCollapsed }">
       <div class="brand">
         <BrandMark :variant="brandVariant" compact />
         <div class="brand-sub">{{ isPortal ? '综合管理平台' : systemMeta?.name }}</div>
@@ -135,22 +236,25 @@ function logout() {
         <button
           class="nav-item nav-item--home is-active"
           type="button"
+          title="工作台"
           @click="goPortal"
         >
-          工作台
+          <el-icon><House /></el-icon>
+          <span v-show="!asideCollapsed">工作台</span>
         </button>
 
-        <div class="system-label">业务系统</div>
+        <div v-show="!asideCollapsed" class="system-label">业务系统</div>
         <nav class="system-nav" aria-label="业务系统">
           <button
             v-for="s in subsystems"
             :key="s.code"
             type="button"
             class="nav-item"
+            :title="shortName(s.code, s.name)"
             @click="openSystem(s)"
           >
             <span class="nav-dot" :data-system="s.code" aria-hidden="true" />
-            <span class="nav-text">
+            <span v-show="!asideCollapsed" class="nav-text">
               <span class="nav-title">{{ shortName(s.code, s.name) }}</span>
               <span class="nav-desc">{{ s.is_business ? '业态' : '平台' }}</span>
             </span>
@@ -161,15 +265,19 @@ function logout() {
 
       <!-- 子系统内：返回工作台 + 二级功能菜单 -->
       <template v-else>
-        <button class="portal-link" type="button" @click="goPortal">← 工作台</button>
+        <button class="portal-link" type="button" title="返回工作台" @click="goPortal">
+          <el-icon><House /></el-icon>
+          <span v-show="!asideCollapsed">工作台</span>
+        </button>
 
-        <div class="system-label">{{ shortName(String(currentSystem), systemMeta?.name || '') }}</div>
+        <div v-show="!asideCollapsed" class="system-label">{{ shortName(String(currentSystem), systemMeta?.name || '') }}</div>
 
         <el-menu
           v-if="isPlatform"
           router
           :default-active="activeMenu"
           :default-openeds="[]"
+          :collapse="asideCollapsed"
           unique-opened
           class="side-menu"
           background-color="transparent"
@@ -177,24 +285,34 @@ function logout() {
           active-text-color="#f2e6d2"
         >
           <el-sub-menu v-if="opsMenus.length" index="ops">
-            <template #title>经营管理</template>
+            <template #title>
+              <el-icon><component :is="groupIcon('ops')" /></el-icon>
+              <span>经营管理</span>
+            </template>
             <el-menu-item v-for="m in opsMenus" :key="m.path" :index="m.path">
-              {{ m.label }}
+              <el-icon><component :is="menuIcon(m.path)" /></el-icon>
+              <span>{{ m.label }}</span>
             </el-menu-item>
           </el-sub-menu>
           <template v-for="g in platformGroups.groups" :key="g.key">
             <el-menu-item v-if="g.flat && g.items[0]" :index="g.items[0].path">
-              {{ g.label }}
+              <el-icon><component :is="menuIcon(g.items[0].path)" /></el-icon>
+              <span>{{ g.label }}</span>
             </el-menu-item>
             <el-sub-menu v-else :index="g.key">
-              <template #title>{{ g.label }}</template>
+              <template #title>
+                <el-icon><component :is="groupIcon(g.key)" /></el-icon>
+                <span>{{ g.label }}</span>
+              </template>
               <el-menu-item v-for="m in g.items" :key="m.path" :index="m.path">
-                {{ m.label }}
+                <el-icon><component :is="menuIcon(m.path)" /></el-icon>
+                <span>{{ m.label }}</span>
               </el-menu-item>
             </el-sub-menu>
           </template>
           <el-menu-item v-for="m in platformGroups.leftover" :key="m.path" :index="m.path">
-            {{ m.label }}
+            <el-icon><component :is="menuIcon(m.path)" /></el-icon>
+            <span>{{ m.label }}</span>
           </el-menu-item>
         </el-menu>
 
@@ -203,6 +321,7 @@ function logout() {
           router
           :default-active="activeMenu"
           :default-openeds="[]"
+          :collapse="asideCollapsed"
           unique-opened
           class="side-menu"
           background-color="transparent"
@@ -211,14 +330,19 @@ function logout() {
         >
           <template v-for="g in gymGroups.groups" :key="g.key">
             <el-sub-menu :index="g.key">
-              <template #title>{{ g.label }}</template>
+              <template #title>
+                <el-icon><component :is="groupIcon(g.key)" /></el-icon>
+                <span>{{ g.label }}</span>
+              </template>
               <el-menu-item v-for="m in g.items" :key="m.path" :index="m.path">
-                {{ m.label }}
+                <el-icon><component :is="menuIcon(m.path)" /></el-icon>
+                <span>{{ m.label }}</span>
               </el-menu-item>
             </el-sub-menu>
           </template>
           <el-menu-item v-for="m in gymGroups.leftover" :key="m.path" :index="m.path">
-            {{ m.label }}
+            <el-icon><component :is="menuIcon(m.path)" /></el-icon>
+            <span>{{ m.label }}</span>
           </el-menu-item>
         </el-menu>
 
@@ -227,6 +351,7 @@ function logout() {
           router
           :default-active="activeMenu"
           :default-openeds="[]"
+          :collapse="asideCollapsed"
           unique-opened
           class="side-menu"
           background-color="transparent"
@@ -234,7 +359,8 @@ function logout() {
           active-text-color="#f2e6d2"
         >
           <el-menu-item v-for="m in businessMenus" :key="m.path" :index="m.path">
-            {{ m.label }}
+            <el-icon><component :is="menuIcon(m.path)" /></el-icon>
+            <span>{{ m.label }}</span>
           </el-menu-item>
         </el-menu>
       </template>
@@ -243,6 +369,17 @@ function logout() {
     <el-container class="workspace">
       <el-header class="header" height="auto">
         <div class="header-left">
+          <button
+            class="aside-toggle"
+            type="button"
+            :title="asideCollapsed ? '展开菜单' : '收起菜单'"
+            @click="toggleAside"
+          >
+            <el-icon :size="18">
+              <Expand v-if="asideCollapsed" />
+              <Fold v-else />
+            </el-icon>
+          </button>
           <div class="header-titles">
             <div class="eyebrow">{{ eyebrow }}</div>
             <h1 class="page-title">{{ pageTitle }}</h1>
@@ -290,7 +427,44 @@ function logout() {
   color: #f2e6d2;
   border-right: 1px solid rgba(242, 230, 210, 0.06);
   position: relative;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  transition: width 0.22s ease;
+}
+
+.aside--collapsed :deep(.brand-mark .word),
+.aside--collapsed :deep(.brand-mark .tag) {
+  display: none;
+}
+.aside--collapsed :deep(.brand-mark .bars) {
+  width: 36px;
+  margin: 0 auto;
+}
+.aside--collapsed .brand {
+  align-items: center;
+  padding: 18px 10px 8px;
+}
+.aside--collapsed .brand-sub {
+  display: none;
+}
+.aside--collapsed .nav-item {
+  justify-content: center;
+  padding: 11px 0;
+}
+.aside--collapsed .nav-item--home,
+.aside--collapsed .portal-link {
+  margin-left: 8px;
+  margin-right: 8px;
+  width: calc(100% - 16px);
+  justify-content: center;
+}
+.aside--collapsed .side-menu {
+  padding-left: 4px;
+  padding-right: 4px;
+  width: 100%;
+}
+.aside--collapsed .side-menu :deep(.el-menu) {
+  background: transparent;
 }
 
 .brand {
@@ -324,6 +498,9 @@ function logout() {
   font: inherit;
   font-size: 0.84rem;
   font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .portal-link:hover {
@@ -435,6 +612,11 @@ function logout() {
   z-index: 1;
 }
 
+.side-menu :deep(.el-icon) {
+  font-size: 18px;
+  color: inherit;
+}
+
 .side-menu :deep(.el-menu-item) {
   height: 44px;
   line-height: 44px;
@@ -482,6 +664,25 @@ function logout() {
   gap: 16px;
   min-width: 0;
   flex: 1;
+}
+
+.aside-toggle {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(28, 25, 23, 0.1);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--admin-ink-muted);
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.aside-toggle:hover {
+  color: var(--admin-ink);
+  border-color: rgba(243, 107, 33, 0.35);
+  background: #fff;
 }
 
 .header-titles {
@@ -630,7 +831,7 @@ function logout() {
 }
 
 @media (max-width: 960px) {
-  .aside {
+  .aside:not(.aside--collapsed) {
     width: 200px !important;
   }
   .header,

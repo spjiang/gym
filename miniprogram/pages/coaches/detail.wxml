@@ -1,0 +1,27 @@
+<view class="wrap">
+  <view wx:if="{{err && !item}}" class="muted">{{err}}</view>
+  <block wx:elif="{{item}}">
+    <view class="head card">
+      <view class="avatar">
+        <image wx:if="{{avatarUrl}}" class="avatar-img" src="{{avatarUrl}}" mode="aspectFill" />
+        <text wx:else>{{initial}}</text>
+      </view>
+      <view>
+        <view class="title">{{item.display_name}}</view>
+        <view class="muted tight">{{item.title || '教练'}} · {{genderText}}</view>
+      </view>
+    </view>
+    <view class="card">
+      <view class="row"><text>电话</text><text>{{item.phone || '—'}}</text></view>
+      <view class="row"><text>从业年限</text><text>{{yearsText}}</text></view>
+      <view class="row"><text>课时参考价</text><text>{{rateText}}</text></view>
+      <view class="row"><text>擅长</text><text>{{item.specialties || '—'}}</text></view>
+      <view class="row"><text>可约时段</text><text>{{item.availability_note || '—'}}</text></view>
+      <view class="row"><text>资质证书</text><text>{{item.certifications || '—'}}</text></view>
+      <view class="row"><text>个人简介</text><text>{{item.bio || '—'}}</text></view>
+    </view>
+    <view class="gallery" wx:if="{{intro.length}}">
+      <image wx:for="{{intro}}" wx:key="*this" src="{{item}}" mode="aspectFill" />
+    </view>
+  </block>
+</view>

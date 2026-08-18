@@ -17,6 +17,7 @@ from app.systems.gym.models.course import (
     GroupSessionStatus,
 )
 from app.systems.gym.models.membership import Membership, MembershipStatus
+from app.systems.gym.services.commission import accrue_group_session_commission
 from app.systems.platform.services.audit import write_audit
 from app.systems.platform.services.notifications import write_notification
 
@@ -94,6 +95,30 @@ def booked_count(db: Session, session_id: int) -> int:
         )
         or 0
     )
+
+
+def is_session_open_for_booking(
+    db: Session,
+    session: GroupSession,
+    course: GroupCourse | None = None,
+    *,
+    now: datetime | None = None,
+    taken: int | None = None,
+) -> bool:
+    """场次对会员是否仍可新预约（不含会籍校验）。"""
+    if session.status != GroupSessionStatus.OPEN.value:
+        return False
+    course = course or db.get(GroupCourse, session.course_id)
+    if course is None or not course.is_active:
+        return False
+    at = now or _now()
+    starts = _ensure_aware(session.starts_at)
+    if starts is None or starts <= at:
+        return False
+    if course.book_ahead_minutes > 0 and starts - at < timedelta(minutes=course.book_ahead_minutes):
+        return False
+    occupied = booked_count(db, session.id) if taken is None else taken
+    return occupied < session.capacity
 
 
 def book_group_session(
@@ -285,13 +310,15 @@ def checkin_group_booking(
         GroupBookingStatus.NO_SHOW.value,
     }:
         raise AppError("invalid_state", "当前预约不可签到", status_code=400)
+    sess = session or db.get(GroupSession, booking.session_id)
+    if sess is None:
+        raise AppError("not_found", "场次不存在", status_code=404)
     if status == GroupBookingStatus.ATTENDED.value:
-        sess = session or db.get(GroupSession, booking.session_id)
-        if sess is None:
-            raise AppError("not_found", "场次不存在", status_code=404)
         assert_attend_window(sess)
 
     booking.status = status
+    db.flush()
+    _accrue_group_commission(db, sess)
     write_audit(
         db,
         action="group.checkin",
@@ -303,3 +330,28 @@ def checkin_group_booking(
         merchant_id=booking.merchant_id,
     )
     return booking
+
+
+def _accrue_group_commission(db: Session, session: GroupSession) -> None:
+    """按当前出席人数重算该场次的教练提成（未结算记录会被刷新）。"""
+    attended = int(
+        db.scalar(
+            select(func.count())
+            .select_from(GroupBooking)
+            .where(
+                GroupBooking.session_id == session.id,
+                GroupBooking.status == GroupBookingStatus.ATTENDED.value,
+            )
+        )
+        or 0
+    )
+    if attended <= 0:
+        return
+    accrue_group_session_commission(
+        db,
+        merchant_id=session.merchant_id,
+        session_id=session.id,
+        coach_id=session.coach_id,
+        attended_count=attended,
+        at=_ensure_aware(session.starts_at) or _now(),
+    )

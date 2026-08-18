@@ -1,1 +1,14 @@
-/* 卡券沿用 app.wxss 观野主题 */
+.section {
+  margin: 24rpx 0 12rpx;
+  font-weight: 700;
+}
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16rpx;
+}
+.main {
+  flex: 1;
+  min-width: 0;
+}

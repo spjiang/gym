@@ -349,6 +349,22 @@ def test_coupon_template_search_edit_and_member_coupon_ops(client: TestClient, a
     assert item["discount_type"] == "fixed"
     assert item["threshold_amount"] == "60.00"
 
+    gym_list = client.get(
+        "/api/v1/coupons/member-coupons",
+        headers=admin_headers,
+        params={"merchant_id": gym_id, "system": "gym"},
+    )
+    assert gym_list.status_code == 200
+    assert any(x["id"] == cid for x in gym_list.json()["items"])
+
+    bar_list = client.get(
+        "/api/v1/coupons/member-coupons",
+        headers=admin_headers,
+        params={"merchant_id": gym_id, "system": "catering"},
+    )
+    assert bar_list.status_code == 200
+    assert all(x["id"] != cid for x in bar_list.json()["items"])
+
     voided = client.post(f"/api/v1/coupons/member-coupons/{cid}/deactivate", headers=admin_headers)
     assert voided.status_code == 200, voided.text
     assert voided.json()["status"] == "void"

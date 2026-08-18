@@ -40,6 +40,25 @@ type CourseSummary = {
   full_session_count: number
   attended_count: number
   pt_consume_count: number
+  pt_appointment_count: number
+  pt_completed_count: number
+}
+type RevenueSplitRow = {
+  category: string
+  label: string
+  charge_total: string
+  refund_total: string
+  net_total: string
+}
+type RevenueSplit = {
+  rows: RevenueSplitRow[]
+  net_total: string
+}
+type ActivitySummary = {
+  activity_count: number
+  registered_count: number
+  attended_count: number
+  cancelled_count: number
 }
 type InventorySku = {
   sku_id: number
@@ -53,7 +72,7 @@ type InventorySummary = {
   skus: InventorySku[]
 }
 
-type ReportTab = 'commerce' | 'membership' | 'course' | 'inventory'
+type ReportTab = 'commerce' | 'membership' | 'course' | 'activity' | 'inventory'
 
 const GYM_ORDER_TYPES = new Set(['membership', 'retail', 'pt', 'pt_package', 'group', 'course_pack'])
 const CATERING_ORDER_TYPES = new Set(['dining'])
@@ -64,6 +83,8 @@ const summary = ref<Summary | null>(null)
 const membership = ref<MembershipSummary | null>(null)
 const course = ref<CourseSummary | null>(null)
 const inventory = ref<InventorySummary | null>(null)
+const revenueSplit = ref<RevenueSplit | null>(null)
+const activity = ref<ActivitySummary | null>(null)
 const loading = ref(false)
 const activeTab = ref<ReportTab>('commerce')
 
@@ -113,6 +134,27 @@ const scopedTotals = computed(() => {
     net: (charge - refund).toFixed(2),
   }
 })
+
+/** 收入构成按当前子系统取相关业务线，且隐藏全零行 */
+const scopedRevenueRows = computed(() => {
+  const rows = revenueSplit.value?.rows || []
+  const allow = isGym.value
+    ? ['membership', 'pt', 'group', 'activity', 'retail']
+    : ['dining']
+  return rows.filter(
+    (r) => allow.includes(r.category) && (Number(r.charge_total) !== 0 || Number(r.refund_total) !== 0),
+  )
+})
+
+const revenueNetTotal = computed(() =>
+  scopedRevenueRows.value.reduce((s, r) => s + Number(r.net_total), 0).toFixed(2),
+)
+
+function revenueShare(row: RevenueSplitRow) {
+  const total = Number(revenueNetTotal.value)
+  if (!total) return '—'
+  return `${((Number(row.net_total) / total) * 100).toFixed(1)}%`
+}
 
 const lowStockSkus = computed(() => (inventory.value?.skus || []).filter((s) => s.is_low))
 const sortedSkus = computed(() =>
@@ -174,6 +216,11 @@ async function loadSummary() {
         summary.value = r.data
       }),
     ]
+    tasks.push(
+      http.get<RevenueSplit>('/reports/revenue-split', { params }).then((r) => {
+        revenueSplit.value = r.data
+      }),
+    )
     if (isGym.value) {
       tasks.push(
         http.get<MembershipSummary>('/reports/membership-summary', { params }).then((r) => {
@@ -182,6 +229,9 @@ async function loadSummary() {
         http.get<CourseSummary>('/reports/course-summary', { params }).then((r) => {
           course.value = r.data
         }),
+        http.get<ActivitySummary>('/reports/activity-summary', { params }).then((r) => {
+          activity.value = r.data
+        }),
         http.get<InventorySummary>('/reports/inventory-summary', { params }).then((r) => {
           inventory.value = r.data
         }),
@@ -189,6 +239,7 @@ async function loadSummary() {
     } else {
       membership.value = null
       course.value = null
+      activity.value = null
       inventory.value = null
     }
     await Promise.all(tasks)
@@ -311,6 +362,25 @@ onMounted(async () => {
             </el-table-column>
           </el-table>
 
+          <h4 class="section-title">收入构成（按业务线）</h4>
+          <el-table :data="scopedRevenueRows" stripe empty-text="该区间暂无业务收入">
+            <el-table-column label="业务线" min-width="140">
+              <template #default="{ row }">{{ row.label }}</template>
+            </el-table-column>
+            <el-table-column label="收款" width="140">
+              <template #default="{ row }">{{ money(row.charge_total) }}</template>
+            </el-table-column>
+            <el-table-column label="退款" width="140">
+              <template #default="{ row }">{{ money(row.refund_total) }}</template>
+            </el-table-column>
+            <el-table-column label="净收" width="140">
+              <template #default="{ row }">{{ money(row.net_total) }}</template>
+            </el-table-column>
+            <el-table-column label="占比" width="100">
+              <template #default="{ row }">{{ revenueShare(row) }}</template>
+            </el-table-column>
+          </el-table>
+
           <h4 class="section-title">按支付渠道</h4>
           <el-table :data="summary?.by_channel || []" stripe empty-text="该区间暂无支付流水">
             <el-table-column label="渠道" min-width="140">
@@ -375,6 +445,35 @@ onMounted(async () => {
           <div class="kpi-card">
             <div class="kpi-label">私教核销</div>
             <div class="kpi-value">{{ course?.pt_consume_count ?? 0 }}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">私教预约</div>
+            <div class="kpi-value">{{ course?.pt_appointment_count ?? 0 }}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">私教完成</div>
+            <div class="kpi-value">{{ course?.pt_completed_count ?? 0 }}</div>
+          </div>
+        </div>
+      </el-tab-pane>
+
+      <el-tab-pane v-if="isGym" label="活动" name="activity">
+        <div v-loading="loading" class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-label">活动场数</div>
+            <div class="kpi-value">{{ activity?.activity_count ?? 0 }}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">报名人次</div>
+            <div class="kpi-value">{{ activity?.registered_count ?? 0 }}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">签到人次</div>
+            <div class="kpi-value">{{ activity?.attended_count ?? 0 }}</div>
+          </div>
+          <div class="kpi-card kpi-card--warn">
+            <div class="kpi-label">取消人次</div>
+            <div class="kpi-value">{{ activity?.cancelled_count ?? 0 }}</div>
           </div>
         </div>
       </el-tab-pane>

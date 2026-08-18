@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
-from app.systems.platform.models.commerce import Order
+from app.systems.platform.models.commerce import Order, OrderStatus
 from app.systems.gym.models.coupon import (
     ApplicableTo,
     CouponTemplate,
@@ -64,19 +64,30 @@ def _applicable(template: CouponTemplate, order_type: str) -> bool:
     return template.applicable_to == order_type
 
 
-def attach_coupon_to_order(
+def _applicable_to_system(template: CouponTemplate, system: str | None) -> bool:
+    if not system:
+        return True
+    if system == "catering":
+        return _applicable(template, "dining")
+    if system == "gym":
+        return _applicable(template, "retail") or _applicable(template, "membership")
+    return True
+
+
+def _load_coupon_for_use(
     db: Session,
     *,
-    order: Order,
     member_coupon_id: int,
-    original_amount: Decimal,
-    member_id: int | None,
-) -> Decimal:
-    """校验并绑定券，返回实付金额；不核销。"""
-    if member_id is None:
-        raise AppError("coupon_member_required", "用券须指定会员", status_code=400)
-    mc = db.scalar(select(MemberCoupon).where(MemberCoupon.id == member_coupon_id).with_for_update())
-    if mc is None or mc.merchant_id != order.merchant_id:
+    merchant_id: int,
+    member_id: int,
+    order_type: str,
+    for_update: bool = False,
+) -> tuple[MemberCoupon, CouponTemplate]:
+    stmt = select(MemberCoupon).where(MemberCoupon.id == member_coupon_id)
+    if for_update:
+        stmt = stmt.with_for_update()
+    mc = db.scalar(stmt)
+    if mc is None or mc.merchant_id != merchant_id:
         raise AppError("not_found", "券不存在", status_code=404)
     if mc.member_id != member_id:
         raise AppError("coupon_member_mismatch", "券不属于该会员", status_code=400)
@@ -88,8 +99,93 @@ def attach_coupon_to_order(
     template = db.get(CouponTemplate, mc.template_id)
     if template is None or not template.is_active:
         raise AppError("coupon_inactive", "券模板不可用", status_code=400)
-    if not _applicable(template, order.order_type):
+    if not _applicable(template, order_type):
         raise AppError("coupon_not_applicable", "券不适用于该业务", status_code=400)
+    return mc, template
+
+
+def preview_coupon_discount(
+    db: Session,
+    *,
+    member_coupon_id: int,
+    merchant_id: int,
+    member_id: int,
+    order_type: str,
+    original_amount: Decimal,
+) -> tuple[Decimal, Decimal]:
+    """预览用券实付与抵扣，不落库。"""
+    _mc, template = _load_coupon_for_use(
+        db,
+        member_coupon_id=member_coupon_id,
+        merchant_id=merchant_id,
+        member_id=member_id,
+        order_type=order_type,
+    )
+    return compute_payable(original_amount, template)
+
+
+def list_unused_coupons_for_order_type(
+    db: Session,
+    *,
+    member_id: int,
+    merchant_id: int,
+    order_type: str,
+) -> list[tuple[MemberCoupon, CouponTemplate]]:
+    """列出该会员在该商户、适用于指定业务的未使用券。"""
+    now = _now()
+    rows = list(
+        db.execute(
+            select(MemberCoupon, CouponTemplate)
+            .join(CouponTemplate, CouponTemplate.id == MemberCoupon.template_id)
+            .where(
+                MemberCoupon.member_id == member_id,
+                MemberCoupon.merchant_id == merchant_id,
+                MemberCoupon.status == MemberCouponStatus.UNUSED.value,
+                CouponTemplate.is_active.is_(True),
+            )
+            .order_by(MemberCoupon.id.desc())
+        ).all()
+    )
+    usable: list[tuple[MemberCoupon, CouponTemplate]] = []
+    for mc, tpl in rows:
+        if _ensure_aware(mc.ends_at) < now or _ensure_aware(mc.starts_at) > now:
+            continue
+        if not _applicable(tpl, order_type):
+            continue
+        usable.append((mc, tpl))
+    return usable
+
+
+def attach_coupon_to_order(
+    db: Session,
+    *,
+    order: Order,
+    member_coupon_id: int,
+    original_amount: Decimal,
+    member_id: int | None,
+) -> Decimal:
+    """校验并绑定券，返回实付金额；不核销。"""
+    if member_id is None:
+        raise AppError("coupon_member_required", "用券须指定会员", status_code=400)
+    mc, template = _load_coupon_for_use(
+        db,
+        member_coupon_id=member_coupon_id,
+        merchant_id=order.merchant_id,
+        member_id=member_id,
+        order_type=order.order_type,
+        for_update=True,
+    )
+    busy = db.scalar(
+        select(OrderCouponLink.id)
+        .join(Order, Order.id == OrderCouponLink.order_id)
+        .where(
+            OrderCouponLink.member_coupon_id == mc.id,
+            Order.status == OrderStatus.PENDING.value,
+            OrderCouponLink.order_id != order.id,
+        )
+    )
+    if busy is not None:
+        raise AppError("coupon_in_use", "券已绑定其他待支付订单", status_code=400)
     payable, discount = compute_payable(original_amount, template)
     db.add(
         OrderCouponLink(
@@ -112,6 +208,9 @@ def redeem_coupon_for_order(db: Session, order: Order, *, actor_staff_id: int | 
         return
     if mc.status != MemberCouponStatus.UNUSED.value:
         raise AppError("coupon_unavailable", "券已被占用或不可用", status_code=400)
+    now = _now()
+    if _ensure_aware(mc.ends_at) < now or _ensure_aware(mc.starts_at) > now:
+        raise AppError("coupon_expired", "券不在有效期内", status_code=400)
     mc.status = MemberCouponStatus.USED.value
     mc.used_order_id = order.id
     mc.used_at = _now()
@@ -125,6 +224,14 @@ def redeem_coupon_for_order(db: Session, order: Order, *, actor_staff_id: int | 
         site_id=order.site_id,
         merchant_id=order.merchant_id,
     )
+
+
+def detach_coupon_link_for_order(db: Session, order: Order) -> None:
+    """待支付取消时解绑优惠券，券仍为未使用。"""
+    link = db.scalar(select(OrderCouponLink).where(OrderCouponLink.order_id == order.id))
+    if link is None:
+        return
+    db.delete(link)
 
 
 def restore_coupon_for_order(db: Session, order: Order, *, actor_staff_id: int | None = None) -> None:
@@ -177,6 +284,12 @@ def issue_member_coupon(
     audit_action: str = "coupon.issue",
 ) -> MemberCoupon:
     """发放一张会员券；require_claimable=True 时校验自助领取规则。"""
+    locked = db.scalar(
+        select(CouponTemplate).where(CouponTemplate.id == template.id).with_for_update()
+    )
+    if locked is None:
+        raise AppError("not_found", "券模板不存在", status_code=404)
+    template = locked
     if not template.is_active:
         raise AppError("coupon_inactive", "券模板已停用", status_code=400)
     now = _now()
@@ -214,7 +327,14 @@ def issue_member_coupon(
     return mc
 
 
-def list_claimable_templates(db: Session, *, merchant_id: int) -> list[CouponTemplate]:
+def list_claimable_templates(
+    db: Session,
+    *,
+    merchant_id: int,
+    member_id: int,
+    system: str | None = None,
+) -> list[CouponTemplate]:
+    """仅返回当前会员还能领的券：已达每人上限的不出现在可领列表。"""
     now = _now()
     rows = db.scalars(
         select(CouponTemplate)
@@ -225,9 +345,15 @@ def list_claimable_templates(db: Session, *, merchant_id: int) -> list[CouponTem
         )
         .order_by(CouponTemplate.id.desc())
     ).all()
-    return [
-        t
-        for t in rows
-        if _ensure_aware(t.starts_at) <= now <= _ensure_aware(t.ends_at)
-        and (t.total_limit is None or t.issued_count < t.total_limit)
-    ]
+    out: list[CouponTemplate] = []
+    for t in rows:
+        if _ensure_aware(t.starts_at) > now or _ensure_aware(t.ends_at) < now:
+            continue
+        if t.total_limit is not None and t.issued_count >= t.total_limit:
+            continue
+        if not _applicable_to_system(t, system):
+            continue
+        if member_claim_count(db, template_id=t.id, member_id=member_id) >= t.per_member_limit:
+            continue
+        out.append(t)
+    return out

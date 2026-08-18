@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     seed_admin_display_name: str = Field(default="场地超管", alias="SEED_ADMIN_DISPLAY_NAME")
     # 目录级体验数据：员工/会员/卡种/课程/零售等（幂等，可反复执行）
     seed_demo: bool = Field(default=True, alias="SEED_DEMO")
+    # 仅空库初始化角色；true 时每次启动覆盖模板角色权限（本地重置用）
+    seed_reset_roles: bool = Field(default=False, alias="SEED_RESET_ROLES")
 
     @property
     def cors_origin_list(self) -> list[str]:

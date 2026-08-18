@@ -13,6 +13,8 @@ from app.core.domain.subsystems import assert_order_type_allowed
 from app.core.errors import AppError
 from app.core.schemas.common import MemberBrief, OfflinePayIn, OnlinePayIn, OrderCreateIn, OrderOut
 from app.core.schemas.paging import PageOut
+from app.systems.gym.services.activity_fulfillment import fulfill_activity_order
+from app.systems.gym.services.commission import accrue_order_commissions
 from app.systems.gym.services.coupon import redeem_coupon_for_order
 from app.systems.gym.services.fulfillment import fulfill_membership_order
 from app.systems.gym.services.pt_fulfillment import fulfill_pt_package_order
@@ -24,6 +26,7 @@ from app.systems.platform.models.commerce import Order, OrderStatus, Payment, Pa
 from app.systems.platform.models.member import Member
 from app.systems.platform.services.audit import write_audit
 from app.systems.platform.services.notifications import write_notification
+from app.systems.platform.services.order_pricing import price_order
 from app.systems.platform.services.payments import get_online_provider
 
 router = APIRouter(prefix="/orders", tags=["commerce"])
@@ -43,10 +46,14 @@ def _order_out(db: Session, order: Order) -> OrderOut:
         order_type=order.order_type,
         title=order.title,
         amount=order.amount,
+        original_amount=order.original_amount,
+        promotion_discount_amount=order.promotion_discount_amount or Decimal("0"),
+        promoter_code=order.promoter_code,
         refunded_amount=getattr(order, "refunded_amount", None) or Decimal("0"),
         status=order.status,
         pickup_code=order.pickup_code,
         customer_note=order.customer_note,
+        dining_status=order.dining_status,
         created_at=order.created_at,
         member=member_brief,
     )
@@ -59,13 +66,14 @@ def list_orders(
     merchant_id: int | None = None,
     order_type: str | None = None,
     status: str | None = None,
+    dining_status: str | None = None,
     q: str | None = None,
     db: Session = Depends(get_db),
     ctx: RequestContext = Depends(get_current_context),
 ):
     ctx.require_permission("order:read", "order:write")
     filters = [Order.site_id == ctx.site_id]
-    if not ctx.is_site_admin:
+    if not ctx.is_site_wide:
         filters.append(Order.merchant_id == ctx.resolve_merchant_id())
     elif merchant_id is not None:
         filters.append(Order.merchant_id == merchant_id)
@@ -73,6 +81,8 @@ def list_orders(
         filters.append(Order.order_type == order_type)
     if status:
         filters.append(Order.status == status)
+    if dining_status:
+        filters.append(Order.dining_status == dining_status)
     keyword = (q or "").strip()
     if keyword:
         like = f"%{keyword}%"
@@ -123,8 +133,11 @@ def create_order(
         title=body.title.strip(),
         amount=body.amount,
         status=OrderStatus.PENDING.value,
+        seller_staff_id=ctx.staff.id,
     )
     db.add(order)
+    db.flush()
+    price_order(db, order=order, original_amount=body.amount)
     db.commit()
     db.refresh(order)
     return _order_out(db, order)
@@ -141,8 +154,7 @@ def pay_offline(
     order = db.get(Order, order_id)
     if order is None or order.site_id != ctx.site_id:
         raise AppError("not_found", "订单不存在", status_code=404)
-    if not ctx.is_site_admin and order.merchant_id != ctx.merchant_id:
-        raise AppError("forbidden", "禁止跨商户操作", status_code=403)
+    ctx.assert_merchant_access(order.merchant_id)
     if order.status != OrderStatus.PENDING.value:
         raise AppError("invalid_state", "仅待支付订单可登记线下收款", status_code=400)
     if body.channel not in {PaymentChannel.OFFLINE_CASH.value, PaymentChannel.OFFLINE_TRANSFER.value}:
@@ -152,6 +164,11 @@ def pay_offline(
     assert_retail_stock_available(db, order)
 
     order.status = OrderStatus.PAID.value
+    from app.systems.catering.services.kitchen import start_dining_kitchen
+
+    start_dining_kitchen(order)
+    if order.seller_staff_id is None:
+        order.seller_staff_id = ctx.staff.id
     db.add(
         Payment(
             order_id=order.id,
@@ -174,7 +191,9 @@ def pay_offline(
     fulfill_membership_order(db, order, actor_staff_id=ctx.staff.id)
     fulfill_pt_package_order(db, order, actor_staff_id=ctx.staff.id)
     fulfill_retail_order(db, order, actor_staff_id=ctx.staff.id)
+    fulfill_activity_order(db, order, actor_staff_id=ctx.staff.id)
     redeem_coupon_for_order(db, order, actor_staff_id=ctx.staff.id)
+    accrue_order_commissions(db, order)
     if order.member_id is not None:
         write_notification(
             db,
@@ -201,10 +220,11 @@ def pay_online(
     order = db.get(Order, order_id)
     if order is None or order.site_id != ctx.site_id:
         raise AppError("not_found", "订单不存在", status_code=404)
-    if not ctx.is_site_admin and order.merchant_id != ctx.merchant_id:
-        raise AppError("forbidden", "禁止跨商户操作", status_code=403)
+    ctx.assert_merchant_access(order.merchant_id)
     if order.status != OrderStatus.PENDING.value:
         raise AppError("invalid_state", "仅待支付订单可发起线上支付", status_code=400)
+    if order.seller_staff_id is None:
+        order.seller_staff_id = ctx.staff.id
 
     result = get_online_provider(db, ctx.site_id).create_payment(
         order_id=order.id,
@@ -252,8 +272,7 @@ def refund_preview(
     order = db.get(Order, order_id)
     if order is None or order.site_id != ctx.site_id:
         raise AppError("not_found", "订单不存在", status_code=404)
-    if not ctx.is_site_admin and order.merchant_id != ctx.merchant_id:
-        raise AppError("forbidden", "禁止跨商户操作", status_code=403)
+    ctx.assert_merchant_access(order.merchant_id)
     from app.systems.platform.services.refunds import preview_refund
 
     return preview_refund(db, order)
@@ -285,8 +304,7 @@ def refund_order(
     order = db.get(Order, order_id)
     if order is None or order.site_id != ctx.site_id:
         raise AppError("not_found", "订单不存在", status_code=404)
-    if not ctx.is_site_admin and order.merchant_id != ctx.merchant_id:
-        raise AppError("forbidden", "禁止跨商户操作", status_code=403)
+    ctx.assert_merchant_access(order.merchant_id)
 
     body = body or RefundIn()
     from app.systems.platform.services.refunds import create_refund, preview_refund, refundable_balance

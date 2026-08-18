@@ -76,6 +76,12 @@ def test_member_claim_coupon_and_limit(client: TestClient, admin_headers: dict):
     assert again.status_code == 400
     assert again.json()["code"] == "coupon_member_limit"
 
+    leftover = client.get(
+        f"/api/v1/member/coupons/claimable?merchant_id={gym_id}",
+        headers=mheaders,
+    ).json()
+    assert all(c["id"] != template_id for c in leftover)
+
     mine = client.get(f"/api/v1/member/coupons?merchant_id={gym_id}", headers=mheaders).json()
     assert len(mine) == 1
 

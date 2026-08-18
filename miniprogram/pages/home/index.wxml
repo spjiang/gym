@@ -1,19 +1,120 @@
-<view class="wrap">
-  <view class="brand">
-    <view class="brand-word">
-      <text class="cn">观野</text>
-      <text class="en">SPACE</text>
-    </view>
-    <view class="brand-bars">
+<view class="home">
+  <view class="hero">
+    <image wx:if="{{coverUrl}}" class="hero-cover" src="{{coverUrl}}" mode="aspectFill" />
+    <view class="hero-wash"></view>
+    <view class="hero-mark">FIT</view>
+    <view class="hero-bars">
       <view class="bar-orange"></view>
       <view class="bar-cyan"></view>
     </view>
+    <view class="hero-kicker">{{merchant.tagline || '训练即生活'}}</view>
+    <view class="hero-title">{{merchant.name || '观野FIT'}}</view>
+    <view class="hero-meta">
+      <text wx:if="{{merchant.business_hours}}">{{merchant.business_hours}}</text>
+      <text wx:if="{{merchant.business_address}}"> · {{merchant.business_address}}</text>
+    </view>
   </view>
-  <view class="title">你好，{{name}}</view>
-  <view class="muted">{{phone}}</view>
-  <button bindtap="go" data-url="/pages/stores/index">选店</button>
-  <button bindtap="go" data-url="/pages/memberships/index">会籍</button>
-  <button bindtap="go" data-url="/pages/classes/index">团课</button>
-  <button bindtap="go" data-url="/pages/shop/index">商城</button>
-  <button bindtap="go" data-url="/pages/coupons/index">领券</button>
+
+  <view class="pad">
+    <view wx:if="{{err}}" class="muted">{{err}}</view>
+
+    <view class="quick">
+      <view class="quick-item" bindtap="go" data-url="/pages/classes/index">
+        <view class="quick-name">团课</view>
+        <view class="quick-sub">立即预约</view>
+      </view>
+      <view class="quick-item" bindtap="go" data-url="/pages/shop/index">
+        <view class="quick-name">购卡</view>
+        <view class="quick-sub">会籍课包</view>
+      </view>
+      <view class="quick-item" bindtap="go" data-url="/pages/activities/index">
+        <view class="quick-name">活动</view>
+        <view class="quick-sub">报名参与</view>
+      </view>
+      <view class="quick-item" bindtap="go" data-url="/pages/catering/menu">
+        <view class="quick-name">点餐</view>
+        <view class="quick-sub">扫码下单</view>
+      </view>
+      <view class="quick-item" bindtap="go" data-url="/pages/coupons/index">
+        <view class="quick-name">卡券</view>
+        <view class="quick-sub">领优惠</view>
+      </view>
+    </view>
+
+    <view class="head">
+      <view class="section tight">活动报名</view>
+      <view class="more" bindtap="go" data-url="/pages/activities/index">全部活动 ›</view>
+    </view>
+    <view class="promo" wx:for="{{activities}}" wx:key="id" bindtap="goActivity" data-id="{{item.id}}">
+      <image wx:if="{{item.coverUrl}}" class="promo-cover" src="{{item.coverUrl}}" mode="aspectFill" />
+      <view wx:else class="promo-cover promo-cover--empty">FIT</view>
+      <view class="promo-copy">
+        <view class="promo-cat">{{item.category || '活动'}}</view>
+        <view class="name">{{item.name}}</view>
+        <view class="muted tight">{{item.timeText}} · {{item.remainText}}</view>
+      </view>
+    </view>
+    <view wx:if="{{!activities.length}}" class="muted">暂无可报活动，后台发布后会出现在这里</view>
+
+    <view class="section">场馆介绍</view>
+    <view class="intro">{{merchant.description || '力量训练、团课与私教，一站完成你的每一次到店。'}}</view>
+    <view wx:if="{{merchant.contact_phone}}" class="muted tight">咨询 {{merchant.contact_phone}}</view>
+    <view class="gallery" wx:if="{{gallery.length}}">
+      <image wx:for="{{gallery}}" wx:key="*this" src="{{item}}" mode="aspectFill" bindtap="preview" data-url="{{item}}" />
+    </view>
+
+    <view class="section">教练团队</view>
+    <scroll-view wx:if="{{coaches.length}}" class="coaches" scroll-x>
+      <view class="coach" wx:for="{{coaches}}" wx:key="id" bindtap="goCoach" data-id="{{item.id}}">
+        <view class="avatar">
+          <image wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill" />
+          <text wx:else>{{item.initial}}</text>
+        </view>
+        <view class="name">{{item.display_name}}</view>
+        <view class="muted tight">{{item.sub}}</view>
+      </view>
+    </scroll-view>
+    <view wx:else class="muted">教练档案即将上线</view>
+
+    <view class="head">
+      <view class="section tight">会籍卡种</view>
+      <view class="more" bindtap="go" data-url="/pages/shop/index">更多套餐 ›</view>
+    </view>
+    <view class="packs" wx:if="{{memberships.length}}">
+      <view class="pack" wx:for="{{memberships}}" wx:key="id">
+        <view class="pack-name">{{item.name}}</view>
+        <view class="muted tight">{{item.meta}}</view>
+        <view class="pack-price">¥ {{item.priceText}}</view>
+        <button size="mini" bindtap="buyCard" data-id="{{item.id}}">立即购买</button>
+      </view>
+    </view>
+    <view wx:else class="muted">暂无可售会籍</view>
+
+    <view class="head">
+      <view class="section tight">私教课包</view>
+      <view class="more" bindtap="go" data-url="/pages/shop/index">全部课包 ›</view>
+    </view>
+    <view class="packs" wx:if="{{pts.length}}">
+      <view class="pack pt" wx:for="{{pts}}" wx:key="id">
+        <view class="pack-name">{{item.name}}</view>
+        <view class="muted tight">{{item.meta}}</view>
+        <view class="pack-price cyan">¥ {{item.priceText}}</view>
+        <button size="mini" bindtap="buyPt" data-id="{{item.id}}">立即购买</button>
+      </view>
+    </view>
+    <view wx:else class="muted">暂无私教课包</view>
+
+    <view class="head">
+      <view class="section tight">可约团课</view>
+      <view class="more" bindtap="go" data-url="/pages/classes/index">全部场次 ›</view>
+    </view>
+    <view class="session" wx:for="{{sessions}}" wx:key="id" bindtap="goSession" data-id="{{item.id}}">
+      <view>
+        <view class="name">{{item.course_name}}</view>
+        <view class="muted tight">{{item.timeText}} <text wx:if="{{item.coach_name}}">· {{item.coach_name}}</text></view>
+      </view>
+      <view class="remain">余 {{item.remaining}}</view>
+    </view>
+    <view wx:if="{{!sessions.length}}" class="muted">暂无可约场次</view>
+  </view>
 </view>

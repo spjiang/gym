@@ -1,0 +1,22 @@
+<view class="wrap">
+  <view class="title">确认订单</view>
+  <view wx:if="{{err}}" class="muted">{{err}}</view>
+  <view class="card row" wx:for="{{lines}}" wx:key="id">
+    <view class="main">
+      <view>{{item.name}}</view>
+      <view class="price">¥{{item.price}}</view>
+    </view>
+    <view class="qty">
+      <button size="mini" data-id="{{item.id}}" bindtap="sub">−</button>
+      <text class="qty-n">{{item.quantity}}</text>
+      <button size="mini" data-id="{{item.id}}" bindtap="add">+</button>
+    </view>
+  </view>
+  <view class="muted">{{tableLocked ? '桌号（扫码入座）' : '桌号（选填）'}}</view>
+  <input wx:if="{{!tableLocked}}" value="{{tableNo}}" placeholder="吧台 / A3" maxlength="16" bindinput="onTable" />
+  <view wx:else class="seat">{{tableNo}}</view>
+  <view class="muted">备注</view>
+  <input value="{{note}}" placeholder="少冰 / 去冰 / 微辣" maxlength="120" bindinput="onNote" />
+  <view class="card">实付 ¥{{payable}}</view>
+  <button disabled="{{busy}}" bindtap="submit">{{busy ? '提交中…' : '提交并支付'}}</button>
+</view>

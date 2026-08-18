@@ -36,6 +36,7 @@ from app.systems.platform.models.audit import AuditLog
 from app.systems.platform.models.identity import StaffUser
 from app.systems.platform.models.member import Member
 from app.systems.platform.services.audit import write_audit
+from app.systems.platform.services.order_pricing import price_order
 from app.systems.gym.services.course_booking import (
     book_group_session,
     booked_count,
@@ -97,6 +98,8 @@ class CoachIn(BaseModel):
     phone: str | None = None
     years_experience: int | None = Field(default=None, ge=0, le=60)
     hourly_rate: Decimal | None = Field(default=None, ge=0)
+    # 私教课佣金比例，0.4 表示课时单价的 40%
+    pt_commission_rate: Decimal | None = Field(default=None, ge=0, le=1)
     specialties: str | None = None
     certifications: str | None = None
     bio: str | None = None
@@ -115,6 +118,7 @@ class CoachOut(BaseModel):
     phone: str | None
     years_experience: int | None
     hourly_rate: Decimal | None
+    pt_commission_rate: Decimal | None = None
     specialties: str | None
     certifications: str | None
     bio: str | None
@@ -437,6 +441,7 @@ def create_coach(
         phone=_blank(body.phone),
         years_experience=body.years_experience,
         hourly_rate=body.hourly_rate,
+        pt_commission_rate=body.pt_commission_rate,
         specialties=_blank(body.specialties),
         certifications=_blank(body.certifications),
         bio=_blank(body.bio),
@@ -484,6 +489,7 @@ def update_coach(
     coach.phone = _blank(body.phone)
     coach.years_experience = body.years_experience
     coach.hourly_rate = body.hourly_rate
+    coach.pt_commission_rate = body.pt_commission_rate
     coach.specialties = _blank(body.specialties)
     coach.certifications = _blank(body.certifications)
     coach.bio = _blank(body.bio)
@@ -862,17 +868,22 @@ def purchase_pt_package(
     if member is None or member.site_id != ctx.site_id:
         raise AppError("not_found", "会员不存在", status_code=404)
 
+    price = effective_price(
+        product.price, product.promo_price, product.promo_starts_at, product.promo_ends_at
+    )
     order = Order(
         site_id=ctx.site_id,
         merchant_id=mid,
         member_id=body.member_id,
         order_type="pt_package",
         title=f"私教课包-{product.name}",
-        amount=effective_price(product.price, product.promo_price, product.promo_starts_at, product.promo_ends_at),
+        amount=price,
         status=OrderStatus.PENDING.value,
+        seller_staff_id=ctx.staff.id,
     )
     db.add(order)
     db.flush()
+    price_order(db, order=order, original_amount=price)
     db.add(PtOrderLink(order_id=order.id, member_id=body.member_id, product_id=product.id))
     write_audit(
         db,

@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.systems.gym.services.activity_fulfillment import fulfill_activity_order
+from app.systems.gym.services.commission import accrue_order_commissions
 from app.systems.gym.services.coupon import redeem_coupon_for_order
 from app.systems.gym.services.fulfillment import fulfill_membership_order
 from app.systems.gym.services.pt_fulfillment import fulfill_pt_package_order
@@ -31,10 +33,9 @@ def fulfill_paid_order(
 
     assert_retail_stock_available(db, order)
     order.status = OrderStatus.PAID.value
-    if order.order_type == "dining" and not order.pickup_code:
-        from app.systems.catering.api.member_catering import assign_pickup_code
+    from app.systems.catering.services.kitchen import start_dining_kitchen
 
-        order.pickup_code = assign_pickup_code(order.id)
+    start_dining_kitchen(order)
     db.add(
         Payment(
             order_id=order.id,
@@ -47,7 +48,9 @@ def fulfill_paid_order(
     fulfill_membership_order(db, order, actor_staff_id=actor_staff_id)
     fulfill_pt_package_order(db, order, actor_staff_id=actor_staff_id)
     fulfill_retail_order(db, order, actor_staff_id=actor_staff_id)
+    fulfill_activity_order(db, order, actor_staff_id=actor_staff_id)
     redeem_coupon_for_order(db, order, actor_staff_id=actor_staff_id)
+    accrue_order_commissions(db, order)
     if order.member_id is not None:
         write_notification(
             db,

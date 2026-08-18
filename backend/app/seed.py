@@ -34,6 +34,7 @@ def _ensure_merchant_profile(
     contacts: list[tuple[str, str, str, str]],
     lease_starts_on: date | None = None,
     lease_ends_on: date | None = None,
+    tagline: str | None = None,
 ) -> None:
     """补齐演示商户证照、租期与联系人；已有档案则只补空字段。"""
     if not merchant.legal_name:
@@ -54,6 +55,10 @@ def _ensure_merchant_profile(
         merchant.business_hours = business_hours
     if not merchant.description:
         merchant.description = description
+    elif merchant.description in {"观野FIT 健身空间", "观野BAR 酒吧"} and description:
+        merchant.description = description
+    if tagline and not merchant.tagline:
+        merchant.tagline = tagline
     if merchant.lease_starts_on is None and lease_starts_on is not None:
         merchant.lease_starts_on = lease_starts_on
     if merchant.lease_ends_on is None and lease_ends_on is not None:
@@ -93,6 +98,10 @@ ROLE_DEFS = [
             "order:read",
             "order:write",
             "report:read",
+            "promoter:read",
+            "promoter:manage",
+            "payout:read",
+            "payout:manage",
         ],
     },
     {
@@ -118,6 +127,15 @@ ROLE_DEFS = [
             "course:book",
             "course:checkin",
             "pt:sell",
+            "pt:book",
+            "activity:manage",
+            "activity:register",
+            "commission:read",
+            "commission:manage",
+            "promoter:read",
+            "promoter:manage",
+            "payout:read",
+            "payout:manage",
             "retail:manage",
             "retail:sell",
             "retail:read",
@@ -147,6 +165,10 @@ ROLE_DEFS = [
             "course:book",
             "course:checkin",
             "pt:sell",
+            "pt:book",
+            "activity:register",
+            "promoter:read",
+            "payout:read",
             "retail:sell",
             "retail:read",
             "coupon:redeem",
@@ -163,6 +185,8 @@ ROLE_DEFS = [
             "system:gym",
             "member:read",
             "course:checkin",
+            "pt:book",
+            "commission:self",
             "equipment:read",
             "equipment:repair",
         ],
@@ -222,11 +246,34 @@ def run_seed() -> None:
     try:
         site = db.scalar(select(Site).order_by(Site.id))
         if site is None:
-            site = Site(name="观野SPACE", address="北京市昌平区回龙观公园")
+            site = Site(
+                name="观野SPACE",
+                address="北京市昌平区回龙观公园",
+                tagline="运动 · 夜生活 · 社区",
+                description=(
+                    "观野SPACE 位于回龙观公园，汇聚观野FIT 与观野BAR。"
+                    "白天训练恢复，夜晚社交相聚，一站式综合经营场地。"
+                ),
+                service_phone="010-88881001",
+                business_hours="06:00–24:00",
+            )
             db.add(site)
             db.flush()
         else:
             site.name = "观野SPACE"
+        if not site.address:
+            site.address = "北京市昌平区回龙观公园"
+        if not site.tagline:
+            site.tagline = "运动 · 夜生活 · 社区"
+        if not site.description:
+            site.description = (
+                "观野SPACE 位于回龙观公园，汇聚观野FIT 与观野BAR。"
+                "白天训练恢复，夜晚社交相聚，一站式综合经营场地。"
+            )
+        if not site.service_phone:
+            site.service_phone = "010-88881001"
+        if not site.business_hours:
+            site.business_hours = "06:00–24:00"
 
         for code, name in (("gym", "观野FIT"), ("bar", "观野BAR")):
             mt = db.scalar(select(MerchantType).where(MerchantType.code == code))
@@ -284,7 +331,8 @@ def run_seed() -> None:
                 business_address="回龙观综合场地 · 观野FIT",
                 contact_phone="010-88881001",
                 business_hours="06:00-22:00",
-                description="观野FIT 健身空间",
+                tagline="训练即生活",
+                description="力量区、操房与私教工作室一体。从燃脂团课到一对一私教，把训练变成日常。",
                 lease_starts_on=date(2025, 3, 1),
                 lease_ends_on=date(2028, 2, 28),
                 contacts=[
@@ -306,6 +354,7 @@ def run_seed() -> None:
                 business_address="回龙观综合场地 · 观野BAR",
                 contact_phone="010-88881002",
                 business_hours="17:00-02:00",
+                tagline="夜色刚刚开始",
                 description="观野BAR 酒吧",
                 lease_starts_on=date(2025, 9, 1),
                 lease_ends_on=date(2026, 9, 5),
@@ -350,13 +399,15 @@ def run_seed() -> None:
                 )
                 db.add(role)
                 db.flush()
+                sync_role_permissions_from_json(db, role)
             else:
-                role.permissions = list(defn["permissions"])
-                role.name = defn["name"]
-                role.is_site_scope = defn["is_site_scope"]
-                if defn["code"] == "site_admin":
-                    role.is_system = True
-            sync_role_permissions_from_json(db, role)
+                if settings.seed_reset_roles:
+                    role.permissions = list(defn["permissions"])
+                    role.name = defn["name"]
+                    role.is_site_scope = defn["is_site_scope"]
+                    if defn["code"] == "site_admin":
+                        role.is_system = True
+                    sync_role_permissions_from_json(db, role)
             role_map[defn["code"]] = role
 
         db.flush()

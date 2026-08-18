@@ -14,9 +14,11 @@ from app.core.security import create_access_token, verify_password
 from app.systems.platform.models.member import AcquisitionSource, FaceStatus, Member, MerchantMember
 from app.systems.platform.models.org import Merchant, MerchantStatus, Site
 from app.systems.platform.models.payment_settings import MemberWechatBinding
+from app.systems.platform.models.promoter import PromoterCode
 from app.systems.platform.services.audit import write_audit
 from app.systems.platform.services.otp import send_member_otp, verify_member_otp
 from app.systems.platform.services.payment_settings import resolve_payment_settings
+from app.systems.platform.services.promotion import ensure_member_promoter_code
 from app.systems.platform.services.wechat_pay import exchange_mini_openid, exchange_oa_openid
 
 router = APIRouter(prefix="/member/auth", tags=["member-auth"])
@@ -31,6 +33,8 @@ class OtpVerifyIn(BaseModel):
     phone: str = Field(min_length=5, max_length=32)
     code: str = Field(min_length=4, max_length=16)
     merchant_id: int | None = None
+    # 推广码：仅首次注册时落库，老会员不覆盖既有推荐关系
+    referral_code: str | None = Field(default=None, max_length=32)
 
 
 class OtpSendOut(BaseModel):
@@ -62,6 +66,17 @@ def _ensure_link(db: Session, *, member_id: int, merchant_id: int) -> bool:
     db.add(MerchantMember(merchant_id=merchant_id, member_id=member_id))
     db.flush()
     return True
+
+
+def _resolve_promoter(db: Session, code: str | None, *, site_id: int) -> PromoterCode | None:
+    """解析推广码；无效或停用时静默忽略，不阻断注册。"""
+    normalized = (code or "").strip().upper()
+    if not normalized:
+        return None
+    promoter = db.scalar(select(PromoterCode).where(PromoterCode.code == normalized))
+    if promoter is None or promoter.site_id != site_id or not promoter.is_active:
+        return None
+    return promoter
 
 
 @router.post("/otp/send", response_model=OtpSendOut)
@@ -109,6 +124,7 @@ def verify_otp(body: OtpVerifyIn, db: Session = Depends(get_db)):
         if merchant is not None and merchant.site_id != site.id:
             raise AppError("forbidden", "商户不属于当前场地", status_code=403)
         src = AcquisitionSource.MERCHANT.value if merchant else AcquisitionSource.PLATFORM.value
+        promoter = _resolve_promoter(db, body.referral_code, site_id=site.id)
         member = Member(
             site_id=site.id,
             phone=body.phone,
@@ -116,9 +132,12 @@ def verify_otp(body: OtpVerifyIn, db: Session = Depends(get_db)):
             face_status=FaceStatus.NOT_ENROLLED.value,
             acquisition_source=src,
             first_merchant_id=merchant.id if merchant else None,
+            referral_code=promoter.code if promoter else None,
+            referrer_member_id=promoter.subject_member_id if promoter else None,
         )
         db.add(member)
         db.flush()
+        ensure_member_promoter_code(db, member)
         if merchant is not None:
             _ensure_link(db, member_id=member.id, merchant_id=merchant.id)
         write_audit(
@@ -126,7 +145,10 @@ def verify_otp(body: OtpVerifyIn, db: Session = Depends(get_db)):
             action="member.register",
             target_type="member",
             target_id=member.id,
-            summary=f"会员自助注册 source={src}",
+            summary=(
+                f"会员自助注册 source={src}"
+                + (f" 推广码={promoter.code}" if promoter else "")
+            ),
             site_id=member.site_id,
             merchant_id=merchant.id if merchant else None,
         )

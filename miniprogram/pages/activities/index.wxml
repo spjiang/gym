@@ -1,0 +1,33 @@
+<view class="wrap">
+  <view class="title">活动报名</view>
+  <view class="muted">赛事、体测与体验课，报名后按活动时间到店</view>
+  <view wx:if="{{err}}" class="muted">{{err}}</view>
+
+  <view class="section">我的报名</view>
+  <view wx:if="{{!mine.length}}" class="muted">暂无报名</view>
+  <view class="card booking" wx:for="{{mine}}" wx:key="id">
+    <view bindtap="goDetail" data-id="{{item.activity_id}}">
+      <view class="name">{{item.activity_name || ('活动 #' + item.activity_id)}}</view>
+      <view class="muted tight">{{item.timeText}} · {{item.statusText}}</view>
+    </view>
+    <view class="row" wx:if="{{item.status === 'pending' || item.status === 'confirmed'}}">
+      <button wx:if="{{item.status === 'pending' && item.order_id}}" size="mini" bindtap="payPending" data-id="{{item.order_id}}">去支付</button>
+      <button size="mini" bindtap="cancel" data-id="{{item.id}}">取消</button>
+    </view>
+  </view>
+
+  <view class="section">可报活动</view>
+  <view wx:if="{{!activities.length}}" class="muted">暂无可报活动</view>
+  <view class="card with-cover" wx:for="{{activities}}" wx:key="id">
+    <image wx:if="{{item.coverUrl}}" class="cover" src="{{item.coverUrl}}" mode="aspectFill" bindtap="goDetail" data-id="{{item.id}}" />
+    <view class="name" bindtap="goDetail" data-id="{{item.id}}">{{item.name}}</view>
+    <view class="muted tight">{{item.timeText}} <text wx:if="{{item.category}}">· {{item.category}}</text></view>
+    <view class="muted tight">{{item.seatsText}} <text wx:if="{{item.location}}">· {{item.location}}</text> · {{item.priceText}}</view>
+    <view class="row">
+      <button size="mini" bindtap="goDetail" data-id="{{item.id}}">详情</button>
+      <button wx:if="{{item.my_registration_status === 'pending' && item.my_order_id}}" bindtap="payPending" data-id="{{item.my_order_id}}">去支付</button>
+      <button wx:elif="{{item.can_register}}" bindtap="join" data-id="{{item.id}}">报名</button>
+      <button wx:elif="{{item.already_registered}}" disabled>已报名</button>
+    </view>
+  </view>
+</view>

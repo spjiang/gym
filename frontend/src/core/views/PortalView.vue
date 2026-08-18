@@ -153,8 +153,14 @@ function quickActions() {
       show: canAny(perms.value, ['report:read', '*']),
     },
     {
-      label: '餐饮点单',
-      path: '/catering/orders',
+      label: '吧台点单',
+      path: '/catering/pos',
+      icon: Collection,
+      show: hasCatering && canAny(perms.value, ['catering:order', '*']),
+    },
+    {
+      label: '出餐看板',
+      path: '/catering/kitchen',
       icon: Collection,
       show: hasCatering && canAny(perms.value, ['catering:order', '*']),
     },

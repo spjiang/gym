@@ -206,3 +206,42 @@ def test_upload_license_image(client: TestClient, admin_headers: dict, tmp_path,
         assert fetched.content.startswith(b"\x89PNG")
     finally:
         get_settings.cache_clear()
+
+
+def test_merchant_showcase_images(client: TestClient, admin_headers: dict, tmp_path, monkeypatch):
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("UPLOAD_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    try:
+        uploaded = client.post(
+            "/api/v1/uploads",
+            headers=admin_headers,
+            files={"file": ("cover.png", _png_bytes(), "image/png")},
+        )
+        assert uploaded.status_code == 200, uploaded.text
+        url = uploaded.json()["url"]
+        merchants = client.get("/api/v1/merchants", headers=admin_headers).json()
+        gym = merchants[0]
+        patched = client.patch(
+            f"/api/v1/merchants/{gym['id']}",
+            headers=admin_headers,
+            json={
+                "tagline": "训练即生活",
+                "cover_image_url": url,
+                "gallery_image_urls": [url],
+            },
+        )
+        assert patched.status_code == 200, patched.text
+        assert patched.json()["tagline"] == "训练即生活"
+        assert patched.json()["cover_image_url"] == url
+        assert patched.json()["gallery_image_urls"] == [url]
+
+        bad = client.patch(
+            f"/api/v1/merchants/{gym['id']}",
+            headers=admin_headers,
+            json={"cover_image_url": "https://example.com/a.jpg"},
+        )
+        assert bad.status_code == 400
+    finally:
+        get_settings.cache_clear()

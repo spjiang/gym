@@ -15,10 +15,12 @@ from app.core.deps import RequestContext, get_current_context
 from app.core.errors import AppError
 from app.systems.platform.services.reports import (
     list_commerce_payments,
+    summarize_activity,
     summarize_commerce,
     summarize_course,
     summarize_inventory,
     summarize_membership,
+    summarize_revenue_split,
 )
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -172,6 +174,34 @@ class CourseSummaryOut(BaseModel):
     full_session_count: int
     attended_count: int
     pt_consume_count: int
+    pt_appointment_count: int = 0
+    pt_completed_count: int = 0
+
+
+class RevenueSplitRowOut(BaseModel):
+    category: str
+    label: str
+    charge_total: Decimal
+    refund_total: Decimal
+    net_total: Decimal
+
+
+class RevenueSplitOut(BaseModel):
+    date_from: date
+    date_to: date
+    merchant_id: int | None
+    rows: list[RevenueSplitRowOut]
+    net_total: Decimal
+
+
+class ActivitySummaryOut(BaseModel):
+    date_from: date
+    date_to: date
+    merchant_id: int | None
+    activity_count: int
+    registered_count: int
+    attended_count: int
+    cancelled_count: int
 
 
 class InventorySkuOut(BaseModel):
@@ -239,6 +269,57 @@ def course_summary(
         full_session_count=s.full_session_count,
         attended_count=s.attended_count,
         pt_consume_count=s.pt_consume_count,
+        pt_appointment_count=s.pt_appointment_count,
+        pt_completed_count=s.pt_completed_count,
+    )
+
+
+@router.get("/revenue-split", response_model=RevenueSplitOut)
+def revenue_split(
+    date_from: date = Query(...),
+    date_to: date = Query(...),
+    merchant_id: int | None = None,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    """收入构成：会员 / 私教 / 团课 / 活动 / 零售 / 饮品。"""
+    ctx.require_permission("report:read")
+    _validate_range(date_from, date_to)
+    mid = _resolve_report_merchant(ctx, merchant_id)
+    rows = summarize_revenue_split(
+        db, site_id=ctx.site_id, date_from=date_from, date_to=date_to, merchant_id=mid
+    )
+    return RevenueSplitOut(
+        date_from=date_from,
+        date_to=date_to,
+        merchant_id=mid,
+        rows=[RevenueSplitRowOut(**row.__dict__) for row in rows],
+        net_total=sum((row.net_total for row in rows), Decimal("0.00")),
+    )
+
+
+@router.get("/activity-summary", response_model=ActivitySummaryOut)
+def activity_summary(
+    date_from: date = Query(...),
+    date_to: date = Query(...),
+    merchant_id: int | None = None,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    ctx.require_permission("report:read")
+    _validate_range(date_from, date_to)
+    mid = _resolve_report_merchant(ctx, merchant_id)
+    s = summarize_activity(
+        db, site_id=ctx.site_id, date_from=date_from, date_to=date_to, merchant_id=mid
+    )
+    return ActivitySummaryOut(
+        date_from=date_from,
+        date_to=date_to,
+        merchant_id=mid,
+        activity_count=s.activity_count,
+        registered_count=s.registered_count,
+        attended_count=s.attended_count,
+        cancelled_count=s.cancelled_count,
     )
 
 

@@ -89,10 +89,122 @@ def test_catering_checkout_pay_refund_loop(client: TestClient, admin_headers: di
     )
     assert paid.status_code == 200, paid.text
     assert paid.json()["status"] == "paid"
+    assert paid.json()["dining_status"] == "preparing"
+    assert paid.json()["pickup_code"]
+
+    cooking = client.get("/api/v1/catering/kitchen", headers=admin_headers, params={"merchant_id": bar["id"]})
+    assert cooking.status_code == 200, cooking.text
+    assert any(t["id"] == order["id"] and t["dining_status"] == "preparing" for t in cooking.json())
+
+    too_early = client.post(
+        f"/api/v1/catering/orders/{order['id']}/complete",
+        headers=admin_headers,
+    )
+    assert too_early.status_code == 400
+
+    ready = client.post(
+        f"/api/v1/catering/orders/{order['id']}/ready",
+        headers=admin_headers,
+    )
+    assert ready.status_code == 200, ready.text
+    assert ready.json()["dining_status"] == "ready"
+
+    board = client.get("/api/v1/catering/kitchen", headers=admin_headers, params={"merchant_id": bar["id"]})
+    assert board.status_code == 200, board.text
+    ticket = next((t for t in board.json() if t["id"] == order["id"]), None)
+    assert ticket is not None
+    assert ticket["dining_status"] == "ready"
+    assert ticket["pickup_code"]
+    assert ticket["items"]
+
+    again = client.post(
+        f"/api/v1/catering/orders/{order['id']}/ready",
+        headers=admin_headers,
+    )
+    assert again.status_code == 400
+
+    done = client.post(
+        f"/api/v1/catering/orders/{order['id']}/complete",
+        headers=admin_headers,
+    )
+    assert done.status_code == 200, done.text
+    assert done.json()["dining_status"] == "completed"
+
+    gone = client.get("/api/v1/catering/kitchen", headers=admin_headers, params={"merchant_id": bar["id"]})
+    assert gone.status_code == 200
+    assert all(t["id"] != order["id"] for t in gone.json())
 
     refunded = client.post(f"/api/v1/orders/{order['id']}/refund", headers=admin_headers)
     assert refunded.status_code == 200, refunded.text
     assert refunded.json()["status"] == "refunded"
+
+
+def _png_bytes() -> bytes:
+    return (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+        b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc``\x00\x00"
+        b"\x00\x04\x00\x01\xf6\x178U\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+
+
+def test_catering_menu_edit_and_image(client: TestClient, admin_headers: dict, tmp_path, monkeypatch):
+    from app.core.config import get_settings
+
+    merchants = client.get("/api/v1/merchants", headers=admin_headers).json()
+    bar = next((m for m in merchants if "catering" in (m.get("subsystem_codes") or [])), None)
+    assert bar is not None
+    created = client.post(
+        "/api/v1/catering/menu-items",
+        headers=admin_headers,
+        json={"merchant_id": bar["id"], "name": "可编辑小食", "category": "小食", "price": "18.00"},
+    )
+    assert created.status_code == 200, created.text
+    item_id = created.json()["id"]
+
+    monkeypatch.setenv("UPLOAD_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    try:
+        uploaded = client.post(
+            "/api/v1/uploads",
+            headers=admin_headers,
+            files={"file": ("dish.png", _png_bytes(), "image/png")},
+        )
+        assert uploaded.status_code == 200, uploaded.text
+        url = uploaded.json()["url"]
+        patched = client.patch(
+            f"/api/v1/catering/menu-items/{item_id}",
+            headers=admin_headers,
+            json={
+                "merchant_id": bar["id"],
+                "name": "椒盐薯条",
+                "category": "小食",
+                "price": "26.00",
+                "description": "现炸，撒椒盐",
+                "image_url": url,
+                "is_active": True,
+            },
+        )
+        assert patched.status_code == 200, patched.text
+        body = patched.json()
+        assert body["name"] == "椒盐薯条"
+        assert float(body["price"]) == 26
+        assert body["image_url"] == url
+        assert body["description"] == "现炸，撒椒盐"
+
+        bad = client.patch(
+            f"/api/v1/catering/menu-items/{item_id}",
+            headers=admin_headers,
+            json={
+                "merchant_id": bar["id"],
+                "name": "椒盐薯条",
+                "category": "小食",
+                "price": "26.00",
+                "image_url": "https://example.com/a.jpg",
+            },
+        )
+        assert bad.status_code == 400
+    finally:
+        get_settings.cache_clear()
 
 
 def test_gym_merchant_rejects_dining(client: TestClient, admin_headers: dict):

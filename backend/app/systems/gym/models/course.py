@@ -52,6 +52,8 @@ class Coach(Base):
     phone: Mapped[str | None] = mapped_column(String(32))
     years_experience: Mapped[int | None] = mapped_column(Integer)
     hourly_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    # 教练个人私教课佣金比例；留空回落商户 pt_session 提成规则
+    pt_commission_rate: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
     specialties: Mapped[str | None] = mapped_column(String(255))
     certifications: Mapped[str | None] = mapped_column(Text)
     bio: Mapped[str | None] = mapped_column(Text)

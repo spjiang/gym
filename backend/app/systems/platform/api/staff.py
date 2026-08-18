@@ -104,10 +104,15 @@ def create_staff(
         if not ctx.is_site_admin:
             raise AppError("forbidden", "不可分配场地超管角色", status_code=403)
         merchant_id = None
+        roles = _resolve_roles(db, body.role_codes, None)
+    elif merchant_id is None and ctx.is_site_admin:
+        roles = _resolve_roles(db, body.role_codes, None)
+        if not roles or not all(r.is_site_scope for r in roles):
+            merchant_id = ctx.resolve_merchant_id(None)
+            roles = _resolve_roles(db, body.role_codes, merchant_id)
     else:
         merchant_id = ctx.resolve_merchant_id(merchant_id)
-
-    roles = _resolve_roles(db, body.role_codes, merchant_id)
+        roles = _resolve_roles(db, body.role_codes, merchant_id)
 
     staff = StaffUser(
         site_id=ctx.site_id,

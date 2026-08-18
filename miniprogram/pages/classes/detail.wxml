@@ -1,0 +1,24 @@
+<view class="wrap">
+  <view wx:if="{{err && !item}}" class="muted">{{err}}</view>
+  <block wx:elif="{{item}}">
+    <view class="title">{{item.course_name}}</view>
+    <view class="muted">团课详情</view>
+    <view class="card">
+      <view class="row"><text>上课时间</text><text>{{timeText}} ～ {{endText}}</text></view>
+      <view class="row">
+        <text>教练</text>
+        <text class="link" wx:if="{{item.coach_id}}" bindtap="goCoach">{{item.coach_name || '教练详情'}} →</text>
+        <text wx:else>—</text>
+      </view>
+      <view class="row"><text>教室</text><text>{{item.room || '未指定'}}</text></view>
+      <view class="row"><text>时长</text><text>{{item.duration_minutes || '—'}} 分钟</text></view>
+      <view class="row"><text>难度</text><text>{{item.difficulty || '—'}}</text></view>
+      <view class="row"><text>名额</text><text>剩余 {{item.remaining}} / {{item.capacity}}</text></view>
+      <view class="row"><text>预约规则</text><text>{{bookRule}}</text></view>
+      <view class="row"><text>取消规则</text><text>{{cancelRule}}</text></view>
+    </view>
+    <button wx:if="{{item.already_booked}}" disabled>已预约</button>
+    <button wx:elif="{{item.remaining > 0 && item.status === 'open'}}" bindtap="book">{{busy ? '处理中' : '立即预约'}}</button>
+    <view wx:else class="muted">该场次暂不可预约</view>
+  </block>
+</view>

@@ -1,0 +1,9 @@
+<view class="wrap">
+  <view class="title">餐饮订单</view>
+  <view wx:if="{{err}}" class="muted">{{err}}</view>
+  <view class="card" wx:for="{{orders}}" wx:key="id" data-id="{{item.id}}" bindtap="goDetail">
+    <view class="name">{{item.pickup_code || ('#' + item.id)}} · ¥{{item.amount}}</view>
+    <view class="muted">{{item.title || '餐饮订单'}} · {{item.status}}</view>
+  </view>
+  <view wx:if="{{!orders.length && !err}}" class="muted">暂无餐饮订单</view>
+</view>

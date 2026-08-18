@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ArrowDown } from '@element-plus/icons-vue'
 import http from '../../../core/api/http'
 import { merchantsWithSystem } from '../../../core/nav/systems'
 import { useAuthStore } from '../../../core/stores/auth'
@@ -43,6 +44,18 @@ type Membership = {
   balance: string | null
   remark: string | null
   member?: { id: number; name: string; phone: string } | null
+}
+type Consumption = {
+  id: number
+  kind: string
+  sessions: number | null
+  amount: string | null
+  remaining_sessions_after: number | null
+  balance_after: string | null
+  source: string
+  note: string | null
+  actor_name: string | null
+  created_at: string
 }
 type Page<T> = { items: T[]; total: number; page: number; page_size: number }
 
@@ -410,6 +423,145 @@ async function saveEdit() {
   }
 }
 
+const consumeDialog = ref(false)
+const consumeTarget = ref<Membership | null>(null)
+const consumeForm = reactive({ sessions: 1, amount: '', note: '' })
+
+const consumeLogVisible = ref(false)
+const consumeLogTarget = ref<Membership | null>(null)
+const consumeLogs = ref<Consumption[]>([])
+const consumeLogLoading = ref(false)
+const consumeLogTotal = ref(0)
+const consumeLogPage = ref(1)
+const consumeLogPageSize = ref(10)
+
+/** 次卡按次销次，储值卡按金额扣减；期限卡不参与核销 */
+function canConsume(row: Membership) {
+  return row.status === 'active' && (row.product_type === 'count' || row.product_type === 'value')
+}
+
+type RowAction = 'edit' | 'log' | 'renew' | 'freeze' | 'void'
+
+function onRowAction(command: string | number | object, row: Membership) {
+  const action = String(command) as RowAction
+  if (action === 'edit') openEdit(row)
+  else if (action === 'log') void openConsumeLog(row)
+  else if (action === 'renew') openRenewDialog(row)
+  else if (action === 'freeze') void freeze(row)
+  else if (action === 'void') void voidMembership(row)
+}
+
+function openConsume(row: Membership) {
+  consumeTarget.value = row
+  consumeForm.sessions = 1
+  consumeForm.amount = ''
+  consumeForm.note = ''
+  consumeDialog.value = true
+}
+
+async function doConsume() {
+  const row = consumeTarget.value
+  if (!row) return
+  const payload: Record<string, unknown> = { note: consumeForm.note.trim() || null }
+  if (row.product_type === 'count') {
+    if (!consumeForm.sessions || consumeForm.sessions < 1) {
+      ElMessage.warning('请填写销次次数')
+      return
+    }
+    payload.sessions = consumeForm.sessions
+  } else {
+    const amount = Number(consumeForm.amount)
+    if (!consumeForm.amount || Number.isNaN(amount) || amount <= 0) {
+      ElMessage.warning('请填写大于 0 的扣减金额')
+      return
+    }
+    payload.amount = consumeForm.amount
+  }
+  submitting.value = true
+  try {
+    const { data } = await http.post(`/memberships/${row.id}/consume`, payload)
+    const after =
+      row.product_type === 'count'
+        ? `剩余 ${data.consumption.remaining_sessions_after} 次`
+        : `余额 ¥${data.consumption.balance_after}`
+    ElMessage.success(`核销成功，${after}`)
+    consumeDialog.value = false
+    if (detail.value?.id === row.id) detail.value = data.membership
+    await refresh()
+  } catch (e: unknown) {
+    ElMessage.error(e instanceof Error ? e.message : '核销失败')
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function openConsumeLog(row: Membership) {
+  consumeLogTarget.value = row
+  consumeLogPage.value = 1
+  consumeLogVisible.value = true
+  await loadConsumeLogs()
+}
+
+async function loadConsumeLogs() {
+  const row = consumeLogTarget.value
+  if (!row) return
+  consumeLogLoading.value = true
+  try {
+    const { data } = await http.get<Page<Consumption>>(`/memberships/${row.id}/consumptions`, {
+      params: { page: consumeLogPage.value, page_size: consumeLogPageSize.value },
+    })
+    consumeLogs.value = data.items
+    consumeLogTotal.value = data.total
+  } catch (e: unknown) {
+    ElMessage.error(e instanceof Error ? e.message : '加载核销记录失败')
+  } finally {
+    consumeLogLoading.value = false
+  }
+}
+
+function consumptionKindLabel(kind: string) {
+  if (kind === 'session') return '销次'
+  if (kind === 'value') return '扣值'
+  return kind
+}
+
+function consumptionSourceLabel(source: string) {
+  if (source === 'front_desk') return '前台核销'
+  if (source === 'access') return '门禁通行'
+  if (source === 'course') return '课程消课'
+  return source
+}
+
+function consumptionChangeText(row: Consumption) {
+  if (row.kind === 'session') return `-${row.sessions ?? 0} 次`
+  return `-¥${row.amount ?? '0.00'}`
+}
+
+function consumptionAfterText(row: Consumption) {
+  if (row.kind === 'session') return `剩余 ${row.remaining_sessions_after ?? '—'} 次`
+  return `余额 ¥${row.balance_after ?? '0.00'}`
+}
+
+async function voidMembership(row: Membership) {
+  try {
+    await ElMessageBox.confirm(
+      `作废会员「${memberName(row.member_id, row)}」的会籍 #${row.id}？作废后不可恢复，门禁授权同时失效。`,
+      '作废确认',
+      { type: 'warning', confirmButtonText: '确认作废', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  try {
+    await http.post(`/memberships/${row.id}/void`)
+    ElMessage.success('会籍已作废')
+    detailVisible.value = false
+    await refresh()
+  } catch (e: unknown) {
+    ElMessage.error(e instanceof Error ? e.message : '作废失败')
+  }
+}
+
 async function freeze(row: Membership) {
   try {
     await ElMessageBox.confirm(
@@ -456,6 +608,7 @@ onMounted(refresh)
           <el-option label="在籍" value="active" />
           <el-option label="已停卡" value="frozen" />
           <el-option label="已到期" value="expired" />
+          <el-option label="已作废" value="void" />
         </el-select>
       </el-form-item>
       <el-form-item label="卡种">
@@ -505,12 +658,28 @@ onMounted(refresh)
       <el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip>
         <template #default="{ row }">{{ row.remark || '—' }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="240" fixed="right">
+      <el-table-column label="操作" min-width="168" fixed="right" align="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-          <el-button v-if="row.status !== 'void'" link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button v-if="row.status === 'active'" link type="primary" @click="openRenewDialog(row)">续卡</el-button>
-          <el-button v-if="row.status === 'active'" link type="danger" @click="freeze(row)">停卡</el-button>
+          <div class="row-actions">
+            <el-button link type="primary" @click="openDetail(row)">详情</el-button>
+            <el-button v-if="canConsume(row)" link type="success" @click="openConsume(row)">
+              {{ row.product_type === 'count' ? '销次' : '扣值' }}
+            </el-button>
+            <el-dropdown trigger="click" teleported @command="onRowAction($event, row)">
+              <el-button link type="primary">
+                更多<el-icon class="more-icon"><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item v-if="row.status !== 'void'" command="edit">编辑</el-dropdown-item>
+                  <el-dropdown-item command="log">核销记录</el-dropdown-item>
+                  <el-dropdown-item v-if="row.status === 'active'" command="renew">续卡</el-dropdown-item>
+                  <el-dropdown-item v-if="row.status === 'active'" command="freeze">停卡</el-dropdown-item>
+                  <el-dropdown-item v-if="row.status !== 'void'" command="void" divided>作废</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
         </template>
       </el-table-column>
     </el-table>
@@ -584,9 +753,87 @@ onMounted(refresh)
         </el-descriptions>
         <div class="detail-actions">
           <el-button v-if="detail.status !== 'void'" type="primary" @click="openEdit(detail)">编辑</el-button>
+          <el-button v-if="canConsume(detail)" type="success" @click="openConsume(detail)">
+            {{ detail.product_type === 'count' ? '销次' : '扣值' }}
+          </el-button>
+          <el-button @click="openConsumeLog(detail)">核销记录</el-button>
+          <el-button v-if="detail.status !== 'void'" type="danger" @click="voidMembership(detail)">作废</el-button>
           <el-button @click="detailVisible = false">关闭</el-button>
         </div>
       </template>
+    </el-drawer>
+
+    <!-- 销次 / 扣值弹窗 -->
+    <el-dialog
+      v-model="consumeDialog"
+      :title="consumeTarget?.product_type === 'count' ? '次卡销次' : '储值卡扣值'"
+      width="460px"
+      destroy-on-close
+    >
+      <el-descriptions v-if="consumeTarget" :column="1" border class="consume-info">
+        <el-descriptions-item label="会员">
+          {{ memberName(consumeTarget.member_id, consumeTarget) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="卡种">{{ productName(consumeTarget.product_id) }}</el-descriptions-item>
+        <el-descriptions-item v-if="consumeTarget.product_type === 'count'" label="当前剩余">
+          {{ consumeTarget.remaining_sessions ?? 0 }} 次
+        </el-descriptions-item>
+        <el-descriptions-item v-else label="当前余额">
+          {{ consumeTarget.balance != null ? moneyLabel(consumeTarget.balance) : '¥0.00' }}
+        </el-descriptions-item>
+      </el-descriptions>
+      <el-form label-width="90px">
+        <el-form-item v-if="consumeTarget?.product_type === 'count'" label="销次次数">
+          <el-input-number v-model="consumeForm.sessions" :min="1" :max="100" />
+        </el-form-item>
+        <el-form-item v-else label="扣减金额">
+          <el-input v-model="consumeForm.amount" placeholder="如 50.00" style="width: 160px" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="consumeForm.note" type="textarea" :rows="2" maxlength="255" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="consumeDialog = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="doConsume">确认核销</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 核销记录 -->
+    <el-drawer v-model="consumeLogVisible" title="核销记录" size="560px">
+      <p class="lead" v-if="consumeLogTarget">
+        会籍 #{{ consumeLogTarget.id }} · {{ memberName(consumeLogTarget.member_id, consumeLogTarget) }}
+      </p>
+      <el-table :data="consumeLogs" v-loading="consumeLogLoading" size="small" empty-text="暂无核销记录">
+        <el-table-column label="时间" width="150">
+          <template #default="{ row }">{{ row.created_at?.slice(0, 16).replace('T', ' ') }}</template>
+        </el-table-column>
+        <el-table-column label="类型" width="80">
+          <template #default="{ row }">{{ consumptionKindLabel(row.kind) }}</template>
+        </el-table-column>
+        <el-table-column label="变动" width="90">
+          <template #default="{ row }">{{ consumptionChangeText(row) }}</template>
+        </el-table-column>
+        <el-table-column label="核销后" width="120">
+          <template #default="{ row }">{{ consumptionAfterText(row) }}</template>
+        </el-table-column>
+        <el-table-column label="来源" width="100">
+          <template #default="{ row }">{{ consumptionSourceLabel(row.source) }}</template>
+        </el-table-column>
+        <el-table-column label="操作人" min-width="100">
+          <template #default="{ row }">{{ row.actor_name || '系统' }}</template>
+        </el-table-column>
+      </el-table>
+      <div class="pager">
+        <el-pagination
+          v-model:current-page="consumeLogPage"
+          :page-size="consumeLogPageSize"
+          :total="consumeLogTotal"
+          layout="total, prev, pager, next"
+          background
+          @current-change="loadConsumeLogs"
+        />
+      </div>
     </el-drawer>
 
     <!-- 编辑会籍弹窗 -->
@@ -877,6 +1124,23 @@ onMounted(refresh)
   font-size: 12px;
   color: var(--el-text-color-secondary);
 }
+.row-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0 2px;
+  max-width: 100%;
+}
+.row-actions :deep(.el-button.is-link) {
+  margin: 0;
+  padding: 0 6px;
+  height: 28px;
+}
+.more-icon {
+  margin-left: 2px;
+  font-size: 12px;
+}
 .filters {
   margin-bottom: 8px;
 }
@@ -888,9 +1152,14 @@ onMounted(refresh)
 
 .detail-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
   margin-top: 20px;
+}
+
+.consume-info {
+  margin-bottom: 16px;
 }
 
 .coupon-option {

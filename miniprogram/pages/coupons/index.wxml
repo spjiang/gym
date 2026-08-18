@@ -1,1 +1,19 @@
-<view class="wrap"><view class="title">{{title}}</view><block wx:for="{{items}}" wx:key="id"><view class="card">{{item.name || item.title || ('#' + item.id)}}</view></block></view>
+<view class="wrap">
+  <view class="title">优惠卡券</view>
+  <view wx:if="{{err}}" class="muted">{{err}}</view>
+  <view class="section">可领取</view>
+  <view class="card row" wx:for="{{claimable}}" wx:key="id">
+    <view class="main">
+      <view class="name">{{item.name}}</view>
+      <view class="muted">满¥{{item.threshold_amount}}</view>
+    </view>
+    <button size="mini" data-id="{{item.id}}" bindtap="claim">领取</button>
+  </view>
+  <view wx:if="{{!claimable.length}}" class="muted">暂无可领券</view>
+  <view class="section">我的券</view>
+  <view class="card" wx:for="{{mine}}" wx:key="id">
+    <view class="name">{{item.template_name || ('券 #' + item.id)}}</view>
+    <view class="muted">{{item.status}} · 至 {{item.ends_at}}</view>
+  </view>
+  <view wx:if="{{!mine.length}}" class="muted">暂无卡券</view>
+</view>
