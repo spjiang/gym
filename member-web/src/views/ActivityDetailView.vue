@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import AgreementSheet from '../components/AgreementSheet.vue'
 import http from '../api/http'
 import { payMemberOrder } from '../api/pay'
 import { activityRegStatusLabel } from '../utils/labels'
@@ -35,6 +36,7 @@ const err = ref('')
 const msg = ref('')
 const loading = ref(true)
 const busy = ref(false)
+const agreeOpen = ref(false)
 
 function fmt(iso?: string | null) {
   if (!iso) return '—'
@@ -70,6 +72,10 @@ async function load() {
   } finally {
     loading.value = false
   }
+}
+
+function openJoin() {
+  agreeOpen.value = true
 }
 
 async function join() {
@@ -174,7 +180,7 @@ onMounted(load)
         class="mw-btn mw-btn--block"
         type="button"
         :disabled="busy"
-        @click="join"
+        @click="openJoin"
       >
         {{ busy ? '处理中' : Number(item.price) > 0 ? '报名并支付' : '立即报名' }}
       </button>
@@ -198,6 +204,15 @@ onMounted(load)
         取消报名
       </button>
     </template>
+    <AgreementSheet
+      v-if="item"
+      v-model:open="agreeOpen"
+      :merchant-id="mid"
+      scene="activity"
+      :summary="`${item.name}  ${money(item.price)}`"
+      :confirm-label="Number(item.price) > 0 ? '报名并支付' : '立即报名'"
+      @confirm="join"
+    />
   </section>
 </template>
 

@@ -21,6 +21,7 @@ Page({
   select(e) {
     const id = Number(e.currentTarget.dataset.id)
     getApp().globalData.merchantId = id
+    wx.setStorageSync('merchant_id', id)
     this.setData({ currentId: id })
     wx.showToast({ title: '已切换门店', icon: 'success' })
   },

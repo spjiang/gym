@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 
 from app.systems.catering.api.member_catering import assign_pickup_code
+from tests.test_agreements import enable_agreement
 
 
 def _gym_id(client: TestClient, headers: dict) -> int:
@@ -229,6 +230,7 @@ def test_kitchen_undo_and_inactive_table_checkout(client: TestClient, admin_head
         json={"phone": "13570000003", "name": "停用桌会员", "merchant_id": bar_id},
     ).json()
     mheaders = _member_headers(client, member["phone"])
+    enable_agreement(client, admin_headers, bar_id, "dining", title="观野BAR点餐须知")
     blocked = client.post(
         "/api/v1/member/catering/checkout",
         headers=mheaders,
@@ -238,7 +240,8 @@ def test_kitchen_undo_and_inactive_table_checkout(client: TestClient, admin_head
             "table_no": "停用桌Z",
         },
     )
-    assert blocked.status_code in (400, 404)
+    assert blocked.status_code == 400
+    assert blocked.json()["code"] == "table_inactive"
 
 
 def test_pdf_requires_login_image_is_public(client: TestClient, admin_headers: dict, tmp_path, monkeypatch):

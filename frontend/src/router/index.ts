@@ -18,6 +18,7 @@ import RolesView from '../systems/platform/views/RolesView.vue'
 import PaymentSettingsView from '../systems/platform/views/PaymentSettingsView.vue'
 import SiteProfileView from '../systems/platform/views/SiteProfileView.vue'
 import SmsSettingsView from '../systems/platform/views/SmsSettingsView.vue'
+import AgreementsView from '../systems/platform/views/AgreementsView.vue'
 import OpsWorkbenchView from '../systems/platform/views/OpsWorkbenchView.vue'
 import PaymentReconcileView from '../systems/platform/views/PaymentReconcileView.vue'
 import PromotionConfigView from '../systems/platform/views/PromotionConfigView.vue'
@@ -85,6 +86,12 @@ const children: RouteRecordRaw[] = [
     name: 'platform-sms',
     component: SmsSettingsView,
     meta: { system: 'platform', anyOf: ['sms:config', '*'] },
+  },
+  {
+    path: 'platform/agreements',
+    name: 'platform-agreements',
+    component: AgreementsView,
+    meta: { system: 'platform', anyOf: ['org:read', 'org:write', '*'] },
   },
   {
     path: 'platform/payment-reconcile',

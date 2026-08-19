@@ -30,6 +30,7 @@ from app.systems.platform.models.commerce import Order, OrderStatus, Payment, Pa
 from app.systems.platform.models.payment_settings import PaymentIntent, RefundIntent
 from app.systems.platform.services.audit import write_audit
 from app.systems.platform.services.payment_settings import resolve_payment_settings
+from app.systems.platform.services.payouts import sync_open_commission_payouts
 from app.systems.platform.services.rebate import reverse_order_rebate
 from app.systems.platform.services.wechat_pay import create_wechat_refund
 
@@ -295,6 +296,20 @@ def create_refund(
         elif force and not is_site_admin:
             raise AppError("forbidden", "权限不足", status_code=403)
 
+    if order.order_type == "activity":
+        registration = db.scalar(
+            select(ActivityRegistration).where(ActivityRegistration.order_id == order.id)
+        )
+        if registration is not None and registration.status == RegistrationStatus.ATTENDED.value:
+            if not force:
+                raise AppError(
+                    "activity_attended",
+                    "已签到活动不可退款，需超管强制且保留到场记录",
+                    status_code=400,
+                )
+            if not is_site_admin:
+                raise AppError("forbidden", "仅场地超管可强制退款", status_code=403)
+
     out_refund_no = f"r{order.id}t{int(time.time())}{out_trade_no[-4:] if out_trade_no else 'xx'}"
     intent = RefundIntent(
         site_id=order.site_id,
@@ -386,6 +401,7 @@ def apply_refund_success(
             order.dining_status = None
     else:
         scale_records_for_partial_refund(db, order, refund_amount=this_amount)
+    sync_open_commission_payouts(db, order.id)
 
     if order.order_type == "activity":
         if full:
@@ -414,11 +430,13 @@ def apply_refund_success(
 
 
 def _cancel_activity_registration(db: Session, order: Order, *, actor_staff_id: int | None) -> None:
-    """活动订单全额退款后释放名额。"""
+    """活动订单全额退款后释放名额；已签到保留到场事实，名额仍占。"""
     registration = db.scalar(
         select(ActivityRegistration).where(ActivityRegistration.order_id == order.id)
     )
     if registration is None or registration.status == RegistrationStatus.CANCELLED.value:
+        return
+    if registration.status == RegistrationStatus.ATTENDED.value:
         return
     registration.status = RegistrationStatus.CANCELLED.value
     write_audit(

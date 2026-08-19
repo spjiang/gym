@@ -17,7 +17,7 @@
     </view>
     <view wx:if="{{item.description}}" class="desc">{{item.description}}</view>
     <button wx:if="{{item.my_registration_status === 'pending' && item.my_order_id}}" bindtap="payPending">{{busy ? '处理中' : '去支付'}}</button>
-    <button wx:elif="{{item.can_register}}" bindtap="join">{{busy ? '处理中' : payLabel}}</button>
+    <button wx:elif="{{item.can_register}}" bindtap="openJoin">{{busy ? '处理中' : payLabel}}</button>
     <button wx:elif="{{item.already_registered}}" disabled>已报名</button>
     <view wx:else class="muted">该活动暂不可报名</view>
     <button
@@ -26,4 +26,15 @@
       bindtap="cancel"
     >取消报名</button>
   </block>
+  <agreement-confirm
+    show="{{agreeShow}}"
+    summary="{{agreeSummary}}"
+    title="{{agreeTitle}}"
+    content="{{agreeContent}}"
+    error="{{agreeError}}"
+    loading="{{agreeLoading}}"
+    confirm-label="{{payLabel}}"
+    bind:close="onAgreeClose"
+    bind:confirm="onAgreeConfirm"
+  />
 </view>

@@ -62,7 +62,15 @@ async function payOrder(orderId) {
   }
   if (data.jsapi_params) {
     await requestPayment(data.jsapi_params)
-    return data
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 2000))
+      const q = await request({
+        url: `/member/orders/${orderId}/pay/query`,
+        method: 'POST',
+      })
+      if (q && q.status === 'paid') return { ...data, ...q, status: 'paid' }
+    }
+    throw new Error('支付结果确认中，请稍后在订单查看')
   }
   throw new Error('无法调起支付')
 }

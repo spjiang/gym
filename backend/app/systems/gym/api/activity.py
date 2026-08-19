@@ -30,6 +30,7 @@ from app.systems.gym.services.activity_ops import (
     now_utc,
     register_activity,
     registered_counts,
+    sweep_stale_pending_holds,
 )
 from app.systems.platform.models.commerce import Order, OrderStatus
 from app.systems.platform.models.member import Member
@@ -227,6 +228,7 @@ def list_activities(
         stmt = stmt.where(Activity.starts_at <= date_to)
 
     rows, total = paginate(db, stmt.order_by(Activity.starts_at.desc()), page=page, page_size=page_size)
+    sweep_stale_pending_holds(db, {r.id for r in rows})
     counts = registered_counts(db, {r.id for r in rows})
     return PageOut(
         items=[_activity_out(r, counts.get(r.id)) for r in rows],
@@ -247,6 +249,7 @@ def get_activity(
     if activity is None:
         raise AppError("not_found", "活动不存在", status_code=404)
     ctx.resolve_merchant_id(activity.merchant_id)
+    sweep_stale_pending_holds(db, {activity.id})
     counts = registered_counts(db, {activity.id})
     return _activity_out(activity, counts.get(activity.id))
 

@@ -13,10 +13,48 @@
     </view>
   </view>
   <view class="muted">{{tableLocked ? '桌号（扫码入座）' : '桌号（选填）'}}</view>
-  <input wx:if="{{!tableLocked}}" value="{{tableNo}}" placeholder="吧台 / A3" maxlength="16" bindinput="onTable" />
+  <picker wx:if="{{!tableLocked}}" range="{{tableNames}}" value="{{tableIndex}}" bindchange="onTablePick">
+    <view class="picker">{{tableNo || '散客 / 未选桌'}}</view>
+  </picker>
   <view wx:else class="seat">{{tableNo}}</view>
   <view class="muted">备注</view>
   <input value="{{note}}" placeholder="少冰 / 去冰 / 微辣" maxlength="120" bindinput="onNote" />
-  <view class="card">实付 ¥{{payable}}</view>
-  <button disabled="{{busy}}" bindtap="submit">{{busy ? '提交中…' : '提交并支付'}}</button>
+  <view class="muted">优惠券</view>
+  <view class="coupon {{!couponId ? 'on' : ''}}" bindtap="pickCoupon" data-id="">不使用优惠券</view>
+  <view
+    wx:for="{{coupons}}"
+    wx:key="id"
+    class="coupon {{item.eligible ? '' : 'off'}} {{couponId === item.id ? 'on' : ''}}"
+    data-id="{{item.id}}"
+    bindtap="pickCoupon"
+  >
+    <view>{{item.name}} · {{item.face}}</view>
+    <view class="muted">{{item.eligible ? ('满¥' + item.threshold_amount) : (item.ineligible_reason || '未满门槛')}}</view>
+  </view>
+  <view class="card">
+    <view class="break"><text>推广会员折扣</text><text wx:if="{{hasPromo}}">-¥{{promoOff}}</text><text wx:else>—</text></view>
+    <view class="break"><text>优惠券</text><text wx:if="{{hasCouponOff}}">-¥{{couponOff}}</text><text wx:else>—</text></view>
+    <view class="break pay"><text>实付</text><text>¥{{payable}}</text></view>
+  </view>
+  <view wx:if="{{agreeErr}}" class="err">{{agreeErr}}</view>
+  <view class="agree" bindtap="toggleAgree">
+    <view class="box {{agreed ? 'on' : ''}}"></view>
+    <view>
+      我已阅读并同意
+      <text class="link" catchtap="openAgreeFull">《{{agreeTitle || '购买协议'}}》</text>
+    </view>
+  </view>
+  <button disabled="{{busy || !agreed || !agreeTitle}}" bindtap="submit">{{busy ? '提交中…' : '提交并支付'}}</button>
+  <view wx:if="{{agreeFull}}" class="mask">
+    <view class="backdrop" bindtap="closeAgreeFull"></view>
+    <view class="panel">
+      <view class="head">
+        <text>{{agreeTitle}}</text>
+        <text class="link" bindtap="closeAgreeFull">关闭</text>
+      </view>
+      <scroll-view scroll-y class="body">
+        <rich-text nodes="{{agreeHtml}}"></rich-text>
+      </scroll-view>
+    </view>
+  </view>
 </view>

@@ -36,6 +36,7 @@ from app.systems.gym.models.membership import (
 )
 from app.core.schemas.common import OrderOut, OnlinePayIn
 from app.systems.platform.services.audit import write_audit
+from app.systems.platform.services.agreements import require_enabled_agreement
 from app.systems.gym.services.course_booking import (
     book_group_session,
     booked_count,
@@ -270,6 +271,12 @@ class PurchaseMembershipIn(BaseModel):
 class PurchasePtIn(BaseModel):
     merchant_id: int
     product_id: int
+
+
+class MemberAgreementOut(BaseModel):
+    id: int
+    title: str
+    content: str
 
 
 def _merchant_ids(db: Session, member_id: int) -> list[int]:
@@ -891,6 +898,19 @@ def catalog_pt_products(
     return [_catalog_pt_out(p) for p in rows]
 
 
+@router.get("/agreements", response_model=MemberAgreementOut)
+def get_member_agreement(
+    merchant_id: int,
+    scene: str,
+    db: Session = Depends(get_db),
+    mctx: MemberContext = Depends(get_current_member),
+):
+    """当前启用的购买协议全文。"""
+    mctx.require_merchant(db, merchant_id)
+    row = require_enabled_agreement(db, merchant_id=merchant_id, scene=scene)
+    return MemberAgreementOut(id=row.id, title=row.title, content=row.content)
+
+
 @router.post("/orders/membership", response_model=OrderOut)
 def order_membership(
     body: PurchaseMembershipIn,
@@ -898,6 +918,7 @@ def order_membership(
     mctx: MemberContext = Depends(get_current_member),
 ):
     mctx.require_merchant(db, body.merchant_id)
+    require_enabled_agreement(db, merchant_id=body.merchant_id, scene="membership")
     product = db.get(MembershipProduct, body.product_id)
     if product is None or product.merchant_id != body.merchant_id:
         raise AppError("not_found", "卡种不存在", status_code=404)
@@ -948,6 +969,7 @@ def order_pt_package(
     mctx: MemberContext = Depends(get_current_member),
 ):
     mctx.require_merchant(db, body.merchant_id)
+    require_enabled_agreement(db, merchant_id=body.merchant_id, scene="pt_package")
     product = db.get(PtPackageProduct, body.product_id)
     if product is None or product.merchant_id != body.merchant_id:
         raise AppError("not_found", "课包商品不存在", status_code=404)

@@ -53,7 +53,7 @@ export const PLATFORM_MENU_GROUPS: { key: string; label: string; paths: string[]
   {
     key: 'base',
     label: '基础配置',
-    paths: ['/platform/site-profile', '/platform/subsystems', '/platform/payment-settings', '/platform/sms-settings'],
+    paths: ['/platform/site-profile', '/platform/subsystems', '/platform/payment-settings', '/platform/sms-settings', '/platform/agreements'],
   },
 ]
 

@@ -12,6 +12,11 @@ Page({
   },
   onLoad(options) {
     this._tableCode = (options && options.table) || ''
+    if (options && options.merchant_id) {
+      const mid = Number(options.merchant_id)
+      getApp().globalData.merchantId = mid
+      wx.setStorageSync('merchant_id', mid)
+    }
   },
   async onShow() {
     const { request, fileUrl } = require('../../utils/api')
@@ -20,6 +25,10 @@ Page({
     const mid = app.globalData.merchantId
     if (!mid) {
       this.setData({ loading: false, err: '请先选择门店' })
+      return
+    }
+    if (!app.globalData.token) {
+      this.goLogin()
       return
     }
     this.setData({ loading: true, err: '' })
@@ -39,8 +48,22 @@ Page({
       this._items = withImg
       this.refreshCart()
     } catch (e) {
+      if ((e && (e.status_code || e.statusCode)) === 401) {
+        this.goLogin()
+        return
+      }
       this.setData({ loading: false, err: (e && e.message) || '菜单加载失败' })
     }
+  },
+  goLogin() {
+    const mid = getApp().globalData.merchantId || ''
+    const table = this._tableCode || ''
+    const redirect = encodeURIComponent(
+      `/pages/catering/menu?merchant_id=${mid}${table ? `&table=${encodeURIComponent(table)}` : ''}`,
+    )
+    wx.redirectTo({
+      url: `/pages/login/index?merchant_id=${mid}&table=${encodeURIComponent(table)}&redirect=${redirect}`,
+    })
   },
   refreshCart() {
     const cart = require('../../utils/cateringCart')

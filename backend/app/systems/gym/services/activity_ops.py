@@ -101,13 +101,15 @@ def can_register(activity: Activity, *, registered: int, now: datetime | None = 
     return True
 
 
-def release_stale_pending_registrations(db: Session, activity_id: int) -> int:
-    """释放超时未支付的占坑报名，避免收费活动名额被长期占用。"""
+def release_stale_pending_for_activities(db: Session, activity_ids: set[int]) -> int:
+    """释放一批活动里超时未支付的占坑报名。"""
+    if not activity_ids:
+        return 0
     cutoff = now_utc() - timedelta(minutes=PENDING_HOLD_MINUTES)
     rows = list(
         db.scalars(
             select(ActivityRegistration).where(
-                ActivityRegistration.activity_id == activity_id,
+                ActivityRegistration.activity_id.in_(activity_ids),
                 ActivityRegistration.status == RegistrationStatus.PENDING.value,
             )
         ).all()
@@ -126,6 +128,19 @@ def release_stale_pending_registrations(db: Session, activity_id: int) -> int:
         released += 1
     if released:
         db.flush()
+    return released
+
+
+def release_stale_pending_registrations(db: Session, activity_id: int) -> int:
+    """释放超时未支付的占坑报名，避免收费活动名额被长期占用。"""
+    return release_stale_pending_for_activities(db, {activity_id})
+
+
+def sweep_stale_pending_holds(db: Session, activity_ids: set[int]) -> int:
+    """查询入口清超时占坑并落库，保证剩余名额即时可见。"""
+    released = release_stale_pending_for_activities(db, activity_ids)
+    if released:
+        db.commit()
     return released
 
 
@@ -175,12 +190,37 @@ def register_activity(
 
     price = effective_price(activity)
     if existing is not None:
+        old_order = db.get(Order, existing.order_id) if existing.order_id else None
         registration = existing
+        registration.checked_in_at = None
+        registration.note = (note or "").strip() or None
+        # 已支付过报名费（如缺席后再报）直接确认，不再新建待支付单
+        if old_order is not None and old_order.status == OrderStatus.PAID.value:
+            registration.status = RegistrationStatus.CONFIRMED.value
+            registration.amount = old_order.amount
+            write_notification(
+                db,
+                site_id=site_id,
+                merchant_id=mid,
+                member_id=member.id,
+                event_type="activity.registered",
+                title="活动报名成功",
+                body=f"「{activity.name}」报名已确认",
+            )
+            write_audit(
+                db,
+                action="activity.register",
+                target_type="activity_registration",
+                target_id=registration.id,
+                summary=f"报名活动 {activity.name} member={member.id} 沿用已支付订单 {old_order.id}",
+                actor_staff_id=actor_staff_id,
+                site_id=site_id,
+                merchant_id=mid,
+            )
+            return registration, None
         registration.status = RegistrationStatus.PENDING.value
         registration.amount = price
         registration.order_id = None
-        registration.checked_in_at = None
-        registration.note = (note or "").strip() or None
     else:
         registration = ActivityRegistration(
             activity_id=activity.id,

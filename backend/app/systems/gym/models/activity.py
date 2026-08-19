@@ -35,12 +35,11 @@ class RegistrationStatus(str, Enum):
     NO_SHOW = "no_show"
 
 
-# 占名额的报名状态：用于容量校验
+# 占名额的报名状态：缺席释放座位，允许他人或本人再报
 OCCUPYING_REGISTRATION_STATUS = {
     RegistrationStatus.PENDING.value,
     RegistrationStatus.CONFIRMED.value,
     RegistrationStatus.ATTENDED.value,
-    RegistrationStatus.NO_SHOW.value,
 }
 
 

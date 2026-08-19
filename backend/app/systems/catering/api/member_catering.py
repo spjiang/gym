@@ -15,11 +15,12 @@ from app.core.domain.subsystems import assert_merchant_has_system
 from app.core.errors import AppError
 from app.core.schemas.common import OrderOut
 from app.systems.catering.models.catering import CateringMenuCategory, CateringMenuItem, CateringOrderItem
-from app.systems.catering.services.tables import get_active_table
+from app.systems.catering.services.tables import get_active_table, list_active_tables
 from app.systems.gym.services.coupon import compute_payable, list_unused_coupons_for_order_type
 from app.systems.platform.models.commerce import Order, OrderStatus
 from app.systems.platform.models.org import Merchant
 from app.systems.platform.services.audit import write_audit
+from app.systems.platform.services.agreements import require_enabled_agreement
 from app.systems.platform.services.order_pricing import price_order, quote_price
 
 router = APIRouter(prefix="/member/catering", tags=["member-catering"])
@@ -100,6 +101,11 @@ class TableResolveOut(BaseModel):
     code: str
 
 
+class MemberTableOut(BaseModel):
+    id: int
+    name: str
+
+
 @router.get("/table", response_model=TableResolveOut)
 def resolve_table(
     merchant_id: int,
@@ -111,6 +117,20 @@ def resolve_table(
     _require_member_catering(db, mctx, merchant_id)
     row = get_active_table(db, merchant_id=merchant_id, code=code)
     return TableResolveOut(id=row.id, merchant_id=row.merchant_id, name=row.name, code=row.code)
+
+
+@router.get("/tables", response_model=list[MemberTableOut])
+def list_member_tables(
+    merchant_id: int,
+    db: Session = Depends(get_db),
+    mctx: MemberContext = Depends(get_current_member),
+):
+    """会员点餐选桌：只返回启用桌的名称，不暴露点餐码。"""
+    _require_member_catering(db, mctx, merchant_id)
+    return [
+        MemberTableOut(id=row.id, name=row.name)
+        for row in list_active_tables(db, merchant_id=merchant_id)
+    ]
 
 
 def assign_pickup_code(order_id: int) -> str:
@@ -258,6 +278,7 @@ def checkout(
     mctx: MemberContext = Depends(get_current_member),
 ):
     merchant = _require_member_catering(db, mctx, body.merchant_id)
+    require_enabled_agreement(db, merchant_id=body.merchant_id, scene="dining")
     lines, total, names = _collect_lines(db, body.merchant_id, body.items)
 
     note_parts = []

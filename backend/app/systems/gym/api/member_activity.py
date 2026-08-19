@@ -14,7 +14,13 @@ from app.core.db import get_db
 from app.core.deps import MemberContext, get_current_member
 from app.core.errors import AppError
 from app.core.schemas.common import OrderOut
-from app.systems.gym.models.activity import Activity, ActivityRegistration, ActivityStatus, RegistrationStatus
+from app.systems.gym.models.activity import (
+    OCCUPYING_REGISTRATION_STATUS,
+    Activity,
+    ActivityRegistration,
+    ActivityStatus,
+    RegistrationStatus,
+)
 from app.systems.gym.services.activity_ops import (
     can_register,
     effective_price,
@@ -22,9 +28,11 @@ from app.systems.gym.services.activity_ops import (
     occupying_registration,
     register_activity,
     registered_counts,
+    sweep_stale_pending_holds,
 )
 from app.systems.platform.models.commerce import Order, OrderStatus
 from app.systems.platform.services.audit import write_audit
+from app.systems.platform.services.agreements import require_enabled_agreement
 
 router = APIRouter(prefix="/member", tags=["member-activity"])
 
@@ -90,12 +98,7 @@ def _activity_card(
     now: datetime,
 ) -> MemberActivityOut:
     remaining = None if row.capacity <= 0 else max(row.capacity - registered, 0)
-    occupying = mine is not None and mine.status in {
-        RegistrationStatus.PENDING.value,
-        RegistrationStatus.CONFIRMED.value,
-        RegistrationStatus.ATTENDED.value,
-        RegistrationStatus.NO_SHOW.value,
-    }
+    occupying = mine is not None and mine.status in OCCUPYING_REGISTRATION_STATUS
     return MemberActivityOut(
         id=row.id,
         merchant_id=row.merchant_id,
@@ -158,6 +161,7 @@ def list_published_activities(
     if limit is not None:
         stmt = stmt.limit(limit)
     rows = list(db.scalars(stmt).all())
+    sweep_stale_pending_holds(db, {r.id for r in rows})
     counts = registered_counts(db, {r.id for r in rows})
     mines = {
         r.activity_id: r
@@ -196,6 +200,7 @@ def get_member_activity(
     mctx.require_merchant(db, activity.merchant_id)
     if activity.status != ActivityStatus.PUBLISHED.value:
         raise AppError("not_found", "活动不存在或未开放报名", status_code=404)
+    sweep_stale_pending_holds(db, {activity.id})
     counts = registered_counts(db, {activity.id}).get(activity.id, (0, 0))
     mine = occupying_registration(db, activity.id, mctx.member.id)
     if mine is None:
@@ -241,6 +246,7 @@ def create_my_activity_registration(
     mctx: MemberContext = Depends(get_current_member),
 ):
     mctx.require_merchant(db, body.merchant_id)
+    require_enabled_agreement(db, merchant_id=body.merchant_id, scene="activity")
     activity = db.get(Activity, body.activity_id)
     if activity is None or activity.merchant_id != body.merchant_id:
         raise AppError("not_found", "活动不存在", status_code=404)

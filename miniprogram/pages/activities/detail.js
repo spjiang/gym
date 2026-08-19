@@ -11,6 +11,12 @@ Page({
     priceText: '',
     statusText: '',
     payLabel: '立即报名',
+    agreeShow: false,
+    agreeLoading: false,
+    agreeError: '',
+    agreeSummary: '',
+    agreeTitle: '',
+    agreeContent: '',
   },
   onLoad(query) {
     this.activityId = Number(query.id)
@@ -59,6 +65,28 @@ Page({
     } catch (e) {
       this.setData({ err: (e && e.message) || '加载失败', item: null })
     }
+  },
+  async openJoin() {
+    if (this.data.busy || !this.data.item) return
+    const { openAgreement } = require('../../utils/agreement')
+    const item = this.data.item
+    this._agreeNext = () => this.join()
+    const ok = await openAgreement(this, {
+      merchantId: getApp().globalData.merchantId,
+      scene: 'activity',
+      summary: `${item.name}  ${this.data.priceText}`,
+    })
+    if (!ok) this._agreeNext = null
+  },
+  onAgreeClose() {
+    this._agreeNext = null
+    this.setData({ agreeShow: false })
+  },
+  async onAgreeConfirm() {
+    const next = this._agreeNext
+    this._agreeNext = null
+    this.setData({ agreeShow: false })
+    if (next) await next()
   },
   async join() {
     if (this.data.busy || !this.data.item) return

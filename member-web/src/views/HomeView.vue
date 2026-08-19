@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
+import AgreementSheet from '../components/AgreementSheet.vue'
 import http from '../api/http'
 import { payMemberOrder } from '../api/pay'
 import { useAuthStore } from '../stores/auth'
@@ -84,6 +85,10 @@ const err = ref('')
 const msg = ref('')
 const loading = ref(true)
 const busyId = ref<number | null>(null)
+const agreeOpen = ref(false)
+const agreeScene = ref<'membership' | 'pt_package'>('membership')
+const agreeSummary = ref('')
+const pendingBuy = ref<(() => Promise<void>) | null>(null)
 
 const store = computed(() => home.value?.merchant || null)
 
@@ -123,17 +128,31 @@ async function load() {
   }
 }
 
-async function buyCard(productId: number) {
+async function buyCard(p: Membership) {
+  agreeScene.value = 'membership'
+  agreeSummary.value = `${p.name}  ¥${sellPrice(p)}`
+  pendingBuy.value = () => doBuy('/member/orders/membership', p.id, '购卡成功')
+  agreeOpen.value = true
+}
+
+async function buyPt(p: PtPackage) {
+  agreeScene.value = 'pt_package'
+  agreeSummary.value = `${p.name}  ¥${sellPrice(p)} · ${p.session_count} 次`
+  pendingBuy.value = () => doBuy('/member/orders/pt-package', p.id, '购买成功')
+  agreeOpen.value = true
+}
+
+async function doBuy(path: string, productId: number, okPrefix: string) {
   msg.value = ''
   err.value = ''
   busyId.value = productId
   try {
-    const { data: order } = await http.post('/member/orders/membership', {
+    const { data: order } = await http.post(path, {
       merchant_id: mid.value,
       product_id: productId,
     })
     const paid = await payMemberOrder(order.id)
-    msg.value = `购卡成功，实付 ¥${paid.amount || order.amount}`
+    msg.value = `${okPrefix}，实付 ¥${paid.amount || order.amount}`
   } catch (e: unknown) {
     err.value = e instanceof Error ? e.message : '购买失败'
   } finally {
@@ -141,22 +160,10 @@ async function buyCard(productId: number) {
   }
 }
 
-async function buyPt(productId: number) {
-  msg.value = ''
-  err.value = ''
-  busyId.value = productId
-  try {
-    const { data: order } = await http.post('/member/orders/pt-package', {
-      merchant_id: mid.value,
-      product_id: productId,
-    })
-    const paid = await payMemberOrder(order.id)
-    msg.value = `购买成功，实付 ¥${paid.amount || order.amount}`
-  } catch (e: unknown) {
-    err.value = e instanceof Error ? e.message : '购买失败'
-  } finally {
-    busyId.value = null
-  }
+async function onAgreeConfirm() {
+  const next = pendingBuy.value
+  pendingBuy.value = null
+  if (next) await next()
 }
 
 function goCoach(id: number) {
@@ -290,7 +297,7 @@ onMounted(load)
               class="pack__buy"
               type="button"
               :disabled="busyId === p.id"
-              @click="buyCard(p.id)"
+              @click="buyCard(p)"
             >
               {{ busyId === p.id ? '支付中' : '立即购买' }}
             </button>
@@ -313,7 +320,7 @@ onMounted(load)
               class="pack__buy"
               type="button"
               :disabled="busyId === p.id"
-              @click="buyPt(p.id)"
+              @click="buyPt(p)"
             >
               {{ busyId === p.id ? '支付中' : '立即购买' }}
             </button>
@@ -346,6 +353,13 @@ onMounted(load)
         <p v-if="!home?.sessions.length" class="mw-empty">暂无可约场次</p>
       </section>
     </template>
+    <AgreementSheet
+      v-model:open="agreeOpen"
+      :merchant-id="mid"
+      :scene="agreeScene"
+      :summary="agreeSummary"
+      @confirm="onAgreeConfirm"
+    />
   </section>
 </template>
 

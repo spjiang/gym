@@ -22,6 +22,7 @@ from app.systems.gym.api import (
 )
 from app.systems.platform.api import (
     access,
+    agreements,
     auth,
     commerce,
     device,
@@ -104,6 +105,7 @@ def create_app() -> FastAPI:
     app.include_router(platform_navigation.router, prefix="/api/v1")
     app.include_router(payment_settings.router, prefix="/api/v1")
     app.include_router(site_profile.router, prefix="/api/v1")
+    app.include_router(agreements.router, prefix="/api/v1")
     app.include_router(sms.router, prefix="/api/v1")
     app.include_router(uploads.router, prefix="/api/v1")
     app.include_router(payment_notify.router, prefix="/api/v1")

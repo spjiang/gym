@@ -1,6 +1,7 @@
 """模型门面：统一导出各子系统模型，供 Alembic / 测试注册元数据。"""
 
 from app.systems.platform.models.access import AccessDevice, AccessEvent, AccessGrant, AccessPoint
+from app.systems.platform.models.agreement import LegalAgreement
 from app.systems.platform.models.audit import AuditLog
 from app.systems.platform.models.commerce import Order, Payment
 from app.systems.platform.models.identity import Role, StaffRole, StaffUser
@@ -74,6 +75,7 @@ __all__ = [
     "MenuDef",
     "RolePermission",
     "RoleMenu",
+    "LegalAgreement",
     "StaffUser",
     "Role",
     "StaffRole",

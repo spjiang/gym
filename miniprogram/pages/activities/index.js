@@ -4,6 +4,13 @@ Page({
     mine: [],
     activities: [],
     err: '',
+    agreeShow: false,
+    agreeLoading: false,
+    agreeError: '',
+    agreeSummary: '',
+    agreeTitle: '',
+    agreeContent: '',
+    agreeConfirmLabel: '立即报名',
   },
   async onShow() {
     await this.load()
@@ -66,9 +73,32 @@ Page({
     wx.navigateTo({ url: `/pages/activities/detail?id=${id}` })
   },
   async join(e) {
+    const { openAgreement } = require('../../utils/agreement')
+    const id = Number(e.currentTarget.dataset.id)
+    const name = e.currentTarget.dataset.name || ''
+    const priceText = e.currentTarget.dataset.price || ''
+    this._agreeNext = () => this.doJoin(id)
+    this.setData({ agreeConfirmLabel: String(priceText).indexOf('¥') >= 0 ? '报名并支付' : '立即报名' })
+    const ok = await openAgreement(this, {
+      merchantId: getApp().globalData.merchantId,
+      scene: 'activity',
+      summary: `${name}  ${priceText}`,
+    })
+    if (!ok) this._agreeNext = null
+  },
+  onAgreeClose() {
+    this._agreeNext = null
+    this.setData({ agreeShow: false })
+  },
+  async onAgreeConfirm() {
+    const next = this._agreeNext
+    this._agreeNext = null
+    this.setData({ agreeShow: false })
+    if (next) await next()
+  },
+  async doJoin(id) {
     const { request } = require('../../utils/api')
     const { payOrder } = require('../../utils/pay')
-    const id = Number(e.currentTarget.dataset.id)
     const mid = getApp().globalData.merchantId
     wx.showLoading({ title: '处理中' })
     try {

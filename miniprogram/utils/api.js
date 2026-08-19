@@ -24,7 +24,7 @@ function request({ url, method = 'GET', data }) {
       },
       success(res) {
         if (res.statusCode >= 200 && res.statusCode < 300) resolve(res.data)
-        else reject(res.data || { message: '请求失败' })
+        else reject({ ...(res.data || {}), statusCode: res.statusCode, message: (res.data && res.data.message) || '请求失败' })
       },
       fail: reject,
     })

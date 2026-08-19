@@ -18,10 +18,15 @@ type MenuItem = {
   is_active: boolean
 }
 type Category = { id: number; name: string; sort_order: number; is_active: boolean }
+type DeskTable = { id: number; name: string; is_active: boolean }
+type Member = { id: number; name: string; phone: string }
 
 const merchants = ref<Merchant[]>([])
 const menu = ref<MenuItem[]>([])
 const catalog = ref<Category[]>([])
+const tables = ref<DeskTable[]>([])
+const memberOptions = ref<Member[]>([])
+const memberLoading = ref(false)
 const { merchantId, requireMerchant } = useOpsMerchant(() => void refresh())
 const router = useRouter()
 const loading = ref(false)
@@ -89,8 +94,30 @@ const cartTotal = computed(() => cartLines.value.reduce((s, l) => s + l.amount, 
 
 watch(merchantId, () => {
   activeCat.value = ''
+  tableNo.value = ''
+  memberId.value = undefined
+  memberOptions.value = []
   for (const key of Object.keys(cart)) delete cart[Number(key)]
 })
+
+async function searchMembers(keyword: string) {
+  const q = keyword.trim()
+  if (!q) {
+    memberOptions.value = []
+    return
+  }
+  memberLoading.value = true
+  try {
+    const { data } = await http.get<{ items: Member[] }>('/members', {
+      params: { page: 1, page_size: 20, q, merchant_id: merchantId.value },
+    })
+    memberOptions.value = data.items || []
+  } catch {
+    memberOptions.value = []
+  } finally {
+    memberLoading.value = false
+  }
+}
 
 async function refresh() {
   loading.value = true
@@ -102,9 +129,10 @@ async function refresh() {
     if (!merchantId.value) {
       menu.value = []
       catalog.value = []
+      tables.value = []
       return
     }
-    const [menuItems, cats] = await Promise.all([
+    const [menuItems, cats, deskTables] = await Promise.all([
       fetchAllPages<MenuItem>('/catering/menu-items', {
         merchant_id: merchantId.value,
         active_only: true,
@@ -113,10 +141,16 @@ async function refresh() {
         merchant_id: merchantId.value,
         is_active: true,
       }),
+      fetchAllPages<DeskTable>('/catering/tables', {
+        merchant_id: merchantId.value,
+        active_only: true,
+      }),
     ])
     menu.value = menuItems
     catalog.value = cats
+    tables.value = deskTables
     if (activeCat.value !== '' && !categories.value.some((c) => c.id === activeCat.value)) activeCat.value = ''
+    if (tableNo.value && !tables.value.some((t) => t.name === tableNo.value)) tableNo.value = ''
   } catch (e: unknown) {
     ElMessage.error(e instanceof Error ? e.message : '加载失败')
   } finally {
@@ -272,14 +306,27 @@ onMounted(refresh)
           <span class="cart-line__amt">¥{{ l.amount.toFixed(2) }}</span>
         </div>
         <div v-if="!cartLines.length" class="empty">点卡片即可加购</div>
-        <el-input v-model="tableNo" placeholder="桌号（选填，须已建台）" clearable style="margin-bottom: 8px" />
+        <el-select v-model="tableNo" clearable filterable placeholder="散客 / 未选桌" style="width: 100%; margin-bottom: 8px">
+          <el-option v-for="t in tables" :key="t.id" :label="t.name" :value="t.name" />
+        </el-select>
         <el-input v-model="note" placeholder="备注（少冰 / 去冰）" clearable style="margin-bottom: 8px" />
-        <el-input
-          v-model.number="memberId"
-          placeholder="会员 ID（选填）"
+        <el-select
+          v-model="memberId"
+          filterable
+          remote
           clearable
-          style="margin-bottom: 8px"
-        />
+          :remote-method="searchMembers"
+          :loading="memberLoading"
+          placeholder="搜索会员手机号 / 姓名"
+          style="width: 100%; margin-bottom: 8px"
+        >
+          <el-option
+            v-for="m in memberOptions"
+            :key="m.id"
+            :label="`${m.name} ${m.phone}`"
+            :value="m.id"
+          />
+        </el-select>
         <div class="total">合计 <b>¥{{ cartTotal.toFixed(2) }}</b></div>
         <el-button type="primary" :loading="paying" :disabled="!cartLines.length" @click="checkout">
           下单并线下收款

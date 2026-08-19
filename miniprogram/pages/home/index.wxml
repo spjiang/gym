@@ -85,7 +85,7 @@
         <view class="pack-name">{{item.name}}</view>
         <view class="muted tight">{{item.meta}}</view>
         <view class="pack-price">¥ {{item.priceText}}</view>
-        <button size="mini" bindtap="buyCard" data-id="{{item.id}}">立即购买</button>
+        <button size="mini" bindtap="buyCard" data-id="{{item.id}}" data-name="{{item.name}}" data-price="{{item.priceText}}">立即购买</button>
       </view>
     </view>
     <view wx:else class="muted">暂无可售会籍</view>
@@ -99,7 +99,7 @@
         <view class="pack-name">{{item.name}}</view>
         <view class="muted tight">{{item.meta}}</view>
         <view class="pack-price cyan">¥ {{item.priceText}}</view>
-        <button size="mini" bindtap="buyPt" data-id="{{item.id}}">立即购买</button>
+        <button size="mini" bindtap="buyPt" data-id="{{item.id}}" data-name="{{item.name}}" data-price="{{item.priceText}}">立即购买</button>
       </view>
     </view>
     <view wx:else class="muted">暂无私教课包</view>
@@ -117,4 +117,14 @@
     </view>
     <view wx:if="{{!sessions.length}}" class="muted">暂无可约场次</view>
   </view>
+  <agreement-confirm
+    show="{{agreeShow}}"
+    summary="{{agreeSummary}}"
+    title="{{agreeTitle}}"
+    content="{{agreeContent}}"
+    error="{{agreeError}}"
+    loading="{{agreeLoading}}"
+    bind:close="onAgreeClose"
+    bind:confirm="onAgreeConfirm"
+  />
 </view>

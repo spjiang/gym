@@ -41,6 +41,7 @@ const router = useRouter()
 const merchantId = computed(() => Number(route.params.merchantId))
 
 const items = ref<MenuItem[]>([])
+const tables = ref<{ id: number; name: string }[]>([])
 const loading = ref(true)
 const err = ref('')
 const busy = ref(false)
@@ -75,6 +76,10 @@ const promoOff = computed(() => Number(quote.value?.promotion_discount_amount ||
 const couponOff = computed(() => Number(quote.value?.coupon_discount_amount || 0))
 const eligibleCoupons = computed(() => (quote.value?.coupons || []).filter((c) => c.eligible))
 const blockedCoupons = computed(() => (quote.value?.coupons || []).filter((c) => !c.eligible))
+const agreement = ref<{ id: number; title: string; content: string } | null>(null)
+const agreed = ref(false)
+const agreeErr = ref('')
+const fullOpen = ref(false)
 
 function money(n: number) {
   return n.toFixed(2)
@@ -96,13 +101,33 @@ async function loadMenu() {
   loading.value = true
   err.value = ''
   try {
-    const { data } = await http.get<MenuItem[]>('/member/catering/menu', {
-      params: { merchant_id: merchantId.value },
-    })
+    const [{ data }, { data: desk }] = await Promise.all([
+      http.get<MenuItem[]>('/member/catering/menu', {
+        params: { merchant_id: merchantId.value },
+      }),
+      http.get<{ id: number; name: string }[]>('/member/catering/tables', {
+        params: { merchant_id: merchantId.value },
+      }),
+    ])
     items.value = data
+    tables.value = desk
+    try {
+      const { data: row } = await http.get<{ id: number; title: string; content: string }>(
+        '/member/agreements',
+        { params: { merchant_id: merchantId.value, scene: 'dining' } },
+      )
+      agreement.value = row
+      agreeErr.value = ''
+    } catch (e: unknown) {
+      agreement.value = null
+      agreeErr.value = e instanceof Error ? e.message : '该门店尚未配置购买协议，请联系门店'
+    }
     const validIds = new Set(data.map((i) => i.id))
     for (const id of Object.keys(qty.value).map(Number)) {
       if (!validIds.has(id)) cart.setQty(merchantId.value, id, 0)
+    }
+    if (tableNo.value && !tables.value.some((t) => t.name === tableNo.value) && !tableLocked.value) {
+      tableNo.value = ''
     }
   } catch (e: unknown) {
     err.value = e instanceof Error ? e.message : '加载失败'
@@ -132,6 +157,10 @@ async function refreshQuote() {
 
 async function submit() {
   if (!cartLines.value.length) return
+  if (!agreement.value || !agreed.value) {
+    err.value = agreeErr.value || '请先阅读并同意点餐协议'
+    return
+  }
   busy.value = true
   err.value = ''
   try {
@@ -219,14 +248,14 @@ async function bindTableFromQuery() {
 
       <label class="mw-field">
         <span class="mw-field__label">{{ tableLocked ? '桌号' : '桌号（选填）' }}</span>
-        <input
+        <select
           v-if="!tableLocked"
           v-model="tableNo"
           class="mw-input"
-          type="text"
-          maxlength="16"
-          placeholder="吧台 / A3"
-        />
+        >
+          <option value="">散客 / 未选桌</option>
+          <option v-for="t in tables" :key="t.id" :value="t.name">{{ t.name }}</option>
+        </select>
         <span v-else class="seat">{{ tableNo }} · 扫码入座</span>
       </label>
       <label class="mw-field">
@@ -275,21 +304,48 @@ async function bindTableFromQuery() {
       </div>
 
       <div class="paybar">
-        <div>
-          <div class="paybar__label">实付</div>
-          <div class="paybar__price">¥{{ money(payable) }}</div>
+        <label class="agree">
+          <input v-model="agreed" type="checkbox" :disabled="!agreement" />
+          <span>
+            我已阅读并同意
+            <button type="button" class="link" :disabled="!agreement" @click.prevent="fullOpen = true">
+              《{{ agreement?.title || '购买协议' }}》
+            </button>
+          </span>
+        </label>
+        <p v-if="agreeErr" class="mw-msg mw-msg--error agree-err">{{ agreeErr }}</p>
+        <div class="paybar__row">
+          <div>
+            <div class="paybar__label">实付</div>
+            <div class="paybar__price">¥{{ money(payable) }}</div>
+          </div>
+          <button
+            class="mw-btn"
+            type="button"
+            :disabled="busy || !cartLines.length || !agreed || !agreement"
+            @click="submit"
+          >
+            {{ busy ? '提交中…' : '提交并支付' }}
+          </button>
         </div>
-        <button class="mw-btn" type="button" :disabled="busy || !cartLines.length" @click="submit">
-          {{ busy ? '提交中…' : '提交并支付' }}
-        </button>
       </div>
     </template>
+    <div v-if="fullOpen && agreement" class="sheet" role="dialog" aria-label="协议全文">
+      <button type="button" class="sheet__mask" aria-label="关闭" @click="fullOpen = false" />
+      <div class="sheet__panel">
+        <div class="sheet__head">
+          <strong>{{ agreement.title }}</strong>
+          <button type="button" class="link" @click="fullOpen = false">关闭</button>
+        </div>
+        <div class="body" v-html="agreement.content" />
+      </div>
+    </div>
   </section>
 </template>
 
 <style scoped>
 .checkout {
-  padding-bottom: 88px;
+  padding-bottom: 128px;
 }
 
 .back {
@@ -413,13 +469,27 @@ async function bindTableFromQuery() {
   bottom: calc(var(--mw-tab-h) + var(--mw-safe-bottom));
   width: min(100%, var(--mw-shell-max));
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
   padding: 10px 16px;
   background: var(--mw-bg-elevated);
   border-top: 1px solid var(--mw-border);
   z-index: 25;
+}
+
+.paybar__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.paybar .agree {
+  margin: 0;
+}
+
+.agree-err {
+  margin: 0;
 }
 
 .paybar__label {
@@ -440,5 +510,59 @@ async function bindTableFromQuery() {
   background: rgba(45, 212, 191, 0.16);
   color: var(--mw-cyan);
   font-weight: 650;
+}
+
+.agree {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 12px 0 8px;
+  font-size: 13px;
+  color: var(--mw-text-secondary);
+}
+
+.agree input {
+  margin-top: 3px;
+}
+
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+
+.sheet__mask {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  min-height: 0;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.sheet__panel {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 0;
+  width: min(100%, var(--mw-shell-max));
+  max-height: 88vh;
+  overflow: auto;
+  padding: 16px 16px calc(16px + var(--mw-safe-bottom));
+  border-radius: 16px 16px 0 0;
+  background: var(--mw-bg-elevated);
+}
+
+.sheet__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.body {
+  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 1.7;
 }
 </style>

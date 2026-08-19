@@ -13,6 +13,12 @@ Page({
     pts: [],
     sessions: [],
     activities: [],
+    agreeShow: false,
+    agreeLoading: false,
+    agreeError: '',
+    agreeSummary: '',
+    agreeTitle: '',
+    agreeContent: '',
   },
   async onShow() {
     const { request, fileUrl } = require('../../utils/api')
@@ -26,6 +32,7 @@ Page({
       if (!mid && merchants.length) {
         mid = merchants[0].id
         app.globalData.merchantId = mid
+        wx.setStorageSync('merchant_id', mid)
       }
       if (!mid) {
         this.setData({ loading: false, err: '请先选择门店' })
@@ -104,10 +111,36 @@ Page({
     wx.previewImage({ current, urls: this.data.gallery })
   },
   async buyCard(e) {
-    await this.buy('/member/orders/membership', e.currentTarget.dataset.id)
+    const { id, name, price } = e.currentTarget.dataset
+    this._agreeNext = () => this.buy('/member/orders/membership', id)
+    const { openAgreement } = require('../../utils/agreement')
+    const ok = await openAgreement(this, {
+      merchantId: getApp().globalData.merchantId,
+      scene: 'membership',
+      summary: `${name || ''}  ¥${price || ''}`,
+    })
+    if (!ok) this._agreeNext = null
   },
   async buyPt(e) {
-    await this.buy('/member/orders/pt-package', e.currentTarget.dataset.id)
+    const { id, name, price } = e.currentTarget.dataset
+    this._agreeNext = () => this.buy('/member/orders/pt-package', id)
+    const { openAgreement } = require('../../utils/agreement')
+    const ok = await openAgreement(this, {
+      merchantId: getApp().globalData.merchantId,
+      scene: 'pt_package',
+      summary: `${name || ''}  ¥${price || ''}`,
+    })
+    if (!ok) this._agreeNext = null
+  },
+  onAgreeClose() {
+    this._agreeNext = null
+    this.setData({ agreeShow: false })
+  },
+  async onAgreeConfirm() {
+    const next = this._agreeNext
+    this._agreeNext = null
+    this.setData({ agreeShow: false })
+    if (next) await next()
   },
   async buy(path, productId) {
     const { request } = require('../../utils/api')

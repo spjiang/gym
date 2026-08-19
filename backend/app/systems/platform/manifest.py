@@ -64,6 +64,13 @@ SYSTEM = {
             "sort_order": 102,
         },
         {
+            "code": "platform.agreements",
+            "path": "/platform/agreements",
+            "name": "协议管理",
+            "required_any": ["org:read", "org:write", "*"],
+            "sort_order": 103,
+        },
+        {
             "code": "platform.payment_reconcile",
             "path": "/platform/payment-reconcile",
             "name": "支付对账",

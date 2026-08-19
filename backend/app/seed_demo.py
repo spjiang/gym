@@ -22,6 +22,7 @@ from app.systems.platform.models.identity import Role, StaffRole, StaffUser
 from app.systems.platform.models.member import FaceStatus, Member, MerchantMember
 from app.systems.gym.models.membership import MembershipProduct, MembershipProductAccessPoint, ProductType
 from app.systems.platform.models.notification import Notification
+from app.systems.platform.models.agreement import LegalAgreement
 from app.systems.platform.models.org import Merchant, MerchantStatus, MerchantType, Site
 from app.systems.gym.models.retail import ProductCategory, RetailSku, StockMovement, StockMovementType
 from app.systems.catering.models.catering import CateringMenuCategory, CateringMenuItem, CateringTable
@@ -868,6 +869,52 @@ def seed_demo_catalog(db: Session, *, site: Site, gym: Merchant, role_map: dict[
                     )
                 )
                 db.flush()
+
+    def _ensure_agreement(merchant: Merchant, scene: str, title: str, content: str) -> None:
+        row = db.scalar(
+            select(LegalAgreement).where(
+                LegalAgreement.merchant_id == merchant.id,
+                LegalAgreement.scene == scene,
+            )
+        )
+        if row is None:
+            db.add(
+                LegalAgreement(
+                    site_id=site.id,
+                    merchant_id=merchant.id,
+                    scene=scene,
+                    title=title,
+                    content=content,
+                    is_enabled=True,
+                )
+            )
+            db.flush()
+
+    _ensure_agreement(
+        gym,
+        "membership",
+        "观野FIT会籍服务协议",
+        "购买会籍即表示您已阅读并同意场馆守则、有效期与退款规则。请按预约到店，遵守器械使用规范。",
+    )
+    _ensure_agreement(
+        gym,
+        "pt_package",
+        "观野FIT私教课包协议",
+        "课包按次核销，逾期未约视为放弃剩余课时。改约请提前与教练沟通。",
+    )
+    _ensure_agreement(
+        gym,
+        "activity",
+        "观野FIT活动报名须知",
+        "报名成功即占用名额。无故缺席可能影响后续活动报名。收费活动退款规则以活动说明为准。",
+    )
+    if bar is not None:
+        _ensure_agreement(
+            bar,
+            "dining",
+            "观野BAR点餐须知",
+            "下单后厨房按桌出餐。如需退款请联系吧台。酒水请适量饮用，未成年人禁止饮酒。",
+        )
 
     # —— 站内通知 ——
     notice_title = "【Demo】欢迎体验综合场地管理系统"

@@ -1,5 +1,14 @@
 Page({
-  data: { phone: '', code: '', password: '', mode: 'otp', referralCode: '', merchantId: null },
+  data: {
+    phone: '',
+    code: '',
+    password: '',
+    mode: 'otp',
+    referralCode: '',
+    merchantId: null,
+    table: '',
+    redirect: '',
+  },
   onLoad(options) {
     const app = getApp()
     const fromPage = app.resolveReferralCode(options)
@@ -8,10 +17,24 @@ Page({
       wx.setStorageSync('referral_code', fromPage)
     }
     const merchantId = options && options.merchant_id ? Number(options.merchant_id) : null
-    if (merchantId) app.globalData.merchantId = merchantId
+    const table = (options && options.table) || ''
+    let redirect = ''
+    if (options && options.redirect) {
+      try {
+        redirect = decodeURIComponent(options.redirect)
+      } catch (e) {
+        redirect = options.redirect
+      }
+    }
+    if (merchantId) {
+      app.globalData.merchantId = merchantId
+      wx.setStorageSync('merchant_id', merchantId)
+    }
     this.setData({
       referralCode: app.globalData.referralCode || '',
       merchantId: merchantId || app.globalData.merchantId || null,
+      table,
+      redirect,
     })
   },
   setMode(e) {
@@ -41,6 +64,7 @@ Page({
   },
   async login() {
     const { request } = require('../../utils/api')
+    const cart = require('../../utils/cateringCart')
     const app = getApp()
     try {
       const data =
@@ -62,7 +86,6 @@ Page({
             })
       app.globalData.token = data.access_token
       wx.setStorageSync('member_token', data.access_token)
-      // 登录后绑定小程序 openid（支付 JSAPI 需要）
       try {
         const { ensureMpOpenid } = require('../../utils/pay')
         await ensureMpOpenid()
@@ -70,8 +93,28 @@ Page({
         console.warn('openid bind skipped', bindErr)
       }
       const me = await request({ url: '/member/me' })
-      if (me.merchant_ids && me.merchant_ids.length) {
+      const keptMerchantId = this.data.merchantId || app.globalData.merchantId
+      if (keptMerchantId) {
+        app.globalData.merchantId = Number(keptMerchantId)
+        wx.setStorageSync('merchant_id', Number(keptMerchantId))
+      } else if (me.merchant_ids && me.merchant_ids.length) {
         app.globalData.merchantId = me.merchant_ids[0]
+        wx.setStorageSync('merchant_id', me.merchant_ids[0])
+      }
+      if (this.data.table && app.globalData.merchantId) {
+        try {
+          const table = await request({
+            url: `/member/catering/table?merchant_id=${app.globalData.merchantId}&code=${encodeURIComponent(this.data.table)}`,
+          })
+          cart.lockTable(app.globalData.merchantId, table.name)
+        } catch (e) {
+          /* 桌码无效时仍回跳点餐 */
+        }
+      }
+      const redirect = this.data.redirect
+      if (redirect && redirect.startsWith('/pages/')) {
+        wx.reLaunch({ url: redirect })
+        return
       }
       wx.reLaunch({ url: '/pages/home/index' })
     } catch (e) {

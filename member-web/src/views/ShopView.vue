@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import AgreementSheet from '../components/AgreementSheet.vue'
 import http from '../api/http'
 import { payMemberOrder } from '../api/pay'
 import { useAuthStore } from '../stores/auth'
@@ -18,6 +19,10 @@ const pts = ref<Product[]>([])
 const msg = ref('')
 const err = ref('')
 const busyId = ref<number | null>(null)
+const agreeOpen = ref(false)
+const agreeScene = ref<'membership' | 'pt_package'>('membership')
+const agreeSummary = ref('')
+const pendingBuy = ref<(() => Promise<void>) | null>(null)
 
 async function load() {
   const mid = auth.merchantId
@@ -29,17 +34,31 @@ async function load() {
   pts.value = p.data
 }
 
-async function buyCard(productId: number) {
+function buyCard(p: Product) {
+  agreeScene.value = 'membership'
+  agreeSummary.value = `${p.name}  ¥${p.price}`
+  pendingBuy.value = () => doBuy('/member/orders/membership', p.id, '购卡成功')
+  agreeOpen.value = true
+}
+
+function buyPt(p: Product) {
+  agreeScene.value = 'pt_package'
+  agreeSummary.value = `${p.name}  ¥${p.price}${p.session_count ? ` · ${p.session_count} 次` : ''}`
+  pendingBuy.value = () => doBuy('/member/orders/pt-package', p.id, '购买成功')
+  agreeOpen.value = true
+}
+
+async function doBuy(path: string, productId: number, okPrefix: string) {
   msg.value = ''
   err.value = ''
   busyId.value = productId
   try {
-    const { data: order } = await http.post('/member/orders/membership', {
+    const { data: order } = await http.post(path, {
       merchant_id: auth.merchantId,
       product_id: productId,
     })
     const paid = await payMemberOrder(order.id)
-    msg.value = `购卡成功，订单 #${paid.id || paid.order_id}，实付 ¥${paid.amount || order.amount}`
+    msg.value = `${okPrefix}，订单 #${paid.id || paid.order_id}，实付 ¥${paid.amount || order.amount}`
   } catch (e: unknown) {
     err.value = e instanceof Error ? e.message : '购买失败'
   } finally {
@@ -47,22 +66,10 @@ async function buyCard(productId: number) {
   }
 }
 
-async function buyPt(productId: number) {
-  msg.value = ''
-  err.value = ''
-  busyId.value = productId
-  try {
-    const { data: order } = await http.post('/member/orders/pt-package', {
-      merchant_id: auth.merchantId,
-      product_id: productId,
-    })
-    const paid = await payMemberOrder(order.id)
-    msg.value = `购买成功，订单 #${paid.id || paid.order_id}，实付 ¥${paid.amount || order.amount}`
-  } catch (e: unknown) {
-    err.value = e instanceof Error ? e.message : '购买失败'
-  } finally {
-    busyId.value = null
-  }
+async function onAgreeConfirm() {
+  const next = pendingBuy.value
+  pendingBuy.value = null
+  if (next) await next()
 }
 
 onMounted(load)
@@ -88,7 +95,7 @@ onMounted(load)
         class="mw-btn mw-btn--sm mw-list-row__action"
         type="button"
         :disabled="busyId === p.id"
-        @click="buyCard(p.id)"
+        @click="buyCard(p)"
       >
         {{ busyId === p.id ? '支付中' : '购买' }}
       </button>
@@ -107,11 +114,18 @@ onMounted(load)
         class="mw-btn mw-btn--sm mw-list-row__action"
         type="button"
         :disabled="busyId === p.id"
-        @click="buyPt(p.id)"
+        @click="buyPt(p)"
       >
         {{ busyId === p.id ? '支付中' : '购买' }}
       </button>
     </div>
     <div v-if="!pts.length" class="mw-empty">暂无课包</div>
+    <AgreementSheet
+      v-model:open="agreeOpen"
+      :merchant-id="auth.merchantId"
+      :scene="agreeScene"
+      :summary="agreeSummary"
+      @confirm="onAgreeConfirm"
+    />
   </section>
 </template>

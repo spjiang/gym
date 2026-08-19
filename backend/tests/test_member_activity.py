@@ -4,6 +4,8 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
+from tests.test_agreements import enable_agreement
+
 
 def _gym_id(client: TestClient, headers: dict) -> int:
     return client.get("/api/v1/merchants", headers=headers).json()[0]["id"]
@@ -79,6 +81,7 @@ def test_member_can_see_and_join_published_activity(client: TestClient, admin_he
     assert home.status_code == 200, home.text
     assert any(x["id"] == published["id"] for x in home.json()["activities"])
 
+    enable_agreement(client, admin_headers, gym_id, "activity")
     joined = client.post(
         "/api/v1/member/activity-registrations",
         headers=mheaders,

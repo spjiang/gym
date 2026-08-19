@@ -26,8 +26,19 @@
     <view class="row">
       <button size="mini" bindtap="goDetail" data-id="{{item.id}}">详情</button>
       <button wx:if="{{item.my_registration_status === 'pending' && item.my_order_id}}" bindtap="payPending" data-id="{{item.my_order_id}}">去支付</button>
-      <button wx:elif="{{item.can_register}}" bindtap="join" data-id="{{item.id}}">报名</button>
+      <button wx:elif="{{item.can_register}}" bindtap="join" data-id="{{item.id}}" data-name="{{item.name}}" data-price="{{item.priceText}}">报名</button>
       <button wx:elif="{{item.already_registered}}" disabled>已报名</button>
     </view>
   </view>
+  <agreement-confirm
+    show="{{agreeShow}}"
+    summary="{{agreeSummary}}"
+    title="{{agreeTitle}}"
+    content="{{agreeContent}}"
+    error="{{agreeError}}"
+    loading="{{agreeLoading}}"
+    confirm-label="{{agreeConfirmLabel}}"
+    bind:close="onAgreeClose"
+    bind:confirm="onAgreeConfirm"
+  />
 </view>

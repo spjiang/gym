@@ -91,3 +91,37 @@ def test_catering_table_qr_and_member_resolve(client: TestClient, admin_headers:
     )
     assert blocked.status_code == 400
     assert blocked.json()["code"] == "table_inactive"
+
+
+def test_member_tables_list_active_names_without_code(client: TestClient, admin_headers: dict):
+    bar_id = _bar_id(client, admin_headers)
+    active = client.post(
+        "/api/v1/catering/tables",
+        headers=admin_headers,
+        json={"merchant_id": bar_id, "name": "会员可选A"},
+    ).json()
+    paused = client.post(
+        "/api/v1/catering/tables",
+        headers=admin_headers,
+        json={"merchant_id": bar_id, "name": "会员不可见停用"},
+    ).json()
+    client.post(f"/api/v1/catering/tables/{paused['id']}/deactivate", headers=admin_headers)
+
+    member = client.post(
+        "/api/v1/members",
+        headers=admin_headers,
+        json={"phone": "13880000902", "name": "选桌会员", "merchant_id": bar_id},
+    ).json()
+    mheaders = _member_login(client, member["phone"])
+    listed = client.get(
+        "/api/v1/member/catering/tables",
+        headers=mheaders,
+        params={"merchant_id": bar_id},
+    )
+    assert listed.status_code == 200, listed.text
+    names = [row["name"] for row in listed.json()]
+    assert "会员可选A" in names
+    assert "会员不可见停用" not in names
+    hit = next(row for row in listed.json() if row["id"] == active["id"])
+    assert set(hit.keys()) == {"id", "name"}
+    assert "code" not in hit

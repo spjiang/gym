@@ -301,3 +301,141 @@ def test_activity_cover_and_share_link(client: TestClient, admin_headers: dict, 
         assert f"/m/{gym_id}/gym/activities/{created.json()['id']}" in link.json()["url"]
     finally:
         get_settings.cache_clear()
+
+
+def _publish_paid_activity(client: TestClient, headers: dict, gym_id: int, name: str, *, capacity: int = 1) -> dict:
+    activity = client.post(
+        "/api/v1/activities",
+        headers=headers,
+        json=_activity_payload(gym_id, name, price="88.00", capacity=capacity),
+    ).json()
+    client.post(f"/api/v1/activities/{activity['id']}/publish", headers=headers)
+    return activity
+
+
+def _register_and_pay(
+    client: TestClient, headers: dict, activity_id: int, member_id: int
+) -> dict:
+    reg = client.post(
+        "/api/v1/activity-registrations",
+        headers=headers,
+        json={"activity_id": activity_id, "member_id": member_id},
+    )
+    assert reg.status_code == 200, reg.text
+    order = reg.json()["order"]
+    paid = client.post(
+        f"/api/v1/orders/{order['id']}/pay/offline",
+        headers=headers,
+        json={"channel": "offline_cash"},
+    )
+    assert paid.status_code == 200, paid.text
+    return reg.json()["registration"]
+
+
+def test_attended_activity_refund_requires_force(client: TestClient, admin_headers: dict):
+    gym_id = _gym_id(client, admin_headers)
+    activity = _publish_paid_activity(client, admin_headers, gym_id, "已签到禁退")
+    member = _member(client, admin_headers, gym_id, "13530000021", "签到后退")
+    registration = _register_and_pay(client, admin_headers, activity["id"], member["id"])
+    checkin = client.post(
+        f"/api/v1/activity-registrations/{registration['id']}/checkin",
+        headers=admin_headers,
+    )
+    assert checkin.status_code == 200, checkin.text
+
+    blocked = client.post(
+        f"/api/v1/orders/{registration['order_id']}/refund",
+        headers=admin_headers,
+        json={"channel": "offline_cash", "reason": "已签到仍想退"},
+    )
+    assert blocked.status_code == 400, blocked.text
+    assert blocked.json()["code"] == "activity_attended"
+
+    forced = client.post(
+        f"/api/v1/orders/{registration['order_id']}/refund",
+        headers=admin_headers,
+        json={"channel": "offline_cash", "reason": "超管强制", "force": True},
+    )
+    assert forced.status_code == 200, forced.text
+    assert forced.json()["status"] == "refunded"
+
+    rows = client.get(
+        f"/api/v1/activity-registrations?activity_id={activity['id']}",
+        headers=admin_headers,
+    ).json()["items"]
+    assert rows[0]["status"] == "attended"
+    detail = client.get(f"/api/v1/activities/{activity['id']}", headers=admin_headers).json()
+    assert detail["registered_count"] == 1
+    assert detail["remaining_capacity"] == 0
+
+
+def test_no_show_releases_capacity_and_allows_reregister(client: TestClient, admin_headers: dict):
+    gym_id = _gym_id(client, admin_headers)
+    activity = _publish_paid_activity(client, admin_headers, gym_id, "缺席让座", capacity=1)
+    member = _member(client, admin_headers, gym_id, "13530000022", "缺席会员")
+    other = _member(client, admin_headers, gym_id, "13530000023", "候补会员")
+    registration = _register_and_pay(client, admin_headers, activity["id"], member["id"])
+
+    marked = client.post(
+        f"/api/v1/activity-registrations/{registration['id']}/no-show",
+        headers=admin_headers,
+    )
+    assert marked.status_code == 200, marked.text
+    assert marked.json()["status"] == "no_show"
+
+    detail = client.get(f"/api/v1/activities/{activity['id']}", headers=admin_headers).json()
+    assert detail["registered_count"] == 0
+    assert detail["remaining_capacity"] == 1
+
+    again = client.post(
+        "/api/v1/activity-registrations",
+        headers=admin_headers,
+        json={"activity_id": activity["id"], "member_id": member["id"]},
+    )
+    assert again.status_code == 200, again.text
+    assert again.json()["order"] is None
+    assert again.json()["registration"]["status"] == "confirmed"
+    assert again.json()["registration"]["order_id"] == registration["order_id"]
+
+    full = client.post(
+        "/api/v1/activity-registrations",
+        headers=admin_headers,
+        json={"activity_id": activity["id"], "member_id": other["id"]},
+    )
+    assert full.status_code == 409
+    assert full.json()["code"] == "activity_full"
+
+
+def test_stale_pending_hold_released_on_activity_query(client: TestClient, admin_headers: dict):
+    from datetime import datetime, timedelta, timezone
+
+    from app.core import db as db_module
+    from app.systems.platform.models.commerce import Order
+
+    gym_id = _gym_id(client, admin_headers)
+    activity = _publish_paid_activity(client, admin_headers, gym_id, "超时占坑")
+    member = _member(client, admin_headers, gym_id, "13530000024", "占坑会员")
+    reg = client.post(
+        "/api/v1/activity-registrations",
+        headers=admin_headers,
+        json={"activity_id": activity["id"], "member_id": member["id"]},
+    )
+    assert reg.status_code == 200, reg.text
+    order_id = reg.json()["order"]["id"]
+    assert client.get(f"/api/v1/activities/{activity['id']}", headers=admin_headers).json()[
+        "remaining_capacity"
+    ] == 0
+
+    db = db_module.SessionLocal()
+    try:
+        order = db.get(Order, order_id)
+        assert order is not None
+        order.created_at = datetime.now(timezone.utc) - timedelta(hours=1)
+        db.commit()
+    finally:
+        db.close()
+
+    detail = client.get(f"/api/v1/activities/{activity['id']}", headers=admin_headers)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["remaining_capacity"] == 1
+    assert detail.json()["registered_count"] == 0

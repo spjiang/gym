@@ -1,0 +1,34 @@
+<view wx:if="{{show}}" class="mask" catchtouchmove="noop">
+  <view class="backdrop" bindtap="onClose"></view>
+  <view class="panel" catchtap="noop">
+    <view class="head">
+      <text class="title">确认订单</text>
+      <text class="cancel" bindtap="onClose">取消</text>
+    </view>
+    <view wx:if="{{summary}}" class="summary">{{summary}}</view>
+    <view wx:if="{{loading}}" class="muted">加载协议…</view>
+    <view wx:elif="{{error}}" class="err">{{error}}</view>
+    <block wx:else>
+      <view class="agree" bindtap="onToggle">
+        <view class="box {{checked ? 'on' : ''}}"></view>
+        <view class="agree-text">
+          我已阅读并同意
+          <text class="link" catchtap="onOpenFull">《{{title}}》</text>
+        </view>
+      </view>
+      <button class="ok" disabled="{{!checked}}" bindtap="onConfirm">{{confirmLabel}}</button>
+    </block>
+  </view>
+  <view wx:if="{{fullOpen}}" class="full">
+    <view class="backdrop" bindtap="onCloseFull"></view>
+    <view class="panel full-panel" catchtap="noop">
+      <view class="head">
+        <text class="title">{{title}}</text>
+        <text class="cancel" bindtap="onCloseFull">关闭</text>
+      </view>
+      <scroll-view scroll-y class="body">
+        <rich-text nodes="{{contentHtml}}"></rich-text>
+      </scroll-view>
+    </view>
+  </view>
+</view>

@@ -305,3 +305,47 @@ def mark_payout_paid(
     )
     db.flush()
     return payout
+
+
+_OPEN_PAYOUT_STATUS = {PayoutStatus.REQUESTED.value, PayoutStatus.APPROVED.value}
+
+
+def sync_open_commission_payouts(db: Session, order_id: int) -> int:
+    """订单退款后按最新提成金额重算未打款提现单；无可打金额则驳回。已打款保持人工扣回。"""
+    records = list(
+        db.scalars(select(CommissionRecord).where(CommissionRecord.order_id == order_id)).all()
+    )
+    if not records:
+        return 0
+    record_ids = [r.id for r in records]
+    rec_by_id = {r.id: r for r in records}
+    items = list(
+        db.scalars(select(PayoutItem).where(PayoutItem.commission_record_id.in_(record_ids))).all()
+    )
+    if not items:
+        return 0
+    changed = 0
+    for payout_id in {item.payout_id for item in items}:
+        payout = db.get(Payout, payout_id)
+        if payout is None or payout.status not in _OPEN_PAYOUT_STATUS:
+            continue
+        payout_items = [item for item in items if item.payout_id == payout_id]
+        total = Decimal("0.00")
+        for item in payout_items:
+            rec = rec_by_id.get(item.commission_record_id)
+            if rec is None or rec.status == CommissionStatus.VOID.value or money(rec.amount) <= 0:
+                db.delete(item)
+                continue
+            item.amount = money(rec.amount)
+            total += item.amount
+        if total <= 0:
+            reject_payout(db, payout, reason="订单退款后无可打金额", actor_staff_id=None)
+        else:
+            payout.amount = total
+            suffix = "（订单退款已同步金额）"
+            if suffix not in (payout.note or ""):
+                payout.note = f"{payout.note}{suffix}" if payout.note else "订单退款已同步金额"
+        changed += 1
+    if changed:
+        db.flush()
+    return changed

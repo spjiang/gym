@@ -89,3 +89,14 @@ def require_active_table_label(db: Session, *, merchant_id: int, table_no: str) 
     if not row.is_active:
         raise AppError("table_inactive", "该桌已停用", status_code=400)
     return row
+
+
+def list_active_tables(db: Session, *, merchant_id: int) -> list[CateringTable]:
+    """点单用的启用桌清单。"""
+    return list(
+        db.scalars(
+            select(CateringTable)
+            .where(CateringTable.merchant_id == merchant_id, CateringTable.is_active.is_(True))
+            .order_by(CateringTable.sort_order.asc(), CateringTable.id.asc())
+        ).all()
+    )

@@ -3,7 +3,7 @@
 const KEY = 'mp_catering_cart'
 
 function empty() {
-  return { qty: {}, note: '', tableNo: '', tableLocked: false }
+  return { qty: {}, note: '', tableNo: '', tableLocked: false, couponId: null }
 }
 
 function readAll() {
@@ -92,6 +92,18 @@ function lockTable(merchantId, tableNo) {
   writeAll(all)
 }
 
+function couponOf(merchantId) {
+  const id = ensure(merchantId).cart.couponId
+  return id ? Number(id) : null
+}
+
+function setCoupon(merchantId, couponId) {
+  const { all, key, cart } = ensure(merchantId)
+  cart.couponId = couponId || null
+  all[key] = cart
+  writeAll(all)
+}
+
 function clear(merchantId) {
   const { all, key, cart } = ensure(merchantId)
   all[key] = {
@@ -115,5 +127,7 @@ module.exports = {
   tableLockedOf,
   setTableNo,
   lockTable,
+  couponOf,
+  setCoupon,
   clear,
 }

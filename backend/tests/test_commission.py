@@ -591,3 +591,93 @@ def test_pt_session_commission_on_complete(client: TestClient, admin_headers: di
     assert rows[0]["beneficiary_type"] == "coach"
     assert rows[0]["beneficiary_name"] == "提成教练"
     assert rows[0]["source_type"] == "pt_appointment"
+
+
+def _staff_id(client: TestClient, headers: dict) -> int:
+    return client.get("/api/v1/auth/me", headers=headers).json()["id"]
+
+
+def test_partial_refund_scales_open_commission_payout(client: TestClient, admin_headers: dict):
+    gym_id = _gym_id(client, admin_headers)
+    _rule(client, admin_headers, gym_id)
+    sold = _sell_membership(client, admin_headers, gym_id, phone="13550000031")
+    order_id = sold["order"]["id"]
+    record = client.get(
+        f"/api/v1/commission-records?merchant_id={gym_id}&scope=membership_sale",
+        headers=admin_headers,
+    ).json()["items"][0]
+    assert record["amount"] == "100.00"
+    confirmed = client.post(
+        f"/api/v1/commission-records/{record['id']}/status",
+        headers=admin_headers,
+        json={"status": "confirmed"},
+    )
+    assert confirmed.status_code == 200, confirmed.text
+
+    payout = client.post(
+        "/api/v1/payouts",
+        headers=admin_headers,
+        json={
+            "source": "commission",
+            "beneficiary_type": "staff",
+            "beneficiary_id": _staff_id(client, admin_headers),
+            "merchant_id": gym_id,
+            "record_ids": [record["id"]],
+        },
+    )
+    assert payout.status_code == 200, payout.text
+    assert payout.json()["amount"] == "100.00"
+    assert payout.json()["status"] == "requested"
+    payout_id = payout.json()["id"]
+
+    refunded = client.post(
+        f"/api/v1/orders/{order_id}/refund",
+        headers=admin_headers,
+        json={"channel": "offline_cash", "amount": "100.00", "reason": "部分退同步提现", "force": True},
+    )
+    assert refunded.status_code == 200, refunded.text
+
+    listed = client.get("/api/v1/payouts", headers=admin_headers, params={"status": "requested"}).json()
+    hit = next(x for x in listed["items"] if x["id"] == payout_id)
+    assert hit["amount"] == "90.00"
+    assert hit["status"] == "requested"
+
+
+def test_full_refund_rejects_open_commission_payout(client: TestClient, admin_headers: dict):
+    gym_id = _gym_id(client, admin_headers)
+    _rule(client, admin_headers, gym_id)
+    sold = _sell_membership(client, admin_headers, gym_id, phone="13550000032")
+    order_id = sold["order"]["id"]
+    record = client.get(
+        f"/api/v1/commission-records?merchant_id={gym_id}&scope=membership_sale",
+        headers=admin_headers,
+    ).json()["items"][0]
+    client.post(
+        f"/api/v1/commission-records/{record['id']}/status",
+        headers=admin_headers,
+        json={"status": "confirmed"},
+    )
+    payout = client.post(
+        "/api/v1/payouts",
+        headers=admin_headers,
+        json={
+            "source": "commission",
+            "beneficiary_type": "staff",
+            "beneficiary_id": _staff_id(client, admin_headers),
+            "merchant_id": gym_id,
+            "record_ids": [record["id"]],
+        },
+    )
+    assert payout.status_code == 200, payout.text
+    payout_id = payout.json()["id"]
+
+    refunded = client.post(
+        f"/api/v1/orders/{order_id}/refund",
+        headers=admin_headers,
+        json={"channel": "offline_cash", "reason": "全额退驳回提现"},
+    )
+    assert refunded.status_code == 200, refunded.text
+
+    listed = client.get("/api/v1/payouts", headers=admin_headers).json()["items"]
+    hit = next(x for x in listed if x["id"] == payout_id)
+    assert hit["status"] == "rejected"

@@ -17,6 +17,12 @@ App({
     } else {
       this.globalData.referralCode = wx.getStorageSync('referral_code') || ''
     }
+    const query = (options && options.query) || {}
+    const merchantId = query.merchant_id ? Number(query.merchant_id) : wx.getStorageSync('merchant_id')
+    if (merchantId) {
+      this.globalData.merchantId = Number(merchantId)
+      wx.setStorageSync('merchant_id', Number(merchantId))
+    }
   },
   /** 扫码进入支持 promoter 参数或小程序码 scene */
   resolveReferralCode(query) {

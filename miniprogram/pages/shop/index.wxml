@@ -7,7 +7,7 @@
         <view>{{item.name}}{{item.is_trial ? '（体验）' : ''}}</view>
         <view class="price">¥{{item.effective_price || item.price}}</view>
       </view>
-      <button size="mini" data-id="{{item.id}}" bindtap="buyCard">购买</button>
+      <button size="mini" data-id="{{item.id}}" data-name="{{item.name}}" data-price="{{item.effective_price || item.price}}" bindtap="buyCard">购买</button>
     </view>
   </block>
   <view wx:if="{{!cards.length}}" class="muted">暂无卡种</view>
@@ -19,8 +19,18 @@
         <view>{{item.name}}</view>
         <view class="price">¥{{item.price}} · {{item.session_count}} 次</view>
       </view>
-      <button size="mini" data-id="{{item.id}}" bindtap="buyPt">购买</button>
+      <button size="mini" data-id="{{item.id}}" data-name="{{item.name}}" data-price="{{item.price}}" bindtap="buyPt">购买</button>
     </view>
   </block>
   <view wx:if="{{!pts.length}}" class="muted">暂无课包</view>
+  <agreement-confirm
+    show="{{agreeShow}}"
+    summary="{{agreeSummary}}"
+    title="{{agreeTitle}}"
+    content="{{agreeContent}}"
+    error="{{agreeError}}"
+    loading="{{agreeLoading}}"
+    bind:close="onAgreeClose"
+    bind:confirm="onAgreeConfirm"
+  />
 </view>

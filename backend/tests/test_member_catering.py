@@ -5,6 +5,7 @@ import os
 from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
+from tests.test_agreements import enable_agreement
 
 
 def _member_login(client: TestClient, phone: str) -> dict:
@@ -122,6 +123,7 @@ def test_member_dining_checkout_pay_refund(client: TestClient, admin_headers: di
     )
     assert desk.status_code == 200, desk.text
 
+    enable_agreement(client, admin_headers, bar_id, "dining", title="观野BAR点餐须知")
     order = client.post(
         "/api/v1/member/catering/checkout",
         headers=mheaders,
@@ -265,6 +267,7 @@ def test_member_dining_quote_coupon_and_downline_discount(client: TestClient, ad
     assert quoted.json()["coupon_discount_amount"] == "5.00"
     assert quoted.json()["payable"] == "33.00"
 
+    enable_agreement(client, admin_headers, bar_id, "dining", title="观野BAR点餐须知")
     order = client.post(
         "/api/v1/member/catering/checkout",
         headers=mheaders,

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import AgreementSheet from '../components/AgreementSheet.vue'
 import http from '../api/http'
 import { payMemberOrder } from '../api/pay'
 import { useAuthStore } from '../stores/auth'
@@ -43,6 +44,10 @@ const mine = ref<Registration[]>([])
 const msg = ref('')
 const err = ref('')
 const busyId = ref<number | null>(null)
+const agreeOpen = ref(false)
+const agreeSummary = ref('')
+const agreeConfirmLabel = ref('立即报名')
+const pendingJoin = ref<(() => Promise<void>) | null>(null)
 
 function fmt(iso?: string | null) {
   if (!iso) return '—'
@@ -76,7 +81,14 @@ async function load() {
   mine.value = r.data
 }
 
-async function join(activityId: number) {
+async function join(a: Activity) {
+  agreeSummary.value = `${a.name}  ${money(a.price)}`
+  agreeConfirmLabel.value = Number(a.price) > 0 ? '报名并支付' : '立即报名'
+  pendingJoin.value = () => doJoin(a.id)
+  agreeOpen.value = true
+}
+
+async function doJoin(activityId: number) {
   msg.value = ''
   err.value = ''
   busyId.value = activityId
@@ -98,6 +110,12 @@ async function join(activityId: number) {
   } finally {
     busyId.value = null
   }
+}
+
+async function onAgreeConfirm() {
+  const next = pendingJoin.value
+  pendingJoin.value = null
+  if (next) await next()
 }
 
 async function payPending(orderId: number) {
@@ -206,7 +224,7 @@ onMounted(load)
           class="mw-btn mw-btn--sm"
           type="button"
           :disabled="busyId === a.id"
-          @click="join(a.id)"
+          @click="join(a)"
         >
           {{ busyId === a.id ? '处理中' : '报名' }}
         </button>
@@ -216,6 +234,14 @@ onMounted(load)
       </div>
     </div>
     <div v-if="!activities.length" class="mw-empty">暂无可报活动</div>
+    <AgreementSheet
+      v-model:open="agreeOpen"
+      :merchant-id="auth.merchantId"
+      scene="activity"
+      :summary="agreeSummary"
+      :confirm-label="agreeConfirmLabel"
+      @confirm="onAgreeConfirm"
+    />
   </section>
 </template>
 

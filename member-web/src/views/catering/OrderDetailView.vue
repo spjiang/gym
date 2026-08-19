@@ -94,7 +94,7 @@ function startPoll() {
   stopPoll()
   timer = window.setInterval(() => {
     const o = order.value
-    if (o?.status === 'paid' && (o.dining_status === 'preparing' || o.dining_status === 'ready' || !o.dining_status)) {
+    if (o?.status === 'pending' || (o?.status === 'paid' && (o.dining_status === 'preparing' || o.dining_status === 'ready' || !o.dining_status))) {
       void load()
     }
   }, 8000)

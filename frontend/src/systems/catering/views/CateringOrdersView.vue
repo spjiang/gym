@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import http from '../../../core/api/http'
 import { diningStatusLabel } from '../../../core/labels'
+import { canAny } from '../../../core/nav/systems'
+import { useAuthStore } from '../../../core/stores/auth'
 import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
 
 type Merchant = { id: number; name: string; subsystem_codes: string[] }
@@ -27,6 +29,8 @@ const { merchantId } = useOpsMerchant(() => {
   void refresh()
 })
 const router = useRouter()
+const auth = useAuthStore()
+const canOperate = computed(() => canAny(auth.me?.permissions || [], ['catering:order', '*']))
 const loading = ref(false)
 const total = ref(0)
 const page = ref(1)
@@ -188,7 +192,7 @@ onMounted(refresh)
         <h3>餐饮订单</h3>
         <p class="hint">查询餐饮单、待支付收款、退款。现场点菜请走「吧台点单」，出餐请看出餐看板。</p>
       </div>
-      <el-button type="primary" @click="router.push('/catering/pos')">去吧台点单</el-button>
+      <el-button v-if="canOperate" type="primary" @click="router.push('/catering/pos')">去吧台点单</el-button>
     </div>
 
     <el-form inline class="filters">
@@ -260,7 +264,7 @@ onMounted(refresh)
           <span v-else>—</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" min-width="300">
+      <el-table-column v-if="canOperate" label="操作" min-width="300">
         <template #default="{ row }">
           <el-button size="small" :disabled="row.status !== 'pending'" @click="payPending(row)">收款</el-button>
           <el-button size="small" :disabled="row.status !== 'pending'" @click="cancelPending(row)">取消</el-button>

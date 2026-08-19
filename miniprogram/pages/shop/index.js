@@ -1,5 +1,15 @@
 Page({
-  data: { title: '商城', cards: [], pts: [] },
+  data: {
+    title: '商城',
+    cards: [],
+    pts: [],
+    agreeShow: false,
+    agreeLoading: false,
+    agreeError: '',
+    agreeSummary: '',
+    agreeTitle: '',
+    agreeContent: '',
+  },
   async onShow() {
     const { request } = require('../../utils/api')
     const app = getApp()
@@ -22,10 +32,36 @@ Page({
     }
   },
   async buyCard(e) {
-    await this._buy('/member/orders/membership', e.currentTarget.dataset.id)
+    const { id, name, price } = e.currentTarget.dataset
+    this._agreeNext = () => this._buy('/member/orders/membership', id)
+    const { openAgreement } = require('../../utils/agreement')
+    const ok = await openAgreement(this, {
+      merchantId: getApp().globalData.merchantId,
+      scene: 'membership',
+      summary: `${name || ''}  ¥${price || ''}`,
+    })
+    if (!ok) this._agreeNext = null
   },
   async buyPt(e) {
-    await this._buy('/member/orders/pt-package', e.currentTarget.dataset.id)
+    const { id, name, price } = e.currentTarget.dataset
+    this._agreeNext = () => this._buy('/member/orders/pt-package', id)
+    const { openAgreement } = require('../../utils/agreement')
+    const ok = await openAgreement(this, {
+      merchantId: getApp().globalData.merchantId,
+      scene: 'pt_package',
+      summary: `${name || ''}  ¥${price || ''}`,
+    })
+    if (!ok) this._agreeNext = null
+  },
+  onAgreeClose() {
+    this._agreeNext = null
+    this.setData({ agreeShow: false })
+  },
+  async onAgreeConfirm() {
+    const next = this._agreeNext
+    this._agreeNext = null
+    this.setData({ agreeShow: false })
+    if (next) await next()
   },
   async _buy(path, productId) {
     const { request } = require('../../utils/api')

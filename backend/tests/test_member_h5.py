@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
+from tests.test_agreements import enable_agreement
 
 
 def _gym_id(client: TestClient, headers: dict) -> int:
@@ -212,6 +213,7 @@ def test_member_portal_book_and_purchase(client: TestClient, admin_headers: dict
     assert cancelled.json()["status"] == "cancelled"
 
     # 会员自行购卡并 mock 支付
+    enable_agreement(client, admin_headers, gym_id, "membership")
     order = client.post(
         "/api/v1/member/orders/membership",
         headers=mheaders,

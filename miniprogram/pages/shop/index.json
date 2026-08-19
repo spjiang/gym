@@ -1,1 +1,6 @@
-{"navigationBarTitleText":"shop"}
+{
+  "navigationBarTitleText": "shop",
+  "usingComponents": {
+    "agreement-confirm": "/components/agreement-confirm/index"
+  }
+}

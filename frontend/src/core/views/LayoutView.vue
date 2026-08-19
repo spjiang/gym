@@ -154,6 +154,7 @@ function menuIcon(path: string): Component {
     '/platform/subsystems': Setting,
     '/platform/payment-settings': Setting,
     '/platform/sms-settings': Setting,
+    '/platform/agreements': Document,
     '/catering/categories': Collection,
     '/catering/menu': Food,
     '/catering/tables': Grid,
