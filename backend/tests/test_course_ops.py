@@ -5,6 +5,8 @@ from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
 
+from tests.conftest import new_coach_member
+
 
 def _gym_id(client: TestClient, headers: dict) -> int:
     return client.get("/api/v1/merchants", headers=headers).json()[0]["id"]
@@ -60,6 +62,7 @@ def test_pt_purchase_fulfill_and_consume(client: TestClient, admin_headers: dict
         json={
             "merchant_id": gym_id,
             "staff_user_id": staff["id"],
+            "member_id": new_coach_member(client, admin_headers, gym_id)["id"],
             "display_name": "私教甲",
             "specialties": "增肌",
         },
@@ -243,7 +246,7 @@ def test_group_booking_membership_full_cancel(client: TestClient, admin_headers:
     coach = client.post(
         "/api/v1/coaches",
         headers=admin_headers,
-        json={"merchant_id": gym_id, "staff_user_id": staff["id"], "display_name": "团课教练"},
+        json={"merchant_id": gym_id, "staff_user_id": staff["id"], "member_id": new_coach_member(client, admin_headers, gym_id)["id"], "display_name": "团课教练"},
     ).json()
 
     # 停用后不可排场
@@ -291,7 +294,7 @@ def test_group_booking_membership_full_cancel(client: TestClient, admin_headers:
     coach2 = client.post(
         "/api/v1/coaches",
         headers=admin_headers,
-        json={"merchant_id": gym_id, "staff_user_id": staff2["id"], "display_name": "团课教练2"},
+        json={"merchant_id": gym_id, "staff_user_id": staff2["id"], "member_id": new_coach_member(client, admin_headers, gym_id)["id"], "display_name": "团课教练2"},
     ).json()
 
     session = client.post(
@@ -567,7 +570,7 @@ def test_group_session_soft_delete(client: TestClient, admin_headers: dict):
     coach = client.post(
         "/api/v1/coaches",
         headers=admin_headers,
-        json={"merchant_id": gym_id, "staff_user_id": staff["id"], "display_name": "删除场次教练"},
+        json={"merchant_id": gym_id, "staff_user_id": staff["id"], "member_id": new_coach_member(client, admin_headers, gym_id)["id"], "display_name": "删除场次教练"},
     ).json()
     course = client.post(
         "/api/v1/group-courses",
@@ -668,6 +671,7 @@ def test_coach_profile_fields(client: TestClient, admin_headers: dict):
         json={
             "merchant_id": gym_id,
             "staff_user_id": staff["id"],
+            "member_id": new_coach_member(client, admin_headers, gym_id)["id"],
             "display_name": "林教练",
             "title": "金牌私教",
             "gender": "male",
@@ -688,6 +692,8 @@ def test_coach_profile_fields(client: TestClient, admin_headers: dict):
     assert body["gender"] == "male"
     assert body["avatar_url"] == avatar
     assert body["intro_image_urls"] == gallery
+    assert body["member_id"] is not None
+    assert body["promotion_code"]
     assert body["years_experience"] == 7
 
     bad = client.patch(
@@ -695,6 +701,7 @@ def test_coach_profile_fields(client: TestClient, admin_headers: dict):
         headers=admin_headers,
         json={
             "staff_user_id": staff["id"],
+            "member_id": new_coach_member(client, admin_headers, gym_id)["id"],
             "display_name": "林教练",
             "avatar_url": "https://example.com/a.jpg",
         },
@@ -713,6 +720,7 @@ def test_coach_profile_fields(client: TestClient, admin_headers: dict):
         headers=admin_headers,
         json={
             "staff_user_id": staff["id"],
+            "member_id": new_coach_member(client, admin_headers, gym_id)["id"],
             "display_name": "林教练",
             "title": "团课+私教",
             "gender": "male",

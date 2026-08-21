@@ -83,7 +83,7 @@ watch(
         <p v-if="err" class="mw-msg mw-msg--error">{{ err }}</p>
         <label class="agree">
           <input v-model="agreed" type="checkbox" />
-          <span>
+          <span class="agree__text">
             我已阅读并同意
             <button type="button" class="link" @click.prevent="fullOpen = true">《{{ agreement.title }}》</button>
           </span>
@@ -162,19 +162,32 @@ watch(
   align-items: flex-start;
   margin: 12px 0 16px;
   font-size: 13px;
+  line-height: 1.6;
   color: var(--mw-text-secondary);
 }
 .agree input {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
   margin-top: 3px;
+  flex-shrink: 0;
+}
+.agree__text {
+  flex: 1;
+  min-width: 0;
 }
 .link {
+  display: inline;
   border: 0;
   padding: 0;
   min-height: 0;
+  height: auto;
+  width: auto;
   background: transparent;
   color: var(--mw-brand);
   font: inherit;
   font-weight: 650;
+  vertical-align: baseline;
 }
 .body {
   white-space: pre-wrap;

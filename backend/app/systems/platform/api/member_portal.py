@@ -292,8 +292,10 @@ def _primary_system(codes: list[str]) -> str | None:
     return codes[0] if codes else None
 
 
-def _member_merchants(db: Session, member_id: int) -> list[MemberMerchantOut]:
-    ids = _merchant_ids(db, member_id)
+def _site_merchants(db: Session, site_id: int) -> list[MemberMerchantOut]:
+    ids = list(
+        db.scalars(select(Merchant.id).where(Merchant.site_id == site_id).order_by(Merchant.id.asc())).all()
+    )
     out: list[MemberMerchantOut] = []
     for mid in ids:
         m = db.get(Merchant, mid)
@@ -507,7 +509,8 @@ def member_site(db: Session = Depends(get_db), mctx: MemberContext = Depends(get
 @router.get("/me", response_model=MemberMeOut)
 def member_me(db: Session = Depends(get_db), mctx: MemberContext = Depends(get_current_member)):
     m = mctx.member
-    merchants = _member_merchants(db, m.id)
+    merchant_ids = _merchant_ids(db, m.id)
+    merchants = _site_merchants(db, m.site_id)
     first_name = None
     if m.first_merchant_id is not None:
         fm = db.get(Merchant, m.first_merchant_id)
@@ -518,7 +521,7 @@ def member_me(db: Session = Depends(get_db), mctx: MemberContext = Depends(get_c
         phone=m.phone,
         name=m.name,
         face_status=m.face_status,
-        merchant_ids=[x.id for x in merchants],
+        merchant_ids=merchant_ids,
         merchants=merchants,
         acquisition_source=getattr(m, "acquisition_source", "platform") or "platform",
         first_merchant_id=getattr(m, "first_merchant_id", None),

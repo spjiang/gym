@@ -146,7 +146,7 @@ onUnmounted(() => {
         </button>
       </div>
 
-      <div v-if="!sections.length" class="mw-empty">暂无关联门店，请到店由前台为你建档关联。</div>
+      <div v-if="!sections.length" class="mw-empty">暂无可用门店，请联系门店开通业态。</div>
 
       <section v-for="sec in sections" :key="sec.key" class="brands">
         <div class="sec-head">

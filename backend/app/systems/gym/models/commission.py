@@ -70,6 +70,26 @@ class BeneficiaryType(str, Enum):
     MEMBER = "member"
 
 
+class CommissionCategory(str, Enum):
+    """提成业务类别：销售 / 课时 / 推荐。"""
+
+    SALE = "sale"
+    SESSION = "session"
+    REFERRAL = "referral"
+
+
+# 场景 → 提成类别
+SCOPE_CATEGORY = {
+    CommissionScope.MEMBERSHIP_SALE.value: CommissionCategory.SALE.value,
+    CommissionScope.PT_SALE.value: CommissionCategory.SALE.value,
+    CommissionScope.RETAIL_SALE.value: CommissionCategory.SALE.value,
+    CommissionScope.ACTIVITY_SALE.value: CommissionCategory.SALE.value,
+    CommissionScope.GROUP_SESSION.value: CommissionCategory.SESSION.value,
+    CommissionScope.PT_SESSION.value: CommissionCategory.SESSION.value,
+    CommissionScope.REFERRAL.value: CommissionCategory.REFERRAL.value,
+}
+
+
 class CommissionRule(Base):
     """商户可配置的提成规则；同场景可配多条，按 priority 取首条命中。"""
 
@@ -118,11 +138,17 @@ class CommissionRecord(Base):
     merchant_id: Mapped[int] = mapped_column(ForeignKey("merchants.id"), nullable=False, index=True)
     rule_id: Mapped[int | None] = mapped_column(ForeignKey("commission_rules.id"), index=True)
     scope: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    # sale / session / referral
+    category: Mapped[str] = mapped_column(
+        String(32), nullable=False, default=CommissionCategory.SALE.value, index=True
+    )
     # order / group_session / pt_appointment / pt_package
     source_type: Mapped[str] = mapped_column(String(32), nullable=False)
     source_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id"), index=True)
     member_id: Mapped[int | None] = mapped_column(ForeignKey("members.id"), index=True)
+    # 课时提成追溯教练档案；受益人已改为教练绑定会员
+    coach_id: Mapped[int | None] = mapped_column(ForeignKey("coaches.id"), nullable=True, index=True)
     # 受益人多态引用：staff_users / coaches / members
     beneficiary_type: Mapped[str] = mapped_column(String(16), nullable=False)
     beneficiary_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)

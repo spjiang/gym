@@ -75,10 +75,12 @@ class RecordOut(ORMModel):
     rule_id: int | None
     rule_name: str | None = None
     scope: str
+    category: str
     source_type: str
     source_id: int
     order_id: int | None
     member_id: int | None
+    coach_id: int | None = None
     beneficiary_type: str
     beneficiary_id: int
     beneficiary_name: str
@@ -338,10 +340,12 @@ def _record_out(row: CommissionRecord, rule_names: dict[int, str]) -> RecordOut:
         rule_id=row.rule_id,
         rule_name=rule_names.get(row.rule_id) if row.rule_id else None,
         scope=row.scope,
+        category=row.category,
         source_type=row.source_type,
         source_id=row.source_id,
         order_id=row.order_id,
         member_id=row.member_id,
+        coach_id=row.coach_id,
         beneficiary_type=row.beneficiary_type,
         beneficiary_id=row.beneficiary_id,
         beneficiary_name=row.beneficiary_name,
@@ -360,6 +364,7 @@ def _record_out(row: CommissionRecord, rule_names: dict[int, str]) -> RecordOut:
 def list_records(
     merchant_id: int | None = None,
     scope: str | None = None,
+    category: str | None = None,
     status: str | None = None,
     beneficiary_type: str | None = None,
     beneficiary_id: int | None = None,
@@ -376,6 +381,8 @@ def list_records(
     stmt = select(CommissionRecord).where(CommissionRecord.merchant_id.in_(mids or [-1]))
     if scope:
         stmt = stmt.where(CommissionRecord.scope == scope)
+    if category:
+        stmt = stmt.where(CommissionRecord.category == category)
     if status:
         stmt = stmt.where(CommissionRecord.status == status)
     if beneficiary_type:

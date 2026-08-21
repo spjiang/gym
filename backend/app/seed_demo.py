@@ -19,7 +19,8 @@ from app.systems.gym.models.activity import Activity, ActivityStatus
 from app.systems.gym.models.course import Coach, GroupCourse, GroupSession, GroupSessionStatus, PtPackageProduct
 from app.systems.gym.models.equipment import EquipmentAsset, EquipmentStatus
 from app.systems.platform.models.identity import Role, StaffRole, StaffUser
-from app.systems.platform.models.member import FaceStatus, Member, MerchantMember
+from app.systems.platform.models.member import AcquisitionSource, FaceStatus, Member, MerchantMember
+from app.systems.platform.services.promotion import ensure_member_promoter_code
 from app.systems.gym.models.membership import MembershipProduct, MembershipProductAccessPoint, ProductType
 from app.systems.platform.models.notification import Notification
 from app.systems.platform.models.agreement import LegalAgreement
@@ -436,13 +437,39 @@ def seed_demo_catalog(db: Session, *, site: Site, gym: Merchant, role_map: dict[
         access_point_ids=gym_point_ids,
     )
 
-    # —— 教练档案 ——
-    def ensure_coach(staff: StaffUser, display_name: str, specialties: str) -> Coach:
+    # —— 教练档案（主身份挂会员） ——
+    def ensure_coach_member(phone: str, name: str) -> Member:
+        member = db.scalar(select(Member).where(Member.site_id == site.id, Member.phone == phone))
+        if member is None:
+            member = Member(
+                site_id=site.id,
+                phone=phone,
+                name=name,
+                face_status=FaceStatus.NOT_ENROLLED.value,
+                acquisition_source=AcquisitionSource.MERCHANT.value,
+                first_merchant_id=gym.id,
+            )
+            db.add(member)
+            db.flush()
+        linked = db.scalar(
+            select(MerchantMember).where(
+                MerchantMember.member_id == member.id, MerchantMember.merchant_id == gym.id
+            )
+        )
+        if linked is None:
+            db.add(MerchantMember(member_id=member.id, merchant_id=gym.id))
+            db.flush()
+        ensure_member_promoter_code(db, member, force=True)
+        return member
+
+    def ensure_coach(staff: StaffUser, display_name: str, specialties: str, *, phone: str) -> Coach:
+        member = ensure_coach_member(phone, display_name)
         coach = db.scalar(select(Coach).where(Coach.staff_user_id == staff.id))
         if coach is None:
             coach = Coach(
                 merchant_id=gym.id,
                 staff_user_id=staff.id,
+                member_id=member.id,
                 display_name=display_name,
                 specialties=specialties,
                 availability_note="工作日 10:00-21:00",
@@ -450,10 +477,12 @@ def seed_demo_catalog(db: Session, *, site: Site, gym: Merchant, role_map: dict[
             )
             db.add(coach)
             db.flush()
+        else:
+            coach.member_id = member.id
         return coach
 
-    coach_qiang = ensure_coach(coach_staff_1, "阿强", "增肌,力量")
-    coach_ya = ensure_coach(coach_staff_2, "小雅", "减脂,团操")
+    coach_qiang = ensure_coach(coach_staff_1, "阿强", "增肌,力量", phone="13800001001")
+    coach_ya = ensure_coach(coach_staff_2, "小雅", "减脂,团操", phone="13800001002")
 
     coach_qiang.title = "金牌私教"
     coach_qiang.gender = "male"

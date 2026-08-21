@@ -69,3 +69,19 @@ def admin_headers(client: TestClient) -> dict[str, str]:
     assert resp.status_code == 200, resp.text
     token = resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
+
+
+_coach_member_seq = {"n": 0}
+
+
+def new_coach_member(client: TestClient, headers: dict, gym_id: int, name: str = "教练会员") -> dict:
+    """创建供教练绑定的会员主档。"""
+    _coach_member_seq["n"] += 1
+    phone = f"1398{str(_coach_member_seq['n']).zfill(7)}"[:11]
+    resp = client.post(
+        "/api/v1/members",
+        headers=headers,
+        json={"phone": phone, "name": name, "merchant_id": gym_id},
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()

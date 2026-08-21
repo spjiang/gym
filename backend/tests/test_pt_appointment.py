@@ -4,6 +4,8 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
+from tests.conftest import new_coach_member
+
 
 def _gym_id(client: TestClient, headers: dict) -> int:
     return client.get("/api/v1/merchants", headers=headers).json()[0]["id"]
@@ -27,6 +29,7 @@ def _coach(client: TestClient, headers: dict, gym_id: int, username: str, name: 
         json={
             "merchant_id": gym_id,
             "staff_user_id": staff["id"],
+            "member_id": new_coach_member(client, headers, gym_id)["id"],
             "display_name": name,
             "hourly_rate": "300.00",
         },

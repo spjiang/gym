@@ -197,6 +197,12 @@ export const COMMISSION_BASIS_LABELS: Record<string, string> = {
   per_session: '按课时',
 }
 
+export const COMMISSION_CATEGORY_LABELS: Record<string, string> = {
+  sale: '销售提成',
+  session: '课时提成',
+  referral: '推荐提成',
+}
+
 export const COMMISSION_STATUS_LABELS: Record<string, string> = {
   pending: '待确认',
   confirmed: '已确认',
@@ -265,6 +271,11 @@ export function commissionBeneficiaryLabel(code: string | null | undefined): str
 export function commissionBasisLabel(code: string | null | undefined): string {
   if (!code) return '—'
   return COMMISSION_BASIS_LABELS[code] || code
+}
+
+export function commissionCategoryLabel(code: string | null | undefined): string {
+  if (!code) return '—'
+  return COMMISSION_CATEGORY_LABELS[code] || code
 }
 
 export function commissionStatusLabel(code: string | null | undefined): string {

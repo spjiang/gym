@@ -236,9 +236,13 @@ def create_payout(
             requested_by_staff_id=ctx.staff.id,
         )
     elif body.source == PayoutSource.COMMISSION.value:
-        beneficiary_type = body.beneficiary_type or BeneficiaryType.COACH.value
-        if beneficiary_type not in {BeneficiaryType.COACH.value, BeneficiaryType.STAFF.value}:
-            raise AppError("invalid_beneficiary", "佣金提现受益人须为教练或员工", status_code=400)
+        beneficiary_type = body.beneficiary_type or BeneficiaryType.MEMBER.value
+        if beneficiary_type not in {
+            BeneficiaryType.COACH.value,
+            BeneficiaryType.STAFF.value,
+            BeneficiaryType.MEMBER.value,
+        }:
+            raise AppError("invalid_beneficiary", "佣金提现受益人须为教练、员工或会员", status_code=400)
         mid = ctx.resolve_merchant_id(body.merchant_id, required=False)
         payout = create_commission_payout(
             db,

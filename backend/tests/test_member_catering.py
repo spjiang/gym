@@ -38,18 +38,17 @@ def test_member_me_includes_merchants(client: TestClient, admin_headers: dict):
         headers=admin_headers,
         json={"phone": "13880000091", "name": "双店会员", "merchant_id": gym_id},
     ).json()
-    link = client.post(
-        f"/api/v1/members/{member['id']}/merchants",
-        headers=admin_headers,
-        json={"merchant_id": bar["id"]},
-    )
-    assert link.status_code == 200, link.text
-
+    # 会员仅关联健身房，未关联清吧；门户仍应展示站点下全部商户
     mheaders = _member_login(client, "13880000091")
     me = client.get("/api/v1/member/me", headers=mheaders).json()
     assert "merchants" in me
-    ids = {m["id"] for m in me["merchants"]}
-    assert gym_id in ids and bar["id"] in ids
+    all_site_ids = {m["id"] for m in merchants}
+    all_site_ids.add(bar["id"])
+    visible_ids = {m["id"] for m in me["merchants"]}
+    assert visible_ids >= {gym_id, bar["id"]}
+    assert visible_ids >= all_site_ids
+    assert gym_id in me["merchant_ids"]
+    assert bar["id"] not in me["merchant_ids"]
 
 
 def test_member_dining_checkout_pay_refund(client: TestClient, admin_headers: dict):

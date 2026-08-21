@@ -4,6 +4,8 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
+from tests.conftest import new_coach_member
+
 
 def _gym_id(client: TestClient, headers: dict) -> int:
     return client.get("/api/v1/merchants", headers=headers).json()[0]["id"]
@@ -406,7 +408,7 @@ def test_group_session_commission_follows_checkin(client: TestClient, admin_head
     coach = client.post(
         "/api/v1/coaches",
         headers=admin_headers,
-        json={"merchant_id": gym_id, "staff_user_id": staff["id"], "display_name": "团课提成教练"},
+        json={"merchant_id": gym_id, "staff_user_id": staff["id"], "member_id": new_coach_member(client, admin_headers, gym_id)["id"], "display_name": "团课提成教练"},
     ).json()
     course = client.post(
         "/api/v1/group-courses",
@@ -474,7 +476,12 @@ def test_group_session_commission_follows_checkin(client: TestClient, admin_head
     assert len(rows) == 1
     assert rows[0]["quantity"] == 2
     assert rows[0]["amount"] == "30.00"
-    assert rows[0]["beneficiary_name"] == "团课提成教练"
+    assert rows[0]["beneficiary_type"] == "member"
+    assert rows[0]["category"] == "session"
+    assert rows[0]["coach_id"] == coach["id"]
+    assert rows[0]["source_type"] == "group_session"
+    assert rows[0]["source_id"] == session.json()["id"]
+    assert "团课提成教练" in rows[0]["note"]
 
     revised = client.post(
         f"/api/v1/group-bookings/{bookings[0]['id']}/checkin",
@@ -554,6 +561,7 @@ def test_pt_session_commission_on_complete(client: TestClient, admin_headers: di
         json={
             "merchant_id": gym_id,
             "staff_user_id": staff["id"],
+            "member_id": new_coach_member(client, admin_headers, gym_id)["id"],
             "display_name": "提成教练",
             "hourly_rate": "400.00",
         },
@@ -588,8 +596,11 @@ def test_pt_session_commission_on_complete(client: TestClient, admin_headers: di
     ).json()["items"]
     assert len(rows) == 1
     assert rows[0]["amount"] == "60.00"
-    assert rows[0]["beneficiary_type"] == "coach"
-    assert rows[0]["beneficiary_name"] == "提成教练"
+    assert rows[0]["beneficiary_type"] == "member"
+    assert rows[0]["category"] == "session"
+    assert rows[0]["coach_id"] == coach["id"]
+    assert rows[0]["source_type"] == "pt_appointment"
+    assert "提成教练" in rows[0]["note"]
     assert rows[0]["source_type"] == "pt_appointment"
 
 

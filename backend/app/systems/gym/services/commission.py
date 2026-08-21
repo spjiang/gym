@@ -15,15 +15,18 @@ from sqlalchemy.orm import Session
 from app.core.errors import AppError
 from app.systems.gym.models.commission import (
     ORDER_SCOPES,
+    SCOPE_CATEGORY,
     BeneficiaryType,
     CommissionBasis,
     CommissionBeneficiary,
+    CommissionCategory,
     CommissionRecord,
     CommissionRule,
     CommissionScope,
     CommissionStatus,
 )
 from app.systems.gym.models.course import Coach
+from app.systems.gym.services.coach_member import require_coach_member
 from app.systems.platform.models.commerce import Order, OrderStatus
 from app.systems.platform.models.identity import StaffUser
 from app.systems.platform.models.member import Member
@@ -149,14 +152,16 @@ def _beneficiary_name(db: Session, beneficiary_type: str, beneficiary_id: int) -
         coach = db.get(Coach, beneficiary_id)
         return coach.display_name if coach else None
     member = db.get(Member, beneficiary_id)
-    return member.name if member else None
+    if member is None:
+        return None
+    return f"{member.name} {member.phone}"
 
 
 def _upsert_record(
     db: Session,
     *,
     merchant_id: int,
-    rule: CommissionRule,
+    rule: CommissionRule | None,
     scope: str,
     source_type: str,
     source_id: int,
@@ -167,12 +172,17 @@ def _upsert_record(
     amount: Decimal,
     order_id: int | None = None,
     member_id: int | None = None,
+    coach_id: int | None = None,
+    rate: Decimal | None = None,
     note: str | None = None,
 ) -> CommissionRecord | None:
     """写入或刷新提成记录；已确认/已结算的记录不再改动。"""
     name = _beneficiary_name(db, beneficiary_type, beneficiary_id)
     if name is None:
         return None
+    category = SCOPE_CATEGORY.get(scope, CommissionCategory.SALE.value)
+    rule_id = rule.id if rule is not None else None
+    record_rate = rate if rate is not None else (rule.rate if rule is not None else None)
 
     existing = db.scalar(
         select(CommissionRecord).where(
@@ -186,30 +196,36 @@ def _upsert_record(
     if existing is not None:
         if existing.status != CommissionStatus.PENDING.value:
             return existing
-        existing.rule_id = rule.id
+        existing.rule_id = rule_id
+        existing.category = category
+        existing.coach_id = coach_id
         existing.base_amount = _quantize(Decimal(base_amount or 0))
         existing.quantity = quantity
-        existing.rate = rule.rate
+        existing.rate = record_rate
         existing.amount = amount
         existing.beneficiary_name = name
         existing.note = note
+        existing.member_id = member_id
+        existing.order_id = order_id
         db.flush()
         return existing
 
     record = CommissionRecord(
         merchant_id=merchant_id,
-        rule_id=rule.id,
+        rule_id=rule_id,
         scope=scope,
+        category=category,
         source_type=source_type,
         source_id=source_id,
         order_id=order_id,
         member_id=member_id,
+        coach_id=coach_id,
         beneficiary_type=beneficiary_type,
         beneficiary_id=beneficiary_id,
         beneficiary_name=name,
         base_amount=_quantize(Decimal(base_amount or 0)),
         quantity=quantity,
-        rate=rule.rate,
+        rate=record_rate,
         amount=amount,
         status=CommissionStatus.PENDING.value,
         note=note,
@@ -359,7 +375,11 @@ def _has_prior_referral(db: Session, member_id: int, order_id: int) -> bool:
 def accrue_group_session_commission(
     db: Session, *, merchant_id: int, session_id: int, coach_id: int, attended_count: int, at: datetime
 ) -> CommissionRecord | None:
-    """团课按出席人数计提教练提成；签到变动时重算未结算记录。"""
+    """团课按出席人数计提；收益归属教练绑定会员。"""
+    coach = db.get(Coach, coach_id)
+    if coach is None:
+        return None
+    member = require_coach_member(db, coach)
     rule = find_rule(
         db, merchant_id=merchant_id, scope=CommissionScope.GROUP_SESSION.value, at=at
     )
@@ -375,12 +395,13 @@ def accrue_group_session_commission(
         scope=CommissionScope.GROUP_SESSION.value,
         source_type="group_session",
         source_id=session_id,
-        beneficiary_type=BeneficiaryType.COACH.value,
-        beneficiary_id=coach_id,
+        beneficiary_type=BeneficiaryType.MEMBER.value,
+        beneficiary_id=member.id,
         base_amount=Decimal("0"),
         quantity=attended_count,
         amount=amount,
-        note=f"团课出席 {attended_count} 人",
+        coach_id=coach.id,
+        note=f"团课出席 {attended_count} 人 · 教练 {coach.display_name}",
     )
 
 
@@ -394,23 +415,33 @@ def accrue_pt_session_commission(
     base_amount: Decimal,
     at: datetime,
 ) -> CommissionRecord | None:
-    """私教课完成后计提教练课时提成：教练个人比例优先，商户规则兜底。"""
+    """私教课完成后计提：教练个人比例优先，商户规则兜底；收益归属教练绑定会员。"""
     coach = db.get(Coach, coach_id)
-    personal_rate = None if coach is None else coach.pt_commission_rate
+    if coach is None:
+        return None
+    beneficiary = require_coach_member(db, coach)
+    personal_rate = coach.pt_commission_rate
     if personal_rate is not None and Decimal(personal_rate) > 0:
         rate = Decimal(personal_rate)
         amount = _quantize(Decimal(base_amount or 0) * rate)
         if amount <= 0:
             return None
-        return _upsert_personal_record(
+        return _upsert_record(
             db,
             merchant_id=merchant_id,
-            appointment_id=appointment_id,
-            coach_id=coach_id,
-            member_id=member_id,
+            rule=None,
+            scope=CommissionScope.PT_SESSION.value,
+            source_type="pt_appointment",
+            source_id=appointment_id,
+            beneficiary_type=BeneficiaryType.MEMBER.value,
+            beneficiary_id=beneficiary.id,
             base_amount=Decimal(base_amount or 0),
-            rate=rate,
+            quantity=1,
             amount=amount,
+            member_id=member_id,
+            coach_id=coach.id,
+            rate=rate,
+            note=f"私教课时提成（教练个人比例 {rate}）· 教练 {coach.display_name}",
         )
 
     rule = find_rule(db, merchant_id=merchant_id, scope=CommissionScope.PT_SESSION.value, at=at)
@@ -426,73 +457,15 @@ def accrue_pt_session_commission(
         scope=CommissionScope.PT_SESSION.value,
         source_type="pt_appointment",
         source_id=appointment_id,
-        beneficiary_type=BeneficiaryType.COACH.value,
-        beneficiary_id=coach_id,
+        beneficiary_type=BeneficiaryType.MEMBER.value,
+        beneficiary_id=beneficiary.id,
         base_amount=base_amount,
         quantity=1,
         amount=amount,
         member_id=member_id,
-        note="私教课时提成",
+        coach_id=coach.id,
+        note=f"私教课时提成 · 教练 {coach.display_name}",
     )
-
-
-def _upsert_personal_record(
-    db: Session,
-    *,
-    merchant_id: int,
-    appointment_id: int,
-    coach_id: int,
-    member_id: int,
-    base_amount: Decimal,
-    rate: Decimal,
-    amount: Decimal,
-) -> CommissionRecord | None:
-    """按教练个人比例写提成记录（无规则 id）。"""
-    name = _beneficiary_name(db, BeneficiaryType.COACH.value, coach_id)
-    if name is None:
-        return None
-    note = f"私教课时提成（教练个人比例 {rate}）"
-    existing = db.scalar(
-        select(CommissionRecord).where(
-            CommissionRecord.scope == CommissionScope.PT_SESSION.value,
-            CommissionRecord.source_type == "pt_appointment",
-            CommissionRecord.source_id == appointment_id,
-            CommissionRecord.beneficiary_type == BeneficiaryType.COACH.value,
-            CommissionRecord.beneficiary_id == coach_id,
-        )
-    )
-    if existing is not None:
-        if existing.status != CommissionStatus.PENDING.value:
-            return existing
-        existing.rule_id = None
-        existing.base_amount = _quantize(base_amount)
-        existing.quantity = 1
-        existing.rate = rate
-        existing.amount = amount
-        existing.beneficiary_name = name
-        existing.note = note
-        db.flush()
-        return existing
-    record = CommissionRecord(
-        merchant_id=merchant_id,
-        rule_id=None,
-        scope=CommissionScope.PT_SESSION.value,
-        source_type="pt_appointment",
-        source_id=appointment_id,
-        member_id=member_id,
-        beneficiary_type=BeneficiaryType.COACH.value,
-        beneficiary_id=coach_id,
-        beneficiary_name=name,
-        base_amount=_quantize(base_amount),
-        quantity=1,
-        rate=rate,
-        amount=amount,
-        status=CommissionStatus.PENDING.value,
-        note=note,
-    )
-    db.add(record)
-    db.flush()
-    return record
 
 
 def void_records_for_order(db: Session, order_id: int) -> int:

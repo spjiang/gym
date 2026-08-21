@@ -9,8 +9,13 @@ import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
 
 type Merchant = { id: number; name: string; subsystem_codes?: string[] }
 type Staff = { id: number; display_name: string; username: string }
+type MemberOption = { id: number; name: string; phone: string }
 type Coach = {
   id: number
+  member_id?: number | null
+  member_name?: string | null
+  member_phone?: string | null
+  promotion_code?: string | null
   display_name: string
   title: string | null
   gender: string | null
@@ -25,7 +30,7 @@ type Coach = {
   avatar_url: string | null
   intro_image_urls: string[]
   is_active: boolean
-  staff_user_id: number
+  staff_user_id: number | null
 }
 
 const INTRO_IMAGE_LIMIT = 9
@@ -33,6 +38,7 @@ const GENDER_LABEL: Record<string, string> = { male: '男', female: '女', other
 
 const merchants = ref<Merchant[]>([])
 const staff = ref<Staff[]>([])
+const members = ref<MemberOption[]>([])
 const coaches = ref<Coach[]>([])
 const { merchantId, requireMerchant } = useOpsMerchant(() => {
   page.value = 1
@@ -55,6 +61,7 @@ const avatarList = ref<UploadUserFile[]>([])
 const introList = ref<UploadUserFile[]>([])
 const form = reactive({
   staff_user_id: undefined as number | undefined,
+  member_id: undefined as number | undefined,
   display_name: '',
   title: '',
   gender: '' as string,
@@ -71,13 +78,18 @@ const form = reactive({
 })
 
 const rules: FormRules = {
-  staff_user_id: [{ required: true, message: '请选择员工账号', trigger: 'change' }],
+  member_id: [{ required: true, message: '请选择关联会员账号', trigger: 'change' }],
   display_name: [{ required: true, message: '请填写教练显示名', trigger: 'blur' }],
 }
 
-function staffName(id: number | undefined) {
+function staffName(id: number | null | undefined) {
+  if (id == null) return '—'
   const s = staff.value.find((x) => x.id === id)
-  return s ? `${s.display_name} (${s.username})` : ''
+  return s ? `${s.display_name} (${s.username})` : `#${id}`
+}
+
+function memberLabel(m: MemberOption) {
+  return `${m.name} · ${m.phone}`
 }
 
 function genderLabel(code: string | null | undefined) {
@@ -92,6 +104,7 @@ function syncMediaLists() {
 
 function resetForm() {
   form.staff_user_id = undefined
+  form.member_id = undefined
   form.display_name = ''
   form.title = ''
   form.gender = ''
@@ -106,6 +119,26 @@ function resetForm() {
   form.avatar_url = ''
   form.intro_image_urls = []
   syncMediaLists()
+}
+
+async function searchMembers(q: string) {
+  const { data } = await http.get<{ items: MemberOption[] }>('/members', {
+    params: {
+      merchant_id: merchantId.value,
+      q: q.trim() || undefined,
+      page: 1,
+      page_size: 30,
+    },
+  })
+  members.value = data.items
+}
+
+function onMemberChange(id: number | undefined) {
+  if (!id) return
+  const m = members.value.find((x) => x.id === id)
+  if (!m) return
+  if (!form.display_name.trim()) form.display_name = m.name
+  if (!form.phone.trim()) form.phone = m.phone
 }
 
 async function refresh() {
@@ -152,16 +185,19 @@ function resetSearch() {
   void refresh()
 }
 
-function openDialog() {
+async function openDialog() {
+  if (!requireMerchant('请先选择商户后再新建教练')) return
   editingId.value = null
   resetForm()
   formRef.value?.clearValidate()
+  await searchMembers('')
   dialogVisible.value = true
 }
 
-function openEdit(row: Coach) {
+async function openEdit(row: Coach) {
   editingId.value = row.id
-  form.staff_user_id = row.staff_user_id
+  form.staff_user_id = row.staff_user_id ?? undefined
+  form.member_id = row.member_id ?? undefined
   form.display_name = row.display_name
   form.title = row.title || ''
   form.gender = row.gender || ''
@@ -176,6 +212,14 @@ function openEdit(row: Coach) {
   form.avatar_url = row.avatar_url || ''
   form.intro_image_urls = [...(row.intro_image_urls || [])]
   syncMediaLists()
+  if (row.member_id && row.member_name) {
+    members.value = [
+      { id: row.member_id, name: row.member_name, phone: row.member_phone || '' },
+      ...members.value.filter((x) => x.id !== row.member_id),
+    ]
+  } else {
+    await searchMembers('')
+  }
   formRef.value?.clearValidate()
   dialogVisible.value = true
 }
@@ -239,11 +283,16 @@ async function saveCoach() {
   const ok = await formRef.value?.validate().catch(() => false)
   const mid = requireMerchant()
   if (!ok || !mid) return
+  if (!form.member_id) {
+    ElMessage.error('请选择关联会员账号')
+    return
+  }
   submitting.value = true
   try {
     const payload = {
       merchant_id: mid,
-      staff_user_id: form.staff_user_id,
+      staff_user_id: form.staff_user_id ?? null,
+      member_id: form.member_id,
       display_name: form.display_name.trim(),
       title: form.title.trim() || null,
       gender: form.gender || null,
@@ -288,7 +337,9 @@ onMounted(refresh)
     <div class="toolbar">
       <div>
         <h3>教练档案</h3>
-        <p class="lead">维护对外展示的教练资料、头像与图文介绍。团课排课在「团课管理」，课包售卖在「私教课管理」。</p>
+        <p class="lead">
+          教练必须关联会员账号：推广码、推荐收益与课时提成都挂在该会员上。后台员工账号仅用于登录「我的佣金」，可选。
+        </p>
       </div>
       <el-button type="primary" @click="openDialog">新建教练</el-button>
     </div>
@@ -334,17 +385,17 @@ onMounted(refresh)
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="员工账号" min-width="160">
+      <el-table-column label="关联会员" min-width="180">
+        <template #default="{ row }">
+          <div v-if="row.member_id">{{ row.member_name || '—' }} · {{ row.member_phone || '—' }}</div>
+          <span v-else>—</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="推广码" width="120">
+        <template #default="{ row }">{{ row.promotion_code || '—' }}</template>
+      </el-table-column>
+      <el-table-column label="后台账号" min-width="150">
         <template #default="{ row }">{{ staffName(row.staff_user_id) }}</template>
-      </el-table-column>
-      <el-table-column label="性别" width="80">
-        <template #default="{ row }">{{ genderLabel(row.gender) }}</template>
-      </el-table-column>
-      <el-table-column prop="specialties" label="擅长" min-width="140">
-        <template #default="{ row }">{{ row.specialties || '—' }}</template>
-      </el-table-column>
-      <el-table-column label="年限" width="80">
-        <template #default="{ row }">{{ row.years_experience != null ? `${row.years_experience} 年` : '—' }}</template>
       </el-table-column>
       <el-table-column label="私教提成" width="110">
         <template #default="{ row }">
@@ -386,9 +437,24 @@ onMounted(refresh)
     </div>
 
     <el-dialog v-model="dialogVisible" :title="editingId ? '编辑教练' : '新建教练'" width="720px" destroy-on-close>
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
-        <el-form-item label="员工账号" prop="staff_user_id">
-          <el-select v-model="form.staff_user_id" filterable :disabled="!!editingId" style="width: 100%">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="110px">
+        <el-form-item label="关联会员" prop="member_id">
+          <el-select
+            v-model="form.member_id"
+            filterable
+            remote
+            clearable
+            placeholder="搜索姓名 / 手机号"
+            style="width: 100%"
+            :remote-method="searchMembers"
+            @change="onMemberChange"
+          >
+            <el-option v-for="m in members" :key="m.id" :label="memberLabel(m)" :value="m.id" />
+          </el-select>
+          <p class="hint">必选。推广码与课时收益都记到该会员。</p>
+        </el-form-item>
+        <el-form-item label="后台账号">
+          <el-select v-model="form.staff_user_id" filterable clearable placeholder="可选，用于登录后台看佣金" style="width: 100%">
             <el-option v-for="s in staff" :key="s.id" :label="`${s.display_name} (${s.username})`" :value="s.id" />
           </el-select>
         </el-form-item>
@@ -492,7 +558,11 @@ onMounted(refresh)
           </div>
         </div>
         <el-descriptions :column="2" border>
-          <el-descriptions-item label="员工账号">{{ staffName(detail.staff_user_id) }}</el-descriptions-item>
+          <el-descriptions-item label="关联会员">
+            {{ detail.member_name || '—' }} · {{ detail.member_phone || '—' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="推广码">{{ detail.promotion_code || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="后台账号">{{ staffName(detail.staff_user_id) }}</el-descriptions-item>
           <el-descriptions-item label="电话">{{ detail.phone || '—' }}</el-descriptions-item>
           <el-descriptions-item label="从业年限">
             {{ detail.years_experience != null ? `${detail.years_experience} 年` : '—' }}
@@ -535,43 +605,31 @@ onMounted(refresh)
 }
 .lead {
   margin: 0;
-  max-width: 640px;
+  max-width: 720px;
   font-size: 13px;
-  line-height: 1.55;
   color: var(--el-text-color-secondary);
+  line-height: 1.5;
 }
 .filters {
-  margin-bottom: 4px;
-}
-.pager {
-  margin-top: 16px;
-  display: flex;
-  justify-content: flex-end;
+  margin-bottom: 12px;
 }
 .coach-cell {
   display: flex;
   align-items: center;
   gap: 10px;
 }
-.avatar,
-.detail-avatar {
+.avatar {
   width: 40px;
   height: 40px;
+  border-radius: 50%;
   object-fit: cover;
-  border-radius: 8px;
-  background: var(--el-fill-color-light);
-  flex-shrink: 0;
-}
-.detail-avatar {
-  width: 64px;
-  height: 64px;
-  font-size: 22px;
 }
 .avatar-fallback {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--el-text-color-secondary);
+  background: var(--el-color-primary-light-7);
+  color: var(--el-color-primary);
   font-weight: 600;
 }
 .name {
@@ -581,19 +639,27 @@ onMounted(refresh)
   font-size: 12px;
   color: var(--el-text-color-secondary);
 }
+.pager {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
 .hint {
   margin: 6px 0 0;
   font-size: 12px;
   color: var(--el-text-color-secondary);
 }
-.hide-uploader :deep(.el-upload--picture-card) {
-  display: none;
-}
 .detail-head {
   display: flex;
-  align-items: center;
   gap: 14px;
+  align-items: center;
   margin-bottom: 16px;
+}
+.detail-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 12px;
+  object-fit: cover;
 }
 .detail-head h4 {
   margin: 0 0 4px;
@@ -606,11 +672,14 @@ onMounted(refresh)
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 16px;
+  margin-top: 14px;
 }
 .gallery-img {
   width: 96px;
   height: 96px;
   border-radius: 8px;
+}
+:deep(.hide-uploader .el-upload--picture-card) {
+  display: none;
 }
 </style>

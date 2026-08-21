@@ -4,6 +4,8 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
+from tests.conftest import new_coach_member
+
 from app.core.config import get_settings
 
 
@@ -392,6 +394,7 @@ def test_coach_personal_pt_rate_and_self_service_payout(
         json={
             "merchant_id": gym_id,
             "staff_user_id": staff.json()["id"],
+            "member_id": new_coach_member(client, admin_headers, gym_id)["id"],
             "display_name": "分成教练",
             "hourly_rate": "300.00",
             "pt_commission_rate": "0.4",

@@ -39,8 +39,8 @@
     <text>{{sourceText}}</text>
   </view>
 
-  <view class="section">关联门店</view>
-  <view wx:if="{{!merchants.length}}" class="muted">暂无关联门店</view>
+  <view class="section">可用门店</view>
+  <view wx:if="{{!merchants.length}}" class="muted">暂无可用门店</view>
   <view class="card store" wx:for="{{merchants}}" wx:key="id" bindtap="enterStore" data-id="{{item.id}}">
     <view>
       <view class="badge">{{item.badge}}</view>

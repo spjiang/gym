@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import http from '../../../core/api/http'
 import {
   commissionScopeLabel,
+  commissionCategoryLabel,
   commissionStatusLabel,
   payoutStatusLabel,
   percentLabel,
@@ -28,6 +29,10 @@ type Summary = {
 type Record_ = {
   id: number
   scope: string
+  category: string
+  source_type: string
+  source_id: number
+  order_id: number | null
   amount: string
   base_amount: string
   rate: string | null
@@ -127,7 +132,7 @@ onMounted(refresh)
       <div>
         <h3>我的佣金</h3>
         <p class="lead">
-          仅展示当前登录教练本人的课时提成。私教课按个人比例计提；团课按商户规则。提现线下打款，进度在此同步。
+          仅展示当前登录教练绑定会员的课时提成。每笔有类别，并可追溯到具体场次 / 预约。提现线下打款，进度在此同步。
         </p>
       </div>
       <el-button type="primary" :loading="submitting" @click="requestPayout">申请提现</el-button>
@@ -172,8 +177,17 @@ onMounted(refresh)
           </el-form-item>
         </el-form>
         <el-table :data="records" size="small" stripe>
+          <el-table-column label="类别" width="100">
+            <template #default="{ row }">{{ commissionCategoryLabel(row.category) }}</template>
+          </el-table-column>
           <el-table-column label="场景" width="120">
             <template #default="{ row }">{{ commissionScopeLabel(row.scope) }}</template>
+          </el-table-column>
+          <el-table-column label="来源" min-width="140">
+            <template #default="{ row }">
+              {{ row.source_type }} #{{ row.source_id }}
+              <template v-if="row.order_id"> · 订单 #{{ row.order_id }}</template>
+            </template>
           </el-table-column>
           <el-table-column label="口径" min-width="150">
             <template #default="{ row }">

@@ -3,9 +3,11 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import http from '../../../core/api/http'
 import {
+  COMMISSION_CATEGORY_LABELS,
   COMMISSION_SCOPE_LABELS,
   COMMISSION_STATUS_LABELS,
   beneficiaryTypeLabel,
+  commissionCategoryLabel,
   commissionScopeLabel,
   commissionStatusLabel,
 } from '../../../core/labels'
@@ -19,10 +21,12 @@ type Record_ = {
   rule_id: number | null
   rule_name: string | null
   scope: string
+  category: string
   source_type: string
   source_id: number
   order_id: number | null
   member_id: number | null
+  coach_id: number | null
   beneficiary_type: string
   beneficiary_id: number
   beneficiary_name: string
@@ -92,6 +96,7 @@ function daysAgo(n: number) {
 const query = reactive({
   q: '',
   scope: '',
+  category: '',
   status: '',
   beneficiary_type: '',
   range: [daysAgo(29), today()] as [string, string] | undefined,
@@ -149,6 +154,7 @@ async function refresh() {
       params: {
         merchant_id: merchantId.value,
         scope: query.scope || undefined,
+        category: query.category || undefined,
         status: query.status || undefined,
         beneficiary_type: query.beneficiary_type || undefined,
         date_from: query.range?.[0],
@@ -194,6 +200,7 @@ function search() {
 function resetSearch() {
   query.q = ''
   query.scope = ''
+  query.category = ''
   query.status = ''
   query.beneficiary_type = ''
   query.range = [daysAgo(29), today()]
@@ -272,6 +279,11 @@ onMounted(refresh)
               <el-option v-for="m in merchants" :key="m.id" :label="m.name" :value="m.id" />
             </el-select>
           </el-form-item>
+          <el-form-item label="类别">
+            <el-select v-model="query.category" clearable placeholder="全部" style="width: 130px">
+              <el-option v-for="(label, code) in COMMISSION_CATEGORY_LABELS" :key="code" :label="label" :value="code" />
+            </el-select>
+          </el-form-item>
           <el-form-item label="场景">
             <el-select v-model="query.scope" clearable placeholder="全部" style="width: 150px">
               <el-option v-for="(label, code) in COMMISSION_SCOPE_LABELS" :key="code" :label="label" :value="code" />
@@ -339,13 +351,19 @@ onMounted(refresh)
               <div class="sub">{{ beneficiaryTypeLabel(row.beneficiary_type) }} #{{ row.beneficiary_id }}</div>
             </template>
           </el-table-column>
+          <el-table-column label="类别" width="90">
+            <template #default="{ row }">{{ commissionCategoryLabel(row.category) }}</template>
+          </el-table-column>
           <el-table-column label="场景" width="120">
             <template #default="{ row }">{{ commissionScopeLabel(row.scope) }}</template>
           </el-table-column>
-          <el-table-column label="来源" min-width="140">
+          <el-table-column label="来源" min-width="160">
             <template #default="{ row }">
               <div>{{ sourceText(row) }}</div>
-              <div class="sub">{{ row.rule_name || '规则已删除' }}</div>
+              <div class="sub">
+                {{ row.rule_name || '规则已删除' }}
+                <template v-if="row.coach_id"> · 教练 #{{ row.coach_id }}</template>
+              </div>
             </template>
           </el-table-column>
           <el-table-column label="计提口径" min-width="150">

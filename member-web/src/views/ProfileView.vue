@@ -167,8 +167,8 @@ onMounted(async () => {
       </div>
     </div>
 
-    <h2 class="me__section">关联门店</h2>
-    <p v-if="!(auth.me?.merchants || []).length" class="me__empty">暂无关联门店</p>
+    <h2 class="me__section">可用门店</h2>
+    <p v-if="!(auth.me?.merchants || []).length" class="me__empty">暂无可用门店</p>
     <button
       v-for="m in auth.me?.merchants || []"
       :key="m.id"

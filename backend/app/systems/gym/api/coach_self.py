@@ -23,6 +23,7 @@ from app.systems.gym.models.commission import (
     CommissionStatus,
 )
 from app.systems.gym.models.course import Coach
+from app.systems.gym.services.coach_member import coach_promotion_code
 from app.systems.platform.models.payout import Payout, PayoutSource, PayoutStatus
 from app.systems.platform.api.payouts import PayoutOut, payout_out
 from app.systems.platform.services.payouts import create_commission_payout, settleable_records
@@ -34,6 +35,8 @@ router = APIRouter(prefix="/my", tags=["coach-self"])
 class CoachProfileOut(BaseModel):
     coach_id: int
     merchant_id: int
+    member_id: int | None
+    promotion_code: str | None = None
     display_name: str
     title: str | None
     hourly_rate: Decimal | None
@@ -45,9 +48,11 @@ class CommissionRecordOut(BaseModel):
     id: int
     merchant_id: int
     scope: str
+    category: str
     source_type: str
     source_id: int
     order_id: int | None
+    coach_id: int | None = None
     base_amount: Decimal
     quantity: int | None
     rate: Decimal | None
@@ -89,6 +94,13 @@ def _own_coach(db: Session, ctx: RequestContext) -> Coach:
     return coach
 
 
+def _coach_beneficiary(coach: Coach) -> tuple[str, int]:
+    """课时提成归属教练绑定的会员；未绑定时回落教练档案（兼容旧数据）。"""
+    if coach.member_id is not None:
+        return BeneficiaryType.MEMBER.value, coach.member_id
+    return BeneficiaryType.COACH.value, coach.id
+
+
 def _day_bounds(date_from: date, date_to: date) -> tuple[datetime, datetime]:
     start = datetime.combine(date_from, time.min, tzinfo=timezone.utc)
     end = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=timezone.utc)
@@ -105,6 +117,8 @@ def my_coach_profile(
     return CoachProfileOut(
         coach_id=coach.id,
         merchant_id=coach.merchant_id,
+        member_id=coach.member_id,
+        promotion_code=coach_promotion_code(db, coach),
         display_name=coach.display_name,
         title=coach.title,
         hourly_rate=coach.hourly_rate,
@@ -123,9 +137,10 @@ def my_commission_summary(
     """本人佣金汇总与可提现额度。"""
     ctx.require_permission("commission:self", "commission:read", "commission:manage")
     coach = _own_coach(db, ctx)
+    btype, bid = _coach_beneficiary(coach)
     stmt = select(CommissionRecord).where(
-        CommissionRecord.beneficiary_type == BeneficiaryType.COACH.value,
-        CommissionRecord.beneficiary_id == coach.id,
+        CommissionRecord.beneficiary_type == btype,
+        CommissionRecord.beneficiary_id == bid,
         CommissionRecord.status != CommissionStatus.VOID.value,
     )
     if date_from is not None and date_to is not None:
@@ -146,14 +161,14 @@ def my_commission_summary(
         scope_map[row.scope] = (count + 1, total + amount)
 
     records = settleable_records(
-        db, beneficiary_type=BeneficiaryType.COACH.value, beneficiary_id=coach.id
+        db, beneficiary_type=btype, beneficiary_id=bid
     )
     withdrawing = Decimal("0.00")
     for row in db.scalars(
         select(Payout).where(
             Payout.source == PayoutSource.COMMISSION.value,
-            Payout.beneficiary_type == BeneficiaryType.COACH.value,
-            Payout.beneficiary_id == coach.id,
+            Payout.beneficiary_type == btype,
+            Payout.beneficiary_id == bid,
             Payout.status.in_([PayoutStatus.REQUESTED.value, PayoutStatus.APPROVED.value]),
         )
     ).all():
@@ -189,9 +204,10 @@ def my_commission_records(
 ):
     ctx.require_permission("commission:self", "commission:read", "commission:manage")
     coach = _own_coach(db, ctx)
+    btype, bid = _coach_beneficiary(coach)
     stmt = select(CommissionRecord).where(
-        CommissionRecord.beneficiary_type == BeneficiaryType.COACH.value,
-        CommissionRecord.beneficiary_id == coach.id,
+        CommissionRecord.beneficiary_type == btype,
+        CommissionRecord.beneficiary_id == bid,
     )
     if status:
         stmt = stmt.where(CommissionRecord.status == status)
@@ -208,9 +224,11 @@ def my_commission_records(
             id=r.id,
             merchant_id=r.merchant_id,
             scope=r.scope,
+            category=r.category,
             source_type=r.source_type,
             source_id=r.source_id,
             order_id=r.order_id,
+            coach_id=r.coach_id,
             base_amount=money(r.base_amount),
             quantity=r.quantity,
             rate=r.rate,
@@ -235,10 +253,11 @@ def my_payouts(
 ):
     ctx.require_permission("commission:self", "commission:read", "commission:manage")
     coach = _own_coach(db, ctx)
+    btype, bid = _coach_beneficiary(coach)
     stmt = select(Payout).where(
         Payout.source == PayoutSource.COMMISSION.value,
-        Payout.beneficiary_type == BeneficiaryType.COACH.value,
-        Payout.beneficiary_id == coach.id,
+        Payout.beneficiary_type == btype,
+        Payout.beneficiary_id == bid,
     )
     if status:
         stmt = stmt.where(Payout.status == status)
@@ -257,11 +276,12 @@ def request_my_payout(
     """教练本人申请提现，等待后台审核并线下打款。"""
     ctx.require_permission("commission:self", "commission:read", "commission:manage")
     coach = _own_coach(db, ctx)
+    btype, bid = _coach_beneficiary(coach)
     payout = create_commission_payout(
         db,
         site_id=ctx.site_id,
-        beneficiary_type=BeneficiaryType.COACH.value,
-        beneficiary_id=coach.id,
+        beneficiary_type=btype,
+        beneficiary_id=bid,
         beneficiary_name=coach.display_name,
         merchant_id=coach.merchant_id,
         record_ids=body.record_ids,

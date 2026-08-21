@@ -5,6 +5,8 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
+from tests.conftest import new_coach_member
+
 from app.core.config import get_settings
 from tests.test_agreements import enable_agreement
 
@@ -124,6 +126,7 @@ def test_member_portal_book_and_purchase(client: TestClient, admin_headers: dict
         json={
             "merchant_id": gym_id,
             "staff_user_id": staff["id"],
+            "member_id": new_coach_member(client, admin_headers, gym_id)["id"],
             "display_name": "H5教练",
         },
     ).json()

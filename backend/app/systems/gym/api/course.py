@@ -20,6 +20,7 @@ from app.core.errors import AppError
 from app.core.schemas.common import MemberBrief, OrderOut
 from app.core.schemas.paging import PageOut, paginate
 from app.systems.platform.models.commerce import Order, OrderStatus
+from app.systems.gym.services.coach_member import coach_promotion_code, link_coach_member
 from app.systems.gym.models.course import (
     Coach,
     GroupBooking,
@@ -91,7 +92,8 @@ def _normalize_gender(value: str | None) -> str | None:
 
 class CoachIn(BaseModel):
     merchant_id: int | None = None
-    staff_user_id: int
+    staff_user_id: int | None = None
+    member_id: int
     display_name: str
     title: str | None = None
     gender: str | None = None
@@ -111,7 +113,11 @@ class CoachIn(BaseModel):
 class CoachOut(BaseModel):
     id: int
     merchant_id: int
-    staff_user_id: int
+    staff_user_id: int | None = None
+    member_id: int | None = None
+    member_name: str | None = None
+    member_phone: str | None = None
+    promotion_code: str | None = None
     display_name: str
     title: str | None
     gender: str | None
@@ -128,6 +134,33 @@ class CoachOut(BaseModel):
     is_active: bool
 
     model_config = ConfigDict(from_attributes=True)
+
+
+def _coach_out(db: Session, coach: Coach) -> CoachOut:
+    member = db.get(Member, coach.member_id) if coach.member_id else None
+    return CoachOut(
+        id=coach.id,
+        merchant_id=coach.merchant_id,
+        staff_user_id=coach.staff_user_id,
+        member_id=coach.member_id,
+        member_name=member.name if member else None,
+        member_phone=member.phone if member else None,
+        promotion_code=coach_promotion_code(db, coach),
+        display_name=coach.display_name,
+        title=coach.title,
+        gender=coach.gender,
+        phone=coach.phone,
+        years_experience=coach.years_experience,
+        hourly_rate=coach.hourly_rate,
+        pt_commission_rate=coach.pt_commission_rate,
+        specialties=coach.specialties,
+        certifications=coach.certifications,
+        bio=coach.bio,
+        availability_note=coach.availability_note,
+        avatar_url=coach.avatar_url,
+        intro_image_urls=list(coach.intro_image_urls or []),
+        is_active=coach.is_active,
+    )
 
 
 class PtProductIn(BaseModel):
@@ -414,7 +447,7 @@ def list_coaches(
     if gender:
         stmt = stmt.where(Coach.gender == _normalize_gender(gender))
     rows, total = paginate(db, stmt.order_by(Coach.id.desc()), page=page, page_size=page_size)
-    return PageOut(items=rows, total=total, page=page, page_size=page_size)
+    return PageOut(items=[_coach_out(db, row) for row in rows], total=total, page=page, page_size=page_size)
 
 
 @router.post("/coaches", response_model=CoachOut)
@@ -426,9 +459,11 @@ def create_coach(
     ctx.require_permission("coach:manage")
     mid = ctx.resolve_merchant_id(body.merchant_id)
     assert_merchant_has_system(db, mid, "gym")
-    staff = db.get(StaffUser, body.staff_user_id)
-    if staff is None or staff.site_id != ctx.site_id:
-        raise AppError("invalid_staff", "员工不存在", status_code=400)
+    staff = None
+    if body.staff_user_id is not None:
+        staff = db.get(StaffUser, body.staff_user_id)
+        if staff is None or staff.site_id != ctx.site_id:
+            raise AppError("invalid_staff", "员工不存在", status_code=400)
     name = (body.display_name or "").strip()
     if not name:
         raise AppError("validation_error", "请填写教练显示名", status_code=422)
@@ -452,6 +487,13 @@ def create_coach(
     )
     db.add(coach)
     db.flush()
+    link_coach_member(
+        db,
+        coach=coach,
+        site_id=ctx.site_id,
+        merchant_id=mid,
+        member_id=body.member_id,
+    )
     write_audit(
         db,
         action="coach.create",
@@ -464,7 +506,7 @@ def create_coach(
     )
     db.commit()
     db.refresh(coach)
-    return coach
+    return _coach_out(db, coach)
 
 
 @router.patch("/coaches/{coach_id}", response_model=CoachOut)
@@ -474,7 +516,7 @@ def update_coach(
     db: Session = Depends(get_db),
     ctx: RequestContext = Depends(get_current_context),
 ):
-    """编辑教练展示信息，不改绑定员工。"""
+    """编辑教练展示信息；必须绑定已有会员。"""
     ctx.require_permission("coach:manage")
     coach = db.get(Coach, coach_id)
     if coach is None:
@@ -483,6 +525,11 @@ def update_coach(
     name = (body.display_name or "").strip()
     if not name:
         raise AppError("validation_error", "请填写教练显示名", status_code=422)
+    if body.staff_user_id is not None:
+        staff = db.get(StaffUser, body.staff_user_id)
+        if staff is None or staff.site_id != ctx.site_id:
+            raise AppError("invalid_staff", "员工不存在", status_code=400)
+        coach.staff_user_id = body.staff_user_id
     coach.display_name = name
     coach.title = _blank(body.title)
     coach.gender = _normalize_gender(body.gender)
@@ -496,6 +543,13 @@ def update_coach(
     coach.availability_note = _blank(body.availability_note)
     coach.avatar_url = _normalize_coach_image_url(body.avatar_url, field="头像")
     coach.intro_image_urls = _normalize_intro_images(body.intro_image_urls)
+    link_coach_member(
+        db,
+        coach=coach,
+        site_id=ctx.site_id,
+        merchant_id=coach.merchant_id,
+        member_id=body.member_id,
+    )
     write_audit(
         db,
         action="coach.update",
@@ -508,7 +562,7 @@ def update_coach(
     )
     db.commit()
     db.refresh(coach)
-    return coach
+    return _coach_out(db, coach)
 
 
 @router.post("/coaches/{coach_id}/deactivate", response_model=CoachOut)
@@ -537,7 +591,7 @@ def deactivate_coach(
     )
     db.commit()
     db.refresh(coach)
-    return coach
+    return _coach_out(db, coach)
 
 
 # —— 私教课包商品 / 实例 ——

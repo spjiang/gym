@@ -45,7 +45,10 @@ class Coach(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     merchant_id: Mapped[int] = mapped_column(ForeignKey("merchants.id"), nullable=False, index=True)
-    staff_user_id: Mapped[int] = mapped_column(ForeignKey("staff_users.id"), nullable=False, index=True)
+    # 可选：仅用于登录后台看佣金；主身份挂会员
+    staff_user_id: Mapped[int | None] = mapped_column(ForeignKey("staff_users.id"), nullable=True, index=True)
+    # 必填（创建时）：推广码、课时收益统一走会员机制
+    member_id: Mapped[int | None] = mapped_column(ForeignKey("members.id"), nullable=True, index=True)
     display_name: Mapped[str] = mapped_column(String(64), nullable=False)
     title: Mapped[str | None] = mapped_column(String(64))
     gender: Mapped[str | None] = mapped_column(String(16))
