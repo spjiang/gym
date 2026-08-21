@@ -10,7 +10,12 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.errors import AppError
-from app.systems.platform.services.payment_settings import EffectivePaymentSettings, resolve_payment_settings
+from app.systems.platform.services.payment_settings import (
+    EffectivePaymentSettings,
+    is_wechat_payment_mode,
+    normalize_payment_mode,
+    resolve_payment_settings,
+)
 from app.systems.platform.services.wechat_pay import create_wechat_prepay
 
 
@@ -48,7 +53,7 @@ class UnconfiguredProvider(OnlinePaymentProvider):
     def create_payment(self, **kwargs) -> OnlinePayResult:
         raise AppError(
             "online_payment_unconfigured",
-            "线上支付通道未配置，请在综合经营「京东支付」中启用 mock/jdpay",
+            "线上支付通道未配置，请在基础配置「微信支付」中启用模拟支付或微信支付",
             status_code=503,
         )
 
@@ -170,16 +175,16 @@ def _env_wechat_cfg() -> EffectivePaymentSettings:
 def get_online_provider(db: Session | None = None, site_id: int | None = None) -> OnlinePaymentProvider:
     if db is not None and site_id is not None:
         cfg = resolve_payment_settings(db, site_id)
-        mode = (cfg.mode or "unconfigured").lower()
+        mode = normalize_payment_mode(cfg.mode)
         if mode == "mock":
             return MockProvider()
-        if mode in {"wechat", "jdpay"}:
+        if is_wechat_payment_mode(mode):
             return WechatProvider(cfg)
         return UnconfiguredProvider()
 
-    mode = get_settings().online_payment_mode.lower()
+    mode = normalize_payment_mode(get_settings().online_payment_mode)
     if mode == "mock":
         return MockProvider()
-    if mode in {"wechat", "jdpay"}:
+    if is_wechat_payment_mode(mode):
         return WechatProvider(_env_wechat_cfg())
     return UnconfiguredProvider()

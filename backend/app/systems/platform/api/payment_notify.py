@@ -16,7 +16,10 @@ from app.core.errors import AppError
 from app.systems.platform.models.commerce import Order, OrderStatus
 from app.systems.platform.models.payment_settings import PaymentIntent, RefundIntent
 from app.systems.platform.services.order_fulfill import fulfill_paid_order, mark_intent_succeeded
-from app.systems.platform.services.payment_settings import resolve_payment_settings
+from app.systems.platform.services.payment_settings import (
+    is_wechat_payment_mode,
+    resolve_payment_settings,
+)
 from app.systems.platform.services.refunds import apply_refund_success
 from app.systems.platform.services.wechat_pay import (
     parse_pay_notify_payload,
@@ -141,8 +144,8 @@ def member_dry_run_confirm(
     if order is None or order.member_id != mctx.member.id:
         raise AppError("not_found", "订单不存在", status_code=404)
     cfg = resolve_payment_settings(db, order.site_id)
-    if cfg.mode not in {"wechat", "jdpay"} or not cfg.dry_run:
-        raise AppError("forbidden", "仅微信 DRY_RUN 可确认干跑支付", status_code=403)
+    if not is_wechat_payment_mode(cfg.mode) or not cfg.dry_run:
+        raise AppError("forbidden", "仅微信支付 DRY_RUN 可确认干跑支付", status_code=403)
 
     q = select(PaymentIntent).where(PaymentIntent.order_id == order_id).order_by(PaymentIntent.id.desc())
     if body and body.out_trade_no:

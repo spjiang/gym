@@ -14,8 +14,8 @@ export const ORDER_TYPE_LABELS: Record<string, string> = {
 
 export const PAYMENT_CHANNEL_LABELS: Record<string, string> = {
   online: '线上支付',
-  wechat_original: '京东原路退',
-  jdpay_original: '京东原路退',
+  wechat_original: '微信原路退',
+  jdpay_original: '微信原路退',
   offline_cash: '现金',
   offline_transfer: '转账',
 }
@@ -36,8 +36,8 @@ export const DINING_STATUS_LABELS: Record<string, string> = {
 export const PAYMENT_MODE_LABELS: Record<string, string> = {
   unconfigured: '未配置',
   mock: '模拟支付',
-  wechat: '京东支付',
-  jdpay: '京东支付',
+  wechat: '微信支付',
+  jdpay: '微信支付',
 }
 
 /** 商户状态 */

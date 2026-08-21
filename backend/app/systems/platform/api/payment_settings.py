@@ -6,11 +6,13 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.deps import RequestContext, get_current_context
+from app.core.errors import AppError
 from app.systems.platform.models.payment_settings import SitePaymentSettings
 from app.systems.platform.services.audit import write_audit
 from app.systems.platform.services.payment_settings import (
     apply_settings_update,
     import_from_env,
+    normalize_payment_mode,
     resolve_payment_settings,
     settings_public_dict,
 )
@@ -51,12 +53,18 @@ def put_payment_settings(
     ctx: RequestContext = Depends(get_current_context),
 ):
     ctx.require_permission("payment:config", "*")
+    payload = body.model_dump(exclude_unset=True)
+    if "mode" in payload and payload["mode"] is not None:
+        mode = normalize_payment_mode(payload["mode"])
+        if mode not in {"unconfigured", "mock", "wechat"}:
+            raise AppError("invalid_mode", "支付模式仅支持：未配置 / 模拟支付 / 微信支付", status_code=400)
+        payload["mode"] = mode
     row = db.get(SitePaymentSettings, ctx.site_id)
     if row is None:
         row = SitePaymentSettings(site_id=ctx.site_id, mode="unconfigured", dry_run=True)
         db.add(row)
         db.flush()
-    apply_settings_update(row, data=body.model_dump(exclude_unset=True), staff_id=ctx.staff.id)
+    apply_settings_update(row, data=payload, staff_id=ctx.staff.id)
     write_audit(
         db,
         action="payment_settings.update",

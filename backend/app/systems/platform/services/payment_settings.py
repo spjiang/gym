@@ -10,6 +10,23 @@ from app.core.config import get_settings
 from app.core.crypto_secrets import decrypt_secret, encrypt_secret
 from app.systems.platform.models.payment_settings import SitePaymentSettings
 
+# 历史误标的 jdpay 与 wechat 同为微信支付 APIv3
+_WECHAT_MODE_ALIASES = frozenset({"wechat", "jdpay"})
+
+
+def normalize_payment_mode(mode: str | None) -> str:
+    """归一化支付模式；历史 jdpay 统一视为 wechat。"""
+    value = (mode or "unconfigured").strip().lower() or "unconfigured"
+    if value in _WECHAT_MODE_ALIASES:
+        return "wechat"
+    if value in {"mock", "unconfigured"}:
+        return value
+    return value
+
+
+def is_wechat_payment_mode(mode: str | None) -> bool:
+    return normalize_payment_mode(mode) == "wechat"
+
 
 @dataclass
 class EffectivePaymentSettings:
@@ -33,7 +50,7 @@ def resolve_payment_settings(db: Session, site_id: int) -> EffectivePaymentSetti
     env = get_settings()
     if row is not None and row.mode and row.mode != "unconfigured":
         return EffectivePaymentSettings(
-            mode=row.mode,
+            mode=normalize_payment_mode(row.mode),
             dry_run=bool(row.dry_run),
             mp_app_id=row.mp_app_id or env.wechat_app_id or "",
             mp_app_secret=decrypt_secret(row.mp_app_secret_enc) or "",
@@ -48,7 +65,7 @@ def resolve_payment_settings(db: Session, site_id: int) -> EffectivePaymentSetti
             source="db",
         )
     return EffectivePaymentSettings(
-        mode=env.online_payment_mode or "unconfigured",
+        mode=normalize_payment_mode(env.online_payment_mode),
         dry_run=bool(env.wechat_dry_run),
         mp_app_id=env.wechat_app_id or "",
         mp_app_secret="",
@@ -94,7 +111,7 @@ def apply_settings_update(
 ) -> None:
     """部分更新；密钥字段空串表示不修改。"""
     if "mode" in data and data["mode"] is not None:
-        row.mode = data["mode"]
+        row.mode = normalize_payment_mode(data["mode"])
     if "dry_run" in data and data["dry_run"] is not None:
         row.dry_run = bool(data["dry_run"])
     for plain_key in ("mp_app_id", "oa_app_id", "mch_id", "mch_serial_no", "notify_url", "h5_return_url"):
@@ -114,7 +131,7 @@ def apply_settings_update(
 
 def import_from_env(row: SitePaymentSettings, *, staff_id: int | None) -> None:
     env = get_settings()
-    row.mode = env.online_payment_mode or "unconfigured"
+    row.mode = normalize_payment_mode(env.online_payment_mode)
     row.dry_run = bool(env.wechat_dry_run)
     row.mp_app_id = env.wechat_app_id or None
     row.oa_app_id = env.wechat_app_id or None

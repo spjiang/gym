@@ -52,7 +52,7 @@ SYSTEM = {
         {
             "code": "platform.payment",
             "path": "/platform/payment-settings",
-            "name": "京东支付",
+            "name": "微信支付",
             "required_any": ["payment:config", "*"],
             "sort_order": 101,
         },

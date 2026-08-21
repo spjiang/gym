@@ -48,7 +48,7 @@ async function load() {
   loading.value = true
   try {
     const { data } = await http.get<Settings>('/site/payment-settings')
-    form.mode = data.mode
+    form.mode = data.mode === 'jdpay' ? 'wechat' : data.mode
     form.dry_run = data.dry_run
     form.mp_app_id = data.mp_app_id || ''
     form.oa_app_id = data.oa_app_id || ''
@@ -118,7 +118,7 @@ onMounted(load)
 <template>
   <div v-loading="loading">
     <div class="toolbar">
-      <h3>京东支付</h3>
+      <h3>微信支付</h3>
       <div class="actions">
         <el-button @click="importEnv" :loading="saving">从环境变量导入</el-button>
         <el-button type="primary" :loading="saving" @click="save">保存</el-button>
@@ -129,7 +129,7 @@ onMounted(load)
       :closable="false"
       show-icon
       style="margin-bottom: 16px"
-      title="全场地共用一套京东支付商户号。密钥仅写入不回显；留空表示不修改已保存密钥。"
+      title="全场地共用一套微信商户号（APIv3）。密钥仅写入不回显；留空表示不修改已保存密钥。"
       :description="`当前生效来源：${meta.source === 'db' ? '数据库' : '环境变量兜底'}`"
     />
 
@@ -138,15 +138,14 @@ onMounted(load)
         <el-select v-model="form.mode" style="width: 240px">
           <el-option label="未配置" value="unconfigured" />
           <el-option label="模拟支付" value="mock" />
-          <el-option label="京东支付" value="jdpay" />
-          <el-option label="京东支付（兼容 wechat）" value="wechat" />
+          <el-option label="微信支付" value="wechat" />
         </el-select>
       </el-form-item>
       <el-form-item label="DRY_RUN">
-        <el-switch v-model="form.dry_run" active-text="干跑（不调京东）" inactive-text="真实下单" />
+        <el-switch v-model="form.dry_run" active-text="干跑（不调微信）" inactive-text="真实下单" />
       </el-form-item>
       <el-form-item label="小程序 AppID">
-        <el-input v-model="form.mp_app_id" />
+        <el-input v-model="form.mp_app_id" placeholder="微信小程序 AppID" />
       </el-form-item>
       <el-form-item :label="`小程序 Secret${meta.mp_app_secret ? '（已配置）' : ''}`">
         <el-input v-model="form.mp_app_secret" type="password" show-password placeholder="留空不修改" />
@@ -158,13 +157,13 @@ onMounted(load)
         <el-input v-model="form.oa_app_secret" type="password" show-password placeholder="留空不修改" />
       </el-form-item>
       <el-form-item label="商户号">
-        <el-input v-model="form.mch_id" />
+        <el-input v-model="form.mch_id" placeholder="微信支付商户号 mch_id" />
       </el-form-item>
       <el-form-item :label="`APIv3 密钥${meta.api_v3_key ? '（已配置）' : ''}`">
         <el-input v-model="form.api_v3_key" type="password" show-password placeholder="留空不修改" />
       </el-form-item>
       <el-form-item label="证书序列号">
-        <el-input v-model="form.mch_serial_no" />
+        <el-input v-model="form.mch_serial_no" placeholder="商户 API 证书序列号" />
       </el-form-item>
       <el-form-item :label="`商户私钥 PEM${meta.mch_private_key ? '（已配置）' : ''}`">
         <el-input

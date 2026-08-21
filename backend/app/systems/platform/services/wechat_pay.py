@@ -14,7 +14,10 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
 from app.core.errors import AppError
-from app.systems.platform.services.payment_settings import EffectivePaymentSettings
+from app.systems.platform.services.payment_settings import (
+    EffectivePaymentSettings,
+    is_wechat_payment_mode,
+)
 
 
 @dataclass
@@ -76,8 +79,8 @@ def create_wechat_prepay(
     client_ip: str | None,
     return_url: str | None,
 ) -> WechatPrepayResult:
-    if cfg.mode not in {"wechat", "jdpay"}:
-        raise AppError("online_payment_unconfigured", "当前未启用京东支付", status_code=503)
+    if not is_wechat_payment_mode(cfg.mode):
+        raise AppError("online_payment_unconfigured", "当前未启用微信支付", status_code=503)
 
     missing = []
     if not cfg.mch_id:
