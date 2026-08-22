@@ -105,6 +105,8 @@ ROLE_DEFS = [
             "payout:read",
             "payout:manage",
             "audit:read",
+            "ai:read",
+            "ai:manage",
         ],
     },
     {
@@ -125,6 +127,7 @@ ROLE_DEFS = [
             "promoter:read",
             "commission:read",
             "audit:read",
+            "ai:read",
         ],
     },
     {
@@ -171,6 +174,7 @@ ROLE_DEFS = [
             "equipment:repair",
             "equipment:read",
             "audit:read",
+            "ai:read",
         ],
     },
     {
@@ -497,6 +501,10 @@ def run_seed() -> None:
         from app.systems.platform.services.role_packs import sync_existing_role_packs
 
         sync_existing_role_packs(db)
+
+        from app.systems.platform.services.ai_prompt_seed import seed_ai_prompt_templates
+
+        seed_ai_prompt_templates(db, site.id)
 
         # 模板菜单就绪后再复制商户实例
         if gym is not None:

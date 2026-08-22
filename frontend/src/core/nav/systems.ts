@@ -35,6 +35,11 @@ export const PLATFORM_MENU_GROUPS: { key: string; label: string; paths: string[]
     paths: ['/platform/audit-logs'],
   },
   {
+    key: 'ai',
+    label: 'AI 分析',
+    paths: ['/platform/ai/prompt-templates', '/platform/ai/llm-accounts', '/platform/ai/analysis', '/platform/ai/analysis-logs'],
+  },
+  {
     key: 'notify',
     label: '站内通知',
     paths: ['/notifications'],

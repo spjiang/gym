@@ -26,6 +26,10 @@ import PromotionSettingsView from '../systems/platform/views/PromotionSettingsVi
 import RebatesView from '../systems/platform/views/RebatesView.vue'
 import PayoutsView from '../systems/platform/views/PayoutsView.vue'
 import AuditLogsView from '../systems/platform/views/AuditLogsView.vue'
+import AiPromptTemplatesView from '../systems/platform/views/AiPromptTemplatesView.vue'
+import AiLlmAccountsView from '../systems/platform/views/AiLlmAccountsView.vue'
+import AiAnalysisView from '../systems/platform/views/AiAnalysisView.vue'
+import AiAnalysisLogsView from '../systems/platform/views/AiAnalysisLogsView.vue'
 import ProductsView from '../systems/gym/views/ProductsView.vue'
 import MembershipsView from '../systems/gym/views/MembershipsView.vue'
 import CoachesView from '../systems/gym/views/CoachesView.vue'
@@ -167,6 +171,30 @@ const children: RouteRecordRaw[] = [
     name: 'platform-audit-logs',
     component: AuditLogsView,
     meta: { system: 'platform', anyOf: ['audit:read', '*'] },
+  },
+  {
+    path: 'platform/ai/prompt-templates',
+    name: 'platform-ai-prompt-templates',
+    component: AiPromptTemplatesView,
+    meta: { system: 'platform', anyOf: ['ai:manage', '*'] },
+  },
+  {
+    path: 'platform/ai/llm-accounts',
+    name: 'platform-ai-llm-accounts',
+    component: AiLlmAccountsView,
+    meta: { system: 'platform', anyOf: ['ai:manage', '*'] },
+  },
+  {
+    path: 'platform/ai/analysis',
+    name: 'platform-ai-analysis',
+    component: AiAnalysisView,
+    meta: { system: 'platform', anyOf: ['ai:read', 'ai:manage', '*'] },
+  },
+  {
+    path: 'platform/ai/analysis-logs',
+    name: 'platform-ai-analysis-logs',
+    component: AiAnalysisLogsView,
+    meta: { system: 'platform', anyOf: ['ai:read', 'ai:manage', '*'] },
   },
   {
     path: 'products',

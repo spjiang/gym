@@ -27,6 +27,8 @@ SYSTEM = {
         {"code": "payout:read", "name": "查看提现单"},
         {"code": "payout:manage", "name": "提现审核与打款登记"},
         {"code": "audit:read", "name": "查看操作日志"},
+        {"code": "ai:read", "name": "AI 分析"},
+        {"code": "ai:manage", "name": "AI 配置管理"},
     ],
     "menus": [
         {
@@ -196,6 +198,34 @@ SYSTEM = {
             "name": "操作日志",
             "required_any": ["audit:read", "*"],
             "sort_order": 61,
+        },
+        {
+            "code": "platform.ai_prompt_templates",
+            "path": "/platform/ai/prompt-templates",
+            "name": "提示词模版",
+            "required_any": ["ai:manage", "*"],
+            "sort_order": 62,
+        },
+        {
+            "code": "platform.ai_llm_accounts",
+            "path": "/platform/ai/llm-accounts",
+            "name": "大模型管理",
+            "required_any": ["ai:manage", "*"],
+            "sort_order": 63,
+        },
+        {
+            "code": "platform.ai_analysis",
+            "path": "/platform/ai/analysis",
+            "name": "AI 分析",
+            "required_any": ["ai:read", "ai:manage", "*"],
+            "sort_order": 64,
+        },
+        {
+            "code": "platform.ai_analysis_logs",
+            "path": "/platform/ai/analysis-logs",
+            "name": "分析日志",
+            "required_any": ["ai:read", "ai:manage", "*"],
+            "sort_order": 65,
         },
     ],
 }

@@ -26,6 +26,7 @@ from app.systems.platform.api import (
     access,
     agreements,
     audit_logs,
+    ai_analysis,
     auth,
     commerce,
     device,
@@ -116,6 +117,7 @@ def create_app() -> FastAPI:
     app.include_router(payment_notify.router, prefix="/api/v1")
     app.include_router(payment_reconcile.router, prefix="/api/v1")
     app.include_router(audit_logs.router, prefix="/api/v1")
+    app.include_router(ai_analysis.router, prefix="/api/v1")
     return app
 
 
