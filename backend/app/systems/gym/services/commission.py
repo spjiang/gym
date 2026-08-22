@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
 from app.systems.gym.models.commission import (
+    ALLOWED_BENEFICIARIES_BY_SCOPE,
     ORDER_SCOPES,
     SCOPE_CATEGORY,
     BeneficiaryType,
@@ -27,6 +28,7 @@ from app.systems.gym.models.commission import (
 )
 from app.systems.gym.models.course import Coach
 from app.systems.gym.services.coach_member import require_coach_member
+from app.systems.gym.services.sales_member import sales_member_beneficiary, sales_rep_from_staff
 from app.systems.platform.models.commerce import Order, OrderStatus
 from app.systems.platform.models.identity import StaffUser
 from app.systems.platform.models.member import Member
@@ -68,14 +70,125 @@ def find_rule(
         ).all()
     )
     for rule in rows:
-        starts = _ensure_aware(rule.effective_from)
-        ends = _ensure_aware(rule.effective_to)
-        if starts is not None and moment < starts:
-            continue
-        if ends is not None and moment >= ends:
-            continue
-        return rule
+        if _rule_effective_at(rule, moment):
+            return rule
     return None
+
+
+def _rule_effective_at(rule: CommissionRule, moment: datetime) -> bool:
+    starts = _ensure_aware(rule.effective_from)
+    ends = _ensure_aware(rule.effective_to)
+    if starts is not None and moment < starts:
+        return False
+    if ends is not None and moment >= ends:
+        return False
+    return True
+
+
+def resolve_rule_by_id(
+    db: Session,
+    rule_id: int | None,
+    *,
+    merchant_id: int,
+    scope: str,
+    at: datetime | None = None,
+) -> CommissionRule | None:
+    """按档案绑定的规则 id 解析；场景或有效期不符则返回 None。"""
+    if rule_id is None:
+        return None
+    rule = db.get(CommissionRule, rule_id)
+    if rule is None:
+        return None
+    moment = _ensure_aware(at) or _now()
+    if (
+        rule.merchant_id != merchant_id
+        or rule.scope != scope
+        or not rule.is_active
+        or not _rule_effective_at(rule, moment)
+    ):
+        return None
+    return rule
+
+
+def validate_profile_commission_rule(
+    db: Session,
+    *,
+    rule_id: int | None,
+    merchant_id: int,
+    allowed_scopes: set[str],
+    beneficiary: str | None = None,
+) -> None:
+    """校验档案绑定的提成规则。"""
+    if rule_id is None:
+        return
+    rule = db.get(CommissionRule, rule_id)
+    if rule is None:
+        raise AppError("invalid_rule", "提成规则不存在", status_code=400)
+    if rule.merchant_id != merchant_id:
+        raise AppError("invalid_rule", "提成规则不属于当前商户", status_code=400)
+    if rule.scope not in allowed_scopes:
+        raise AppError("invalid_rule", "提成规则场景不匹配", status_code=400)
+    if beneficiary is not None and rule.beneficiary != beneficiary:
+        raise AppError("invalid_rule", "提成规则受益方不匹配", status_code=400)
+
+
+def resolve_sale_rule_for_order(
+    db: Session, order: Order, *, scope: str, at: datetime | None = None
+) -> CommissionRule | None:
+    """销售档案绑定规则优先，否则回落商户默认规则。"""
+    if order.seller_staff_id is not None:
+        rep = sales_rep_from_staff(db, order.seller_staff_id)
+        if rep is not None and rep.commission_rule_id is not None:
+            bound = resolve_rule_by_id(
+                db,
+                rep.commission_rule_id,
+                merchant_id=order.merchant_id,
+                scope=scope,
+                at=at,
+            )
+            if bound is not None:
+                return bound
+    return find_rule(db, merchant_id=order.merchant_id, scope=scope, at=at)
+
+
+def resolve_group_rule_for_coach(
+    db: Session, coach: Coach, *, at: datetime | None = None
+) -> CommissionRule | None:
+    bound = resolve_rule_by_id(
+        db,
+        coach.group_commission_rule_id,
+        merchant_id=coach.merchant_id,
+        scope=CommissionScope.GROUP_SESSION.value,
+        at=at,
+    )
+    if bound is not None:
+        return bound
+    return find_rule(
+        db,
+        merchant_id=coach.merchant_id,
+        scope=CommissionScope.GROUP_SESSION.value,
+        at=at,
+    )
+
+
+def resolve_pt_rule_for_coach(
+    db: Session, coach: Coach, *, at: datetime | None = None
+) -> CommissionRule | None:
+    bound = resolve_rule_by_id(
+        db,
+        coach.pt_commission_rule_id,
+        merchant_id=coach.merchant_id,
+        scope=CommissionScope.PT_SESSION.value,
+        at=at,
+    )
+    if bound is not None:
+        return bound
+    return find_rule(
+        db,
+        merchant_id=coach.merchant_id,
+        scope=CommissionScope.PT_SESSION.value,
+        at=at,
+    )
 
 
 def compute_amount(rule: CommissionRule, *, base_amount: Decimal, quantity: int = 1) -> Decimal:
@@ -116,17 +229,9 @@ def validate_rule_config(
     if basis not in {b.value for b in CommissionBasis}:
         raise AppError("invalid_basis", "未知计提方式", status_code=400)
 
-    expected = {
-        CommissionScope.MEMBERSHIP_SALE.value: CommissionBeneficiary.SELLER.value,
-        CommissionScope.PT_SALE.value: CommissionBeneficiary.SELLER.value,
-        CommissionScope.RETAIL_SALE.value: CommissionBeneficiary.SELLER.value,
-        CommissionScope.ACTIVITY_SALE.value: CommissionBeneficiary.SELLER.value,
-        CommissionScope.GROUP_SESSION.value: CommissionBeneficiary.COACH.value,
-        CommissionScope.PT_SESSION.value: CommissionBeneficiary.COACH.value,
-        CommissionScope.REFERRAL.value: CommissionBeneficiary.REFERRER.value,
-    }[scope]
-    if beneficiary != expected:
-        raise AppError("invalid_beneficiary", "该场景的受益方不匹配", status_code=400)
+    allowed = ALLOWED_BENEFICIARIES_BY_SCOPE.get(scope)
+    if allowed is None or beneficiary not in allowed:
+        raise AppError("invalid_beneficiary", "该场景不支持此受益方", status_code=400)
 
     if basis == CommissionBasis.PERCENT.value:
         if rate is None or Decimal(rate) <= 0:
@@ -142,6 +247,50 @@ def validate_rule_config(
         raise AppError("invalid_basis", "销售类场景仅支持百分比或固定金额", status_code=400)
     if scope == CommissionScope.GROUP_SESSION.value and basis == CommissionBasis.PERCENT.value:
         raise AppError("invalid_basis", "团课提成请按人头或固定金额配置", status_code=400)
+
+
+def _coach_member_beneficiary(db: Session, coach: Coach) -> tuple[str, int] | None:
+    """课时提成默认归属：教练绑定会员。"""
+    try:
+        member = require_coach_member(db, coach)
+    except AppError:
+        return None
+    return BeneficiaryType.MEMBER.value, member.id
+
+
+def _resolve_session_beneficiary(
+    db: Session, rule: CommissionRule, coach: Coach
+) -> tuple[str, int] | None:
+    """按规则受益方解析团课/私教课时提成的实际归属。"""
+    role = rule.beneficiary
+    if role == CommissionBeneficiary.COACH.value:
+        return _coach_member_beneficiary(db, coach)
+    if role == CommissionBeneficiary.SELLER.value and coach.staff_user_id is not None:
+        return sales_member_beneficiary(db, coach.staff_user_id)
+    return None
+
+
+def _resolve_order_sale_beneficiary(
+    db: Session, rule: CommissionRule, order: Order, member: Member | None
+) -> tuple[str, int] | None:
+    """按规则受益方解析销售类提成的实际归属。"""
+    role = rule.beneficiary
+    if role == CommissionBeneficiary.SELLER.value:
+        if order.seller_staff_id is None:
+            return None
+        return sales_member_beneficiary(db, order.seller_staff_id)
+    if role == CommissionBeneficiary.COACH.value:
+        if order.seller_staff_id is None:
+            return None
+        coach = _coach_from_staff(db, order.seller_staff_id)
+        if coach is None:
+            return None
+        return _coach_member_beneficiary(db, coach)
+    return None
+
+
+def _coach_from_staff(db: Session, staff_id: int) -> Coach | None:
+    return db.scalar(select(Coach).where(Coach.staff_user_id == staff_id))
 
 
 def _beneficiary_name(db: Session, beneficiary_type: str, beneficiary_id: int) -> str | None:
@@ -176,7 +325,10 @@ def _upsert_record(
     rate: Decimal | None = None,
     note: str | None = None,
 ) -> CommissionRecord | None:
-    """写入或刷新提成记录；已确认/已结算的记录不再改动。"""
+    """写入或刷新提成记录；已确认/已结算的记录不再改动。
+
+    课时类同来源只保留一条有效记录：历史若仍挂 coach 受益人，会迁到当前会员，避免重复计提。
+    """
     name = _beneficiary_name(db, beneficiary_type, beneficiary_id)
     if name is None:
         return None
@@ -193,6 +345,36 @@ def _upsert_record(
             CommissionRecord.beneficiary_id == beneficiary_id,
         )
     )
+    # 课时提成：同来源只允许一条有效记录，避免历史 coach 受益人与现会员受益人双记
+    if existing is None and scope in {
+        CommissionScope.GROUP_SESSION.value,
+        CommissionScope.PT_SESSION.value,
+    }:
+        siblings = list(
+            db.scalars(
+                select(CommissionRecord).where(
+                    CommissionRecord.scope == scope,
+                    CommissionRecord.source_type == source_type,
+                    CommissionRecord.source_id == source_id,
+                    CommissionRecord.status != CommissionStatus.VOID.value,
+                )
+            ).all()
+        )
+        if siblings:
+            existing = next(
+                (r for r in siblings if r.beneficiary_type == beneficiary_type and r.beneficiary_id == beneficiary_id),
+                None,
+            )
+            if existing is None:
+                existing = next(
+                    (r for r in siblings if r.status == CommissionStatus.PENDING.value),
+                    siblings[0],
+                )
+            for row in siblings:
+                if existing is not None and row.id != existing.id and row.status == CommissionStatus.PENDING.value:
+                    row.status = CommissionStatus.VOID.value
+                    row.note = (row.note or "") + "（同场次受益人归一，作废重复）"
+
     if existing is not None:
         if existing.status != CommissionStatus.PENDING.value:
             return existing
@@ -203,6 +385,8 @@ def _upsert_record(
         existing.quantity = quantity
         existing.rate = record_rate
         existing.amount = amount
+        existing.beneficiary_type = beneficiary_type
+        existing.beneficiary_id = beneficiary_id
         existing.beneficiary_name = name
         existing.note = note
         existing.member_id = member_id
@@ -235,24 +419,6 @@ def _upsert_record(
     return record
 
 
-def _referrer_of(db: Session, member: Member) -> tuple[str, int] | None:
-    """解析会员的推荐人；优先推广位主体，其次推荐会员，最后推荐员工。"""
-    if member.referral_code:
-        promoter = db.scalar(
-            select(PromoterCode).where(PromoterCode.code == member.referral_code)
-        )
-        if promoter is not None:
-            if promoter.subject_member_id is not None:
-                return BeneficiaryType.MEMBER.value, promoter.subject_member_id
-            if promoter.subject_staff_id is not None:
-                return BeneficiaryType.STAFF.value, promoter.subject_staff_id
-    if member.referrer_member_id is not None:
-        return BeneficiaryType.MEMBER.value, member.referrer_member_id
-    if member.referrer_staff_id is not None:
-        return BeneficiaryType.STAFF.value, member.referrer_staff_id
-    return None
-
-
 def _referral_rule(db: Session, member: Member, merchant_id: int, at: datetime) -> CommissionRule | None:
     """推广位可单独指定推广规则，未指定时回落商户默认推荐规则。"""
     if member.referral_code:
@@ -275,29 +441,32 @@ def accrue_order_commissions(db: Session, order: Order) -> list[CommissionRecord
     at = _ensure_aware(order.created_at) or _now()
     base = Decimal(order.amount or 0)
 
-    if scope is not None and order.seller_staff_id is not None:
-        rule = find_rule(db, merchant_id=order.merchant_id, scope=scope, at=at)
+    if scope is not None:
+        rule = resolve_sale_rule_for_order(db, order, scope=scope, at=at)
         if rule is not None:
-            amount = compute_amount(rule, base_amount=base)
-            if amount > 0:
-                record = _upsert_record(
-                    db,
-                    merchant_id=order.merchant_id,
-                    rule=rule,
-                    scope=scope,
-                    source_type="order",
-                    source_id=order.id,
-                    beneficiary_type=BeneficiaryType.STAFF.value,
-                    beneficiary_id=order.seller_staff_id,
-                    base_amount=base,
-                    quantity=1,
-                    amount=amount,
-                    order_id=order.id,
-                    member_id=order.member_id,
-                    note=f"{order.title} 销售提成",
-                )
-                if record is not None:
-                    created.append(record)
+            member = db.get(Member, order.member_id) if order.member_id is not None else None
+            resolved = _resolve_order_sale_beneficiary(db, rule, order, member)
+            if resolved is not None:
+                amount = compute_amount(rule, base_amount=base)
+                if amount > 0:
+                    record = _upsert_record(
+                        db,
+                        merchant_id=order.merchant_id,
+                        rule=rule,
+                        scope=scope,
+                        source_type="order",
+                        source_id=order.id,
+                        beneficiary_type=resolved[0],
+                        beneficiary_id=resolved[1],
+                        base_amount=base,
+                        quantity=1,
+                        amount=amount,
+                        order_id=order.id,
+                        member_id=order.member_id,
+                        note=f"{order.title} 销售提成",
+                    )
+                    if record is not None:
+                        created.append(record)
 
     if order.member_id is not None:
         member = db.get(Member, order.member_id)
@@ -315,61 +484,19 @@ def _accrue_referral(
     at: datetime,
     created: list[CommissionRecord],
 ) -> None:
-    """推荐收益分流：上级会员进返点账户，推荐员工进提成记录。"""
+    """推荐收益：仅会员上级走返点；推荐成交规则在上级返点为 0 时作 fallback 金额。"""
     rule = _referral_rule(db, member, order.merchant_id, at)
     upline = resolve_upline(db, member)
-    if upline is not None:
-        fallback: Decimal | None = None
-        if upline.rebate_rate <= 0 and rule is not None:
-            first_order_blocked = rule.first_order_only and has_prior_earn(
-                db, from_member_id=member.id, exclude_order_id=order.id
-            )
-            if not first_order_blocked:
-                fallback = compute_amount(rule, base_amount=base)
-        accrue_order_rebate(db, order, upline=upline, fallback_amount=fallback)
+    if upline is None:
         return
-
-    referrer = _referrer_of(db, member)
-    if referrer is None or referrer[0] != BeneficiaryType.STAFF.value or rule is None:
-        return
-    if rule.first_order_only and _has_prior_referral(db, member.id, order.id):
-        return
-    amount = compute_amount(rule, base_amount=base)
-    if amount <= 0:
-        return
-    record = _upsert_record(
-        db,
-        merchant_id=order.merchant_id,
-        rule=rule,
-        scope=CommissionScope.REFERRAL.value,
-        source_type="order",
-        source_id=order.id,
-        beneficiary_type=referrer[0],
-        beneficiary_id=referrer[1],
-        base_amount=base,
-        quantity=1,
-        amount=amount,
-        order_id=order.id,
-        member_id=order.member_id,
-        note=f"推荐 {member.name} 消费提成",
-    )
-    if record is not None:
-        created.append(record)
-
-
-def _has_prior_referral(db: Session, member_id: int, order_id: int) -> bool:
-    """判断该会员是否已产生过推荐提成（仅首单计提场景使用）。"""
-    row = db.scalar(
-        select(CommissionRecord.id)
-        .where(
-            CommissionRecord.scope == CommissionScope.REFERRAL.value,
-            CommissionRecord.member_id == member_id,
-            CommissionRecord.status != CommissionStatus.VOID.value,
-            CommissionRecord.source_id != order_id,
+    fallback: Decimal | None = None
+    if upline.rebate_rate <= 0 and rule is not None:
+        first_order_blocked = rule.first_order_only and has_prior_earn(
+            db, from_member_id=member.id, exclude_order_id=order.id
         )
-        .limit(1)
-    )
-    return row is not None
+        if not first_order_blocked:
+            fallback = compute_amount(rule, base_amount=base)
+    accrue_order_rebate(db, order, upline=upline, fallback_amount=fallback)
 
 
 def accrue_group_session_commission(
@@ -379,11 +506,11 @@ def accrue_group_session_commission(
     coach = db.get(Coach, coach_id)
     if coach is None:
         return None
-    member = require_coach_member(db, coach)
-    rule = find_rule(
-        db, merchant_id=merchant_id, scope=CommissionScope.GROUP_SESSION.value, at=at
-    )
+    rule = resolve_group_rule_for_coach(db, coach, at=at)
     if rule is None:
+        return None
+    resolved = _resolve_session_beneficiary(db, rule, coach)
+    if resolved is None:
         return None
     amount = compute_amount(rule, base_amount=Decimal("0"), quantity=attended_count)
     if amount <= 0:
@@ -395,8 +522,8 @@ def accrue_group_session_commission(
         scope=CommissionScope.GROUP_SESSION.value,
         source_type="group_session",
         source_id=session_id,
-        beneficiary_type=BeneficiaryType.MEMBER.value,
-        beneficiary_id=member.id,
+        beneficiary_type=resolved[0],
+        beneficiary_id=resolved[1],
         base_amount=Decimal("0"),
         quantity=attended_count,
         amount=amount,
@@ -444,8 +571,11 @@ def accrue_pt_session_commission(
             note=f"私教课时提成（教练个人比例 {rate}）· 教练 {coach.display_name}",
         )
 
-    rule = find_rule(db, merchant_id=merchant_id, scope=CommissionScope.PT_SESSION.value, at=at)
+    rule = resolve_pt_rule_for_coach(db, coach, at=at)
     if rule is None:
+        return None
+    resolved = _resolve_session_beneficiary(db, rule, coach)
+    if resolved is None:
         return None
     amount = compute_amount(rule, base_amount=base_amount, quantity=1)
     if amount <= 0:
@@ -457,8 +587,8 @@ def accrue_pt_session_commission(
         scope=CommissionScope.PT_SESSION.value,
         source_type="pt_appointment",
         source_id=appointment_id,
-        beneficiary_type=BeneficiaryType.MEMBER.value,
-        beneficiary_id=beneficiary.id,
+        beneficiary_type=resolved[0],
+        beneficiary_id=resolved[1],
         base_amount=base_amount,
         quantity=1,
         amount=amount,
@@ -468,8 +598,10 @@ def accrue_pt_session_commission(
     )
 
 
-def void_records_for_order(db: Session, order_id: int) -> int:
-    """订单全额退款时作废提成；已打款记录一并标记，需人工扣回。"""
+def void_records_for_order(
+    db: Session, order_id: int, *, refund_id: int | None = None, refund_amount: Decimal | None = None
+) -> int:
+    """订单全额退款：未打款作废；已打款记欠额，记录保持已结算。"""
     rows = list(
         db.scalars(
             select(CommissionRecord).where(
@@ -484,13 +616,26 @@ def void_records_for_order(db: Session, order_id: int) -> int:
             )
         ).all()
     )
+    from app.systems.gym.services.commission_policy import clawback_paid_record
+
+    changed = 0
     for row in rows:
-        paid = row.status == CommissionStatus.PAID.value
+        if row.status == CommissionStatus.PAID.value:
+            if refund_id is not None:
+                clawback_paid_record(
+                    db, row, refund_id=refund_id, amount=Decimal(row.amount or 0)
+                )
+            else:
+                suffix = "（订单退款自动作废，已打款需人工扣回）"
+                row.status = CommissionStatus.VOID.value
+                row.note = (row.note or "") + suffix
+            changed += 1
+            continue
         row.status = CommissionStatus.VOID.value
-        suffix = "（订单退款自动作废，已打款需人工扣回）" if paid else "（订单退款自动作废）"
-        row.note = (row.note or "") + suffix
+        row.note = (row.note or "") + "（订单退款自动作废）"
+        changed += 1
     db.flush()
-    return len(rows)
+    return changed
 
 
 def scale_records_for_partial_refund(
@@ -498,13 +643,17 @@ def scale_records_for_partial_refund(
     order: Order,
     *,
     refund_amount: Decimal,
+    refund_id: int | None = None,
 ) -> int:
-    """部分退按剩余实付比例下调未结算提成。"""
+    """部分退：未结算按比例下调；已打款按比例记欠额。"""
     paid_after = _quantize(Decimal(order.amount or 0) - Decimal(order.refunded_amount or 0))
     paid_before = paid_after + _quantize(refund_amount)
     if paid_before <= 0:
         return 0
-    rows = list(
+    ratio = _quantize(refund_amount) / paid_before
+    from app.systems.gym.services.commission_policy import clawback_paid_record
+
+    open_rows = list(
         db.scalars(
             select(CommissionRecord).where(
                 CommissionRecord.order_id == order.id,
@@ -514,8 +663,16 @@ def scale_records_for_partial_refund(
             )
         ).all()
     )
+    paid_rows = list(
+        db.scalars(
+            select(CommissionRecord).where(
+                CommissionRecord.order_id == order.id,
+                CommissionRecord.status == CommissionStatus.PAID.value,
+            )
+        ).all()
+    )
     changed = 0
-    for row in rows:
+    for row in open_rows:
         new_amount = _quantize(Decimal(row.amount or 0) * paid_after / paid_before)
         row.base_amount = _quantize(Decimal(row.base_amount or 0) * paid_after / paid_before)
         if new_amount <= 0:
@@ -526,6 +683,12 @@ def scale_records_for_partial_refund(
             row.amount = new_amount
             row.note = (row.note or "") + "（部分退款按比例下调）"
         changed += 1
+    if refund_id is not None:
+        for row in paid_rows:
+            claw = _quantize(Decimal(row.amount or 0) * ratio)
+            if claw > 0:
+                clawback_paid_record(db, row, refund_id=refund_id, amount=claw)
+                changed += 1
     db.flush()
     return changed
 
@@ -539,13 +702,44 @@ _ALLOWED_TRANSITIONS = {
 
 
 def change_record_status(db: Session, record: CommissionRecord, status: str) -> CommissionRecord:
-    """按待确认 → 已确认 → 已结算流转；任意非终态可作废。"""
+    """按待确认 → 已确认 → 已结算流转；任意非终态可作废。结算时校验冷却并抵扣欠额。"""
+    from app.systems.platform.services.payouts import record_locked_by_open_payout
+
     if status not in {s.value for s in CommissionStatus}:
         raise AppError("invalid_status", "未知提成状态", status_code=400)
     if status == record.status:
         return record
     if status not in _ALLOWED_TRANSITIONS[record.status]:
         raise AppError("invalid_state", "当前状态不允许该操作", status_code=400)
+    if status == CommissionStatus.PAID.value and record_locked_by_open_payout(db, record.id):
+        raise AppError(
+            "record_locked",
+            "该提成已纳入提现申请，请通过提现流程结算",
+            status_code=400,
+        )
+    if status == CommissionStatus.PAID.value:
+        from app.systems.gym.services.commission_policy import (
+            apply_debt_offset,
+            assert_record_ready_to_settle,
+            site_id_of_merchant,
+        )
+
+        assert_record_ready_to_settle(db, record)
+        site_id = site_id_of_merchant(db, record.merchant_id)
+        applied = apply_debt_offset(
+            db,
+            site_id=site_id,
+            beneficiary_type=record.beneficiary_type,
+            beneficiary_id=record.beneficiary_id,
+            beneficiary_name=record.beneficiary_name,
+            amount=Decimal(record.amount or 0),
+            source_type="commission_record",
+            source_id=record.id,
+            commission_record_id=record.id,
+            note=f"结算提成 record={record.id} 抵扣欠额",
+        )
+        if applied > 0:
+            record.note = (record.note or "") + f"（结算抵扣欠额 ¥{applied}）"
     record.status = status
     record.settled_at = _now() if status == CommissionStatus.PAID.value else None
     db.flush()

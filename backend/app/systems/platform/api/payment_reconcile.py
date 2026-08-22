@@ -129,6 +129,8 @@ def action_query_pay(
     order = db.get(Order, body.order_id)
     if order is None or order.site_id != ctx.site_id:
         raise AppError("not_found", "订单不存在", status_code=404)
+    if not ctx.is_site_wide:
+        ctx.assert_merchant_access(order.merchant_id)
     return sync_pay_query(db, order)
 
 
@@ -162,8 +164,8 @@ def action_force_fulfill(
     db: Session = Depends(get_db),
     ctx: RequestContext = Depends(get_current_context),
 ):
-    if not ctx.is_site_admin:
-        raise AppError("forbidden", "仅超管可强制补履约", status_code=403)
+    if not ctx.can_force_payment_reconcile:
+        raise AppError("forbidden", "仅超管或财务对账可强制补履约", status_code=403)
     order = db.get(Order, body.order_id)
     if order is None or order.site_id != ctx.site_id:
         raise AppError("not_found", "订单不存在", status_code=404)
@@ -193,8 +195,8 @@ def action_force_refund_success(
     db: Session = Depends(get_db),
     ctx: RequestContext = Depends(get_current_context),
 ):
-    if not ctx.is_site_admin:
-        raise AppError("forbidden", "仅超管可强制补退结果", status_code=403)
+    if not ctx.can_force_payment_reconcile:
+        raise AppError("forbidden", "仅超管或财务对账可强制补退结果", status_code=403)
     intent = db.get(RefundIntent, body.refund_intent_id)
     if intent is None or intent.site_id != ctx.site_id:
         raise AppError("not_found", "退款意图不存在", status_code=404)
@@ -219,9 +221,18 @@ def action_mark_offline_refunded(
     ctx: RequestContext = Depends(get_current_context),
 ):
     ctx.require_permission("payment:reconcile", "*")
+    from app.systems.platform.models.commerce import PaymentChannel
+
     intent = db.get(RefundIntent, body.refund_intent_id)
     if intent is None or intent.site_id != ctx.site_id:
         raise AppError("not_found", "退款意图不存在", status_code=404)
+    if intent.channel not in {
+        PaymentChannel.OFFLINE_CASH.value,
+        PaymentChannel.OFFLINE_TRANSFER.value,
+    }:
+        raise AppError("validation_error", "仅线下退款意图可标记线下已退", status_code=400)
+    if intent.status in ("succeeded", "processing"):
+        raise AppError("invalid_state", "该退款意图已在处理或已完成", status_code=400)
     apply_refund_success(db, intent, actor_staff_id=ctx.staff.id)
     db.commit()
     return {"ok": True, "refund_intent_id": intent.id, "status": intent.status}

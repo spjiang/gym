@@ -1,6 +1,7 @@
 """员工与角色分配。"""
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -51,6 +52,49 @@ def _resolve_roles(db: Session, role_codes: list[str], merchant_id: int | None) 
             raise AppError("invalid_role", "不可直接分配角色模板", status_code=400)
         roles.append(role)
     return roles
+
+
+class StaffOptionOut(BaseModel):
+    id: int
+    username: str
+    display_name: str
+    merchant_id: int | None = None
+
+
+@router.get("/options", response_model=list[StaffOptionOut])
+def staff_options(
+    merchant_id: int | None = None,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    """销售/教练档案表单用的员工下拉，权限低于完整员工管理。"""
+    ctx.require_permission(
+        "staff:manage",
+        "org:manage",
+        "sales:manage",
+        "coach:manage",
+        "commission:manage",
+        "*",
+    )
+    filters = [StaffUser.site_id == ctx.site_id, StaffUser.is_active.is_(True)]
+    if not ctx.is_site_admin:
+        filters.append(StaffUser.merchant_id == ctx.merchant_id)
+    elif merchant_id is not None:
+        filters.append(StaffUser.merchant_id == merchant_id)
+    rows = list(
+        db.scalars(
+            select(StaffUser).where(*filters).order_by(StaffUser.display_name.asc(), StaffUser.id.asc())
+        ).all()
+    )
+    return [
+        StaffOptionOut(
+            id=s.id,
+            username=s.username,
+            display_name=s.display_name,
+            merchant_id=s.merchant_id,
+        )
+        for s in rows
+    ]
 
 
 @router.get("", response_model=PageOut[StaffOut])

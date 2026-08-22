@@ -156,6 +156,13 @@ def _ensure_role_menus_from_permissions(db: Session) -> None:
 
         existing = {r.menu_code for r in existing_rows}
         for code in wanted - existing:
+            if db.scalar(
+                select(RoleMenu.id).where(
+                    RoleMenu.role_id == role.id,
+                    RoleMenu.menu_code == code,
+                )
+            ):
+                continue
             db.add(RoleMenu(role_id=role.id, menu_code=code))
         if is_template:
             for row in existing_rows:

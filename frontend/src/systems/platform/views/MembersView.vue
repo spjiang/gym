@@ -18,7 +18,6 @@ type Member = {
   created_at?: string
   has_password?: boolean
   referrer_member_id?: number | null
-  referrer_staff_id?: number | null
   referrer_note?: string | null
   referral_code?: string | null
   referrer_display?: string | null
@@ -314,7 +313,7 @@ function openCreate() {
   createDialog.value = true
 }
 
-/** 推荐来源：会员推广 / 登记姓名；员工推荐已下线，保存时清空。 */
+/** 推荐来源：会员推广 / 登记姓名 */
 function referrerPayload(src: {
   referrer_type: '' | 'member' | 'note'
   referrer_member_id?: number
@@ -322,7 +321,6 @@ function referrerPayload(src: {
 }) {
   return {
     referrer_member_id: src.referrer_type === 'member' ? (src.referrer_member_id ?? null) : null,
-    referrer_staff_id: null,
     referrer_note: src.referrer_type === 'note' ? src.referrer_note.trim() || null : null,
   }
 }

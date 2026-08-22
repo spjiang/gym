@@ -12,6 +12,8 @@ from app.core.domain.subsystems import replace_merchant_subsystems
 from app.core.manifest_sync import sync_manifests, sync_role_permissions_from_json
 from app.core.security import hash_password
 from app.seed_demo import seed_demo_catalog
+from app.seed_demo_ops import seed_demo_operations
+from app.seed_reset import reset_all_data
 from app.systems.platform.models.access import AccessPoint
 from app.systems.platform.models.identity import Role, StaffRole, StaffUser
 from app.systems.platform.models.org import Merchant, MerchantContact, MerchantStatus, MerchantType, Site
@@ -105,6 +107,25 @@ ROLE_DEFS = [
         ],
     },
     {
+        "code": "site_finance",
+        "name": "场地财务人员",
+        "is_site_scope": True,
+        "permissions": [
+            "system:platform",
+            "system:gym",
+            "system:catering",
+            "org:read",
+            "member:read",
+            "order:read",
+            "report:read",
+            "payment:reconcile",
+            "payout:read",
+            "payout:manage",
+            "promoter:read",
+            "commission:read",
+        ],
+    },
+    {
         "code": "tpl_gym_admin",
         "name": "健身房管理员",
         "is_site_scope": False,
@@ -132,6 +153,7 @@ ROLE_DEFS = [
             "activity:register",
             "commission:read",
             "commission:manage",
+            "sales:manage",
             "promoter:read",
             "promoter:manage",
             "payout:read",
@@ -149,8 +171,8 @@ ROLE_DEFS = [
         ],
     },
     {
-        "code": "tpl_gym_ops",
-        "name": "健身房运营人员",
+        "code": "tpl_gym_front",
+        "name": "健身房前台",
         "is_site_scope": False,
         "permissions": [
             "system:platform",
@@ -168,6 +190,35 @@ ROLE_DEFS = [
             "pt:book",
             "activity:register",
             "promoter:read",
+            "retail:sell",
+            "retail:read",
+            "coupon:redeem",
+            "coupon:read",
+            "equipment:repair",
+            "equipment:read",
+        ],
+    },
+    {
+        "code": "tpl_gym_ops",
+        "name": "健身房运营",
+        "is_site_scope": False,
+        "permissions": [
+            "system:platform",
+            "system:gym",
+            "member:read",
+            "member:write",
+            "access:read",
+            "access:manage",
+            "order:read",
+            "order:write",
+            "membership:sell",
+            "course:book",
+            "course:checkin",
+            "pt:sell",
+            "pt:book",
+            "activity:register",
+            "commission:read",
+            "promoter:read",
             "payout:read",
             "retail:sell",
             "retail:read",
@@ -175,6 +226,28 @@ ROLE_DEFS = [
             "coupon:read",
             "equipment:repair",
             "equipment:read",
+        ],
+    },
+    {
+        "code": "tpl_gym_sales",
+        "name": "健身房销售",
+        "is_site_scope": False,
+        "permissions": [
+            "system:platform",
+            "system:gym",
+            "member:read",
+            "member:write",
+            "order:read",
+            "order:write",
+            "membership:sell",
+            "pt:sell",
+            "activity:register",
+            "commission:self",
+            "promoter:read",
+            "retail:sell",
+            "retail:read",
+            "coupon:redeem",
+            "coupon:read",
         ],
     },
     {
@@ -244,6 +317,11 @@ def run_seed() -> None:
     settings = get_settings()
     db = db_module.SessionLocal()
     try:
+        if settings.seed_reset_data:
+            reset_all_data(db)
+            db.commit()
+            print("[seed] 已清空全部业务数据（SEED_RESET_DATA=true）")
+
         site = db.scalar(select(Site).order_by(Site.id))
         if site is None:
             site = Site(
@@ -401,7 +479,7 @@ def run_seed() -> None:
                 db.flush()
                 sync_role_permissions_from_json(db, role)
             else:
-                if settings.seed_reset_roles:
+                if settings.seed_reset_roles or settings.seed_reset_data:
                     role.permissions = list(defn["permissions"])
                     role.name = defn["name"]
                     role.is_site_scope = defn["is_site_scope"]
@@ -412,6 +490,10 @@ def run_seed() -> None:
 
         db.flush()
         sync_manifests(db, ensure_role_menus=True)
+
+        from app.systems.platform.services.role_packs import sync_existing_role_packs
+
+        sync_existing_role_packs(db)
 
         # 模板菜单就绪后再复制商户实例
         if gym is not None:
@@ -434,8 +516,10 @@ def run_seed() -> None:
             db.add(StaffRole(staff_id=admin.id, role_id=role_map["site_admin"].id))
 
         if settings.seed_demo and gym is not None:
-            seed_demo_catalog(db, site=site, gym=gym, role_map=role_map)
-            print("[seed] Demo 目录数据已就绪（SEED_DEMO=true）")
+            seed_demo_catalog(db, site=site, gym=gym, bar=bar, role_map=role_map)
+            seed_demo_operations(db, site=site, gym=gym, bar=bar)
+            print("[seed] Demo 目录与运营样本已就绪（SEED_DEMO=true）")
+            print("[seed] 账号说明见 docs/Demo账号说明.md")
         else:
             print("[seed] 跳过 Demo 目录数据（SEED_DEMO=false）")
 

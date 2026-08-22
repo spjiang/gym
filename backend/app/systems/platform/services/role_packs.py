@@ -18,6 +18,8 @@ PACK_BY_SYSTEM: dict[str, list[tuple[str, str]]] = {
     "gym": [
         ("tpl_gym_admin", "gym_admin"),
         ("tpl_gym_ops", "gym_ops"),
+        ("tpl_gym_front", "gym_front"),
+        ("tpl_gym_sales", "gym_sales"),
         ("tpl_gym_coach", "gym_coach"),
     ],
     "catering": [
@@ -102,6 +104,13 @@ def sync_existing_role_packs(db: Session) -> None:
                     db.scalars(select(RoleMenu.menu_code).where(RoleMenu.role_id == inst.id)).all()
                 )
                 for menu_code in tpl_menus - have_menus:
+                    if db.scalar(
+                        select(RoleMenu.id).where(
+                            RoleMenu.role_id == inst.id,
+                            RoleMenu.menu_code == menu_code,
+                        )
+                    ):
+                        continue
                     db.add(RoleMenu(role_id=inst.id, menu_code=menu_code))
                 have_perms = set(
                     db.scalars(

@@ -64,11 +64,11 @@ SYSTEM = {
             "sort_order": 102,
         },
         {
-            "code": "platform.agreements",
-            "path": "/platform/agreements",
-            "name": "协议管理",
-            "required_any": ["org:read", "org:write", "*"],
-            "sort_order": 103,
+            "code": "platform.commission_settings",
+            "path": "/platform/commission-settings",
+            "name": "分成配置",
+            "required_any": ["commission:manage", "org:write", "*"],
+            "sort_order": 104,
         },
         {
             "code": "platform.payment_reconcile",

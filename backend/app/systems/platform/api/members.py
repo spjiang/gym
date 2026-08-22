@@ -42,15 +42,11 @@ router = APIRouter(prefix="/members", tags=["members"])
 
 
 def _referrer_display(db: Session, m: Member) -> str | None:
-    """推荐人展示名：会员优先，其次员工，最后人工登记姓名。"""
+    """推荐人展示名：会员推广或登记姓名。"""
     if m.referrer_member_id is not None:
         ref = db.get(Member, m.referrer_member_id)
         if ref is not None:
             return f"会员 {ref.name} {ref.phone}"
-    if m.referrer_staff_id is not None:
-        staff = db.get(StaffUser, m.referrer_staff_id)
-        if staff is not None:
-            return f"员工 {staff.display_name}"
     return m.referrer_note
 
 
@@ -79,7 +75,6 @@ def _member_out(db: Session, m: Member) -> MemberOut:
         first_merchant_name=first_name,
         has_password=bool(m.password_hash),
         referrer_member_id=m.referrer_member_id,
-        referrer_staff_id=m.referrer_staff_id,
         referrer_note=m.referrer_note,
         referral_code=m.referral_code,
         referrer_display=_referrer_display(db, m),
@@ -120,12 +115,6 @@ def _apply_referrer(
                 raise AppError("not_found", "推荐会员不存在", status_code=404)
             _assert_no_referrer_cycle(db, member, body.referrer_member_id)
         member.referrer_member_id = body.referrer_member_id
-    if "referrer_staff_id" in fields_set:
-        if body.referrer_staff_id is not None:
-            staff = db.get(StaffUser, body.referrer_staff_id)
-            if staff is None or staff.site_id != ctx.site_id:
-                raise AppError("not_found", "推荐员工不存在", status_code=404)
-        member.referrer_staff_id = body.referrer_staff_id
     if "referrer_note" in fields_set:
         member.referrer_note = (body.referrer_note or "").strip() or None
     if "referral_code" in fields_set:
@@ -165,7 +154,6 @@ def _member_filters(
     face_status: str | None = None,
     has_password: bool | None = None,
     referrer_member_id: int | None = None,
-    referrer_staff_id: int | None = None,
     referral_code: str | None = None,
     has_referrer: bool | None = None,
 ):
@@ -190,13 +178,10 @@ def _member_filters(
         filters.append(Member.password_hash.is_(None))
     if referrer_member_id is not None:
         filters.append(Member.referrer_member_id == referrer_member_id)
-    if referrer_staff_id is not None:
-        filters.append(Member.referrer_staff_id == referrer_staff_id)
     if referral_code:
         filters.append(Member.referral_code == referral_code.strip().upper())
     referred = or_(
         Member.referrer_member_id.is_not(None),
-        Member.referrer_staff_id.is_not(None),
         Member.referrer_note.is_not(None),
         Member.referral_code.is_not(None),
     )
@@ -216,7 +201,6 @@ def list_members(
     face_status: str | None = None,
     has_password: bool | None = None,
     referrer_member_id: int | None = None,
-    referrer_staff_id: int | None = None,
     referral_code: str | None = None,
     has_referrer: bool | None = None,
     db: Session = Depends(get_db),
@@ -230,7 +214,6 @@ def list_members(
         face_status=face_status,
         has_password=has_password,
         referrer_member_id=referrer_member_id,
-        referrer_staff_id=referrer_staff_id,
         referral_code=referral_code,
         has_referrer=has_referrer,
     )

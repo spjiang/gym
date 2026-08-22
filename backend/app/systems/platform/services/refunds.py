@@ -239,7 +239,7 @@ def create_refund(
     reason: str | None,
     force: bool,
     actor_staff_id: int | None,
-    is_site_admin: bool,
+    can_force: bool,
 ) -> RefundIntent:
     if order.status not in (OrderStatus.PAID.value, OrderStatus.REFUNDED.value):
         # 部分退后仍为 paid；已 refunded 且余额 0 会在下方拦截
@@ -282,8 +282,8 @@ def create_refund(
                 )
 
     if order.order_type in ("membership", "pt_package"):
-        if force and not is_site_admin:
-            raise AppError("forbidden", "仅场地超管可强制退款", status_code=403)
+        if force and not can_force:
+            raise AppError("forbidden", "仅场地超管或财务对账可强制退款", status_code=403)
         if not force:
             if suggested <= 0:
                 raise AppError("invalid_state", "当前无可退剩余价值", status_code=400)
@@ -293,8 +293,6 @@ def create_refund(
                     f"会籍/课包非强制退款金额须等于建议额 {suggested}",
                     status_code=422,
                 )
-        elif force and not is_site_admin:
-            raise AppError("forbidden", "权限不足", status_code=403)
 
     if order.order_type == "activity":
         registration = db.scalar(
@@ -307,8 +305,8 @@ def create_refund(
                     "已签到活动不可退款，需超管强制且保留到场记录",
                     status_code=400,
                 )
-            if not is_site_admin:
-                raise AppError("forbidden", "仅场地超管可强制退款", status_code=403)
+            if not can_force:
+                raise AppError("forbidden", "仅场地超管或财务对账可强制退款", status_code=403)
 
     out_refund_no = f"r{order.id}t{int(time.time())}{out_trade_no[-4:] if out_trade_no else 'xx'}"
     intent = RefundIntent(
@@ -396,11 +394,13 @@ def apply_refund_success(
     if full:
         order.status = OrderStatus.REFUNDED.value
         # 全额退：未结算与已打款提成一并作废（已打款需人工扣回）
-        void_records_for_order(db, order.id)
+        void_records_for_order(db, order.id, refund_id=intent.id)
         if order.order_type == "dining":
             order.dining_status = None
     else:
-        scale_records_for_partial_refund(db, order, refund_amount=this_amount)
+        scale_records_for_partial_refund(
+            db, order, refund_amount=this_amount, refund_id=intent.id
+        )
     sync_open_commission_payouts(db, order.id)
 
     if order.order_type == "activity":

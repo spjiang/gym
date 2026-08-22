@@ -26,7 +26,13 @@ from app.systems.platform.models.sms import SiteSmsSettings, SmsTemplate
 from app.systems.platform.models.visit import VisitPass
 from app.systems.gym.models.activity import Activity, ActivityRegistration
 from app.systems.gym.models.appointment import PtAppointment
-from app.systems.gym.models.commission import CommissionRecord, CommissionRule
+from app.systems.gym.models.commission import (
+    CommissionClawbackLedger,
+    CommissionDebtAccount,
+    CommissionRecord,
+    CommissionRule,
+    SiteCommissionSettings,
+)
 from app.systems.gym.models.coupon import CouponTemplate, MemberCoupon, OrderCouponLink
 from app.systems.gym.models.course import (
     Coach,
@@ -38,7 +44,7 @@ from app.systems.gym.models.course import (
     PtPackageProduct,
     PtPackageProductCoach,
 )
-from app.systems.gym.models.equipment import EquipmentAsset, EquipmentRepairTicket
+from app.systems.gym.models.sales import SalesRep
 from app.systems.gym.models.membership import (
     Membership,
     MembershipConsumption,
@@ -123,6 +129,7 @@ __all__ = [
     "MemberOtpChallenge",
     "EquipmentAsset",
     "EquipmentRepairTicket",
+    "SalesRep",
     "VisitPass",
     "SiteSmsSettings",
     "SmsTemplate",
@@ -131,4 +138,7 @@ __all__ = [
     "MemberWechatBinding",
     "PaymentIntent",
     "RefundIntent",
+    "SiteCommissionSettings",
+    "CommissionDebtAccount",
+    "CommissionClawbackLedger",
 ]

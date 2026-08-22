@@ -52,8 +52,8 @@ class CommerceSummaryOut(BaseModel):
 
 
 def _resolve_report_merchant(ctx: RequestContext, merchant_id: int | None) -> int | None:
-    """商户管理员强制本商户；超管可空（全场地）或指定。"""
-    if ctx.is_site_admin:
+    """场地级账号（超管/运营）可空（全场地）或指定；商户管理员强制本商户。"""
+    if ctx.is_site_wide:
         return merchant_id
     if ctx.merchant_id is None:
         raise AppError("merchant_required", "当前账号未绑定商户", status_code=403)

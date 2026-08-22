@@ -19,6 +19,7 @@ from app.systems.gym.api import (
     membership,
     pt_appointment,
     retail,
+    sales,
 )
 from app.systems.platform.api import (
     access,
@@ -93,6 +94,7 @@ def create_app() -> FastAPI:
     app.include_router(activity.router, prefix="/api/v1")
     app.include_router(pt_appointment.router, prefix="/api/v1")
     app.include_router(commission.router, prefix="/api/v1")
+    app.include_router(sales.router, prefix="/api/v1")
     app.include_router(promoters.public_router, prefix="/api/v1")
     app.include_router(promotion.router, prefix="/api/v1")
     app.include_router(payouts.router, prefix="/api/v1")

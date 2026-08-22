@@ -6,6 +6,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.systems.gym.models.commission import (
+    BeneficiaryType,
+    CommissionRecord,
+    CommissionStatus,
+)
 from app.systems.gym.models.course import Coach
 from app.systems.platform.models.member import Member, MerchantMember
 from app.systems.platform.services.promotion import ensure_member_promoter_code, member_promoter_code
@@ -20,6 +25,29 @@ def _ensure_merchant_link(db: Session, *, member_id: int, merchant_id: int) -> N
     )
     if exists is None:
         db.add(MerchantMember(member_id=member_id, merchant_id=merchant_id))
+        db.flush()
+
+
+def reassign_coach_commission_to_member(db: Session, *, coach: Coach, member: Member) -> None:
+    """把仍挂在教练档案上的未结算提成迁到绑定会员，避免「我的佣金」漏看与双轨提现。"""
+    name = f"{member.name} {member.phone}"
+    rows = list(
+        db.scalars(
+            select(CommissionRecord).where(
+                CommissionRecord.beneficiary_type == BeneficiaryType.COACH.value,
+                CommissionRecord.beneficiary_id == coach.id,
+                CommissionRecord.status.in_(
+                    [CommissionStatus.PENDING.value, CommissionStatus.CONFIRMED.value]
+                ),
+            )
+        ).all()
+    )
+    for row in rows:
+        row.beneficiary_type = BeneficiaryType.MEMBER.value
+        row.beneficiary_id = member.id
+        row.beneficiary_name = name
+        row.coach_id = coach.id
+    if rows:
         db.flush()
 
 
@@ -45,6 +73,7 @@ def link_coach_member(
     coach.member_id = member.id
     _ensure_merchant_link(db, member_id=member.id, merchant_id=merchant_id)
     ensure_member_promoter_code(db, member, force=True)
+    reassign_coach_commission_to_member(db, coach=coach, member=member)
     db.flush()
     return member
 

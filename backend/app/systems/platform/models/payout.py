@@ -50,6 +50,10 @@ class Payout(Base):
     method: Mapped[str | None] = mapped_column(String(32))
     # 线下打款凭证号 / 转账流水号
     external_ref: Mapped[str | None] = mapped_column(String(64))
+    # 本次提现单抵扣的提成欠额（现金 = amount）
+    offset_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
     note: Mapped[str | None] = mapped_column(String(255))
     reject_reason: Mapped[str | None] = mapped_column(String(255))
     requested_by_staff_id: Mapped[int | None] = mapped_column(ForeignKey("staff_users.id"))

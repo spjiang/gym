@@ -14,6 +14,13 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
 from app.systems.gym.models.commission import BeneficiaryType, CommissionRecord, CommissionStatus
+from app.systems.gym.services.commission_policy import (
+    apply_debt_offset,
+    record_ready_to_settle,
+    restore_debt_offset,
+    settle_hold_days,
+    site_id_of_merchant,
+)
 from app.systems.platform.models.member import Member
 from app.systems.platform.models.payout import (
     Payout,
@@ -55,6 +62,11 @@ def settleable_records(
     if merchant_id is not None:
         stmt = stmt.where(CommissionRecord.merchant_id == merchant_id)
     rows = list(db.scalars(stmt.order_by(CommissionRecord.id.asc())).all())
+    if not rows:
+        return []
+    site_id = site_id_of_merchant(db, rows[0].merchant_id)
+    days = settle_hold_days(db, site_id)
+    rows = [r for r in rows if record_ready_to_settle(r, days)]
     if not rows:
         return []
     locked = set(
@@ -108,12 +120,35 @@ def create_commission_payout(
         beneficiary_id=beneficiary_id,
         beneficiary_name=beneficiary_name,
         amount=total,
+        offset_amount=Decimal("0.00"),
         status=PayoutStatus.REQUESTED.value,
         note=(note or "").strip() or None,
         requested_by_staff_id=requested_by_staff_id,
     )
     db.add(payout)
     db.flush()
+    offset = apply_debt_offset(
+        db,
+        site_id=site_id,
+        beneficiary_type=beneficiary_type,
+        beneficiary_id=beneficiary_id,
+        beneficiary_name=beneficiary_name,
+        amount=total,
+        source_type="payout",
+        source_id=payout.id,
+        note=f"提现单 #{payout.id} 抵扣提成欠额",
+    )
+    cash = money(total) - money(offset)
+    payout.offset_amount = money(offset)
+    payout.amount = cash if cash > 0 else Decimal("0.00")
+    if cash <= 0:
+        payout.status = PayoutStatus.PAID.value
+        payout.paid_at = _now()
+        payout.note = "全部抵扣欠额，无需打款"
+        for record in picked:
+            if record.status == CommissionStatus.CONFIRMED.value:
+                record.status = CommissionStatus.PAID.value
+                record.settled_at = payout.paid_at
     for record in picked:
         db.add(
             PayoutItem(
@@ -126,7 +161,7 @@ def create_commission_payout(
         action="payout.request",
         target_type="payout",
         target_id=payout.id,
-        summary=f"申请佣金提现 {total}（{len(picked)} 笔）",
+        summary=f"申请佣金提现现金 {payout.amount}，抵扣欠额 {payout.offset_amount}（{len(picked)} 笔）",
         actor_staff_id=requested_by_staff_id,
         site_id=site_id,
         merchant_id=payout.merchant_id,
@@ -218,6 +253,7 @@ def reject_payout(
     payout.reviewed_at = _now()
 
     if payout.source == PayoutSource.COMMISSION.value:
+        restore_debt_offset(db, source_type="payout", source_id=payout.id)
         for item in db.scalars(
             select(PayoutItem).where(PayoutItem.payout_id == payout.id)
         ).all():
@@ -310,6 +346,34 @@ def mark_payout_paid(
 _OPEN_PAYOUT_STATUS = {PayoutStatus.REQUESTED.value, PayoutStatus.APPROVED.value}
 
 
+def has_open_rebate_payout(db: Session, member_id: int) -> bool:
+    """会员是否已有进行中的返点提现。"""
+    count = db.scalar(
+        select(Payout.id)
+        .where(
+            Payout.source == PayoutSource.REBATE.value,
+            Payout.beneficiary_id == member_id,
+            Payout.status.in_(_OPEN_PAYOUT_STATUS),
+        )
+        .limit(1)
+    )
+    return count is not None
+
+
+def record_locked_by_open_payout(db: Session, record_id: int) -> bool:
+    """提成记录是否已被未完结的佣金提现单占用。"""
+    locked = db.scalar(
+        select(PayoutItem.id)
+        .join(Payout, Payout.id == PayoutItem.payout_id)
+        .where(
+            PayoutItem.commission_record_id == record_id,
+            Payout.status.in_(_OPEN_PAYOUT_STATUS),
+        )
+        .limit(1)
+    )
+    return locked is not None
+
+
 def sync_open_commission_payouts(db: Session, order_id: int) -> int:
     """订单退款后按最新提成金额重算未打款提现单；无可打金额则驳回。已打款保持人工扣回。"""
     records = list(
@@ -341,7 +405,25 @@ def sync_open_commission_payouts(db: Session, order_id: int) -> int:
         if total <= 0:
             reject_payout(db, payout, reason="订单退款后无可打金额", actor_staff_id=None)
         else:
-            payout.amount = total
+            old_offset = money(payout.offset_amount or 0)
+            if old_offset > 0:
+                restore_debt_offset(db, source_type="payout", source_id=payout.id)
+                new_offset = apply_debt_offset(
+                    db,
+                    site_id=payout.site_id,
+                    beneficiary_type=payout.beneficiary_type,
+                    beneficiary_id=payout.beneficiary_id,
+                    beneficiary_name=payout.beneficiary_name,
+                    amount=total,
+                    source_type="payout",
+                    source_id=payout.id,
+                    note=f"提现单 #{payout.id} 退款同步重算抵扣",
+                )
+                payout.offset_amount = money(new_offset)
+                cash = money(total) - money(new_offset)
+                payout.amount = cash if cash > 0 else Decimal("0.00")
+            else:
+                payout.amount = total
             suffix = "（订单退款已同步金额）"
             if suffix not in (payout.note or ""):
                 payout.note = f"{payout.note}{suffix}" if payout.note else "订单退款已同步金额"

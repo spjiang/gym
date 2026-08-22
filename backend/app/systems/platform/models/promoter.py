@@ -22,10 +22,9 @@ from app.core.db import Base
 
 
 class PromoterSubjectType(str, Enum):
-    """推广主体：会员推荐、员工（含教练）推广、渠道位（短视频/线下物料）。"""
+    """推广主体：会员推荐、渠道位（短视频/线下物料）。"""
 
     MEMBER = "member"
-    STAFF = "staff"
     CHANNEL = "channel"
 
 
@@ -61,7 +60,6 @@ class PromoterCode(Base):
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     subject_type: Mapped[str] = mapped_column(String(16), nullable=False)
     subject_member_id: Mapped[int | None] = mapped_column(ForeignKey("members.id"), index=True)
-    subject_staff_id: Mapped[int | None] = mapped_column(ForeignKey("staff_users.id"), index=True)
     channel: Mapped[str] = mapped_column(String(32), nullable=False, default=PromoterChannel.OTHER.value)
     landing_path: Mapped[str | None] = mapped_column(String(128))
     # 为该推广位单独指定提成规则；留空走商户默认推荐规则

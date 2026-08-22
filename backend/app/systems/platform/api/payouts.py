@@ -24,10 +24,12 @@ from app.systems.platform.models.payout import (
     PayoutSource,
     PayoutStatus,
 )
+from app.core.merchant_scope import assert_member_in_scope
 from app.systems.platform.services.payouts import (
     approve_payout,
     create_commission_payout,
     create_rebate_payout,
+    has_open_rebate_payout,
     mark_payout_paid,
     reject_payout,
     settleable_records,
@@ -73,6 +75,7 @@ class PayoutOut(BaseModel):
     beneficiary_id: int
     beneficiary_name: str
     amount: Decimal
+    offset_amount: Decimal = Decimal("0.00")
     status: str
     method: str | None
     external_ref: str | None
@@ -112,6 +115,7 @@ def payout_out(db: Session, row: Payout) -> PayoutOut:
         beneficiary_id=row.beneficiary_id,
         beneficiary_name=row.beneficiary_name,
         amount=money(row.amount),
+        offset_amount=money(getattr(row, "offset_amount", None) or 0),
         status=row.status,
         method=row.method,
         external_ref=row.external_ref,
@@ -130,10 +134,11 @@ def _load_payout(db: Session, ctx: RequestContext, payout_id: int) -> Payout:
     payout = db.get(Payout, payout_id)
     if payout is None or payout.site_id != ctx.site_id:
         raise AppError("not_found", "提现单不存在", status_code=404)
-    if payout.merchant_id is not None and not ctx.is_site_admin:
-        ctx.resolve_merchant_id(payout.merchant_id)
-    elif payout.merchant_id is None and not ctx.is_site_admin:
-        raise AppError("forbidden", "场地级提现单仅超管可处理", status_code=403)
+    if payout.merchant_id is not None:
+        if not ctx.is_site_wide:
+            ctx.resolve_merchant_id(payout.merchant_id)
+    elif not ctx.is_site_wide:
+        raise AppError("forbidden", "场地级提现单仅场地级账号可处理", status_code=403)
     return payout
 
 
@@ -171,9 +176,10 @@ def list_payouts(
     ctx.require_permission("payout:read", "payout:manage")
     stmt = select(Payout).where(Payout.site_id == ctx.site_id)
     mid = ctx.resolve_merchant_id(merchant_id, required=False)
-    if not ctx.is_site_admin:
-        stmt = stmt.where(Payout.merchant_id == mid)
-    elif mid is not None:
+    if ctx.is_site_wide:
+        if mid is not None:
+            stmt = stmt.where(Payout.merchant_id == mid)
+    else:
         stmt = stmt.where(Payout.merchant_id == mid)
     if source:
         stmt = stmt.where(Payout.source == source)
@@ -225,9 +231,9 @@ def create_payout(
     if body.source == PayoutSource.REBATE.value:
         if body.amount is None:
             raise AppError("validation_error", "返点提现需填写金额", status_code=422)
-        member = db.get(Member, body.beneficiary_id)
-        if member is None or member.site_id != ctx.site_id:
-            raise AppError("not_found", "会员不存在", status_code=404)
+        member = assert_member_in_scope(db, ctx, body.beneficiary_id)
+        if has_open_rebate_payout(db, member.id):
+            raise AppError("payout_in_progress", "已有提现在处理中，请等待完成", status_code=400)
         payout = create_rebate_payout(
             db,
             member=member,

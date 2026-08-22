@@ -185,9 +185,9 @@ export const COMMISSION_SCOPE_LABELS: Record<string, string> = {
 }
 
 export const COMMISSION_BENEFICIARY_LABELS: Record<string, string> = {
-  seller: '销售员工',
+  seller: '销售（挂靠会员）',
   coach: '教练',
-  referrer: '推荐人',
+  referrer: '推荐会员',
 }
 
 export const COMMISSION_BASIS_LABELS: Record<string, string> = {

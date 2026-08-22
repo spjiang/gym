@@ -168,10 +168,9 @@ class RoleAssignIn(BaseModel):
 
 
 class MemberReferrerMixin(BaseModel):
-    """推荐人：可挂推广会员，或仅登记姓名。"""
+    """推荐人：仅会员推广或登记姓名。"""
 
     referrer_member_id: int | None = None
-    referrer_staff_id: int | None = None
     referrer_note: str | None = Field(default=None, max_length=128)
     referral_code: str | None = Field(default=None, max_length=32)
 
@@ -196,7 +195,6 @@ class MemberOut(ORMModel):
     first_merchant_name: str | None = None
     has_password: bool = False
     referrer_member_id: int | None = None
-    referrer_staff_id: int | None = None
     referrer_note: str | None = None
     referral_code: str | None = None
     referrer_display: str | None = None

@@ -57,6 +57,13 @@ class Coach(Base):
     hourly_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     # 教练个人私教课佣金比例；留空回落商户 pt_session 提成规则
     pt_commission_rate: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
+    # 可选：指定团课 / 私教课时提成规则；未指定时按商户默认规则
+    group_commission_rule_id: Mapped[int | None] = mapped_column(
+        ForeignKey("commission_rules.id"), nullable=True, index=True
+    )
+    pt_commission_rule_id: Mapped[int | None] = mapped_column(
+        ForeignKey("commission_rules.id"), nullable=True, index=True
+    )
     specialties: Mapped[str | None] = mapped_column(String(255))
     certifications: Mapped[str | None] = mapped_column(Text)
     bio: Mapped[str | None] = mapped_column(Text)

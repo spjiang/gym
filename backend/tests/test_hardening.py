@@ -1,6 +1,6 @@
 """体检项回归：场地运营、退款权益、券占用、取餐号、厨房回退、停用桌台。"""
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
@@ -58,6 +58,14 @@ def test_site_ops_can_list_members_and_orders(client: TestClient, admin_headers:
     assert members.status_code == 200, members.text
     orders = client.get("/api/v1/orders", headers=headers)
     assert orders.status_code == 200, orders.text
+
+    today = date.today().isoformat()
+    report = client.get(
+        f"/api/v1/reports/commerce-summary?date_from={today}&date_to={today}",
+        headers=headers,
+    )
+    assert report.status_code == 200, report.text
+    assert report.json()["merchant_id"] is None
 
 
 def test_force_partial_membership_refund_keeps_card(client: TestClient, admin_headers: dict):

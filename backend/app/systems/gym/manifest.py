@@ -18,6 +18,7 @@ SYSTEM = {
         {"code": "pt:book", "name": "私教预约排期"},
         {"code": "activity:manage", "name": "活动管理"},
         {"code": "activity:register", "name": "活动报名签到"},
+        {"code": "sales:manage", "name": "销售档案管理"},
         {"code": "commission:read", "name": "查看提成"},
         {"code": "commission:manage", "name": "提成规则与结算"},
         {"code": "commission:self", "name": "查看本人佣金与提现"},
@@ -117,11 +118,25 @@ SYSTEM = {
             "sort_order": 46,
         },
         {
+            "code": "gym.sales_reps",
+            "path": "/sales-reps",
+            "name": "销售管理",
+            "required_any": ["sales:manage", "commission:manage", "*"],
+            "sort_order": 37,
+        },
+        {
             "code": "gym.commission_rules",
             "path": "/commission-rules",
             "name": "提成规则",
             "required_any": ["commission:manage", "*"],
-            "sort_order": 65,
+            "sort_order": 63,
+        },
+        {
+            "code": "gym.commission_settings",
+            "path": "/platform/commission-settings",
+            "name": "分成配置",
+            "required_any": ["commission:manage", "*"],
+            "sort_order": 64,
         },
         {
             "code": "gym.commission_records",
@@ -134,7 +149,7 @@ SYSTEM = {
             "code": "gym.my_commission",
             "path": "/my-commission",
             "name": "我的佣金",
-            "required_any": ["commission:self", "*"],
+            "required_any": ["commission:self"],
             "sort_order": 67,
         },
         {

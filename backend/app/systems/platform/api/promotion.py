@@ -14,6 +14,7 @@ from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.deps import RequestContext, get_current_context
 from app.core.errors import AppError
+from app.core.merchant_scope import assert_member_in_scope
 from app.core.schemas.paging import PageOut, paginate
 from app.systems.platform.models.commerce import Order, OrderStatus
 from app.systems.platform.models.member import Member, MerchantMember
@@ -131,20 +132,7 @@ class RebateAdjustIn(BaseModel):
     note: str = Field(min_length=1, max_length=255)
 
 
-def _member_in_scope(db: Session, ctx: RequestContext, member_id: int) -> Member:
-    member = db.get(Member, member_id)
-    if member is None or member.site_id != ctx.site_id:
-        raise AppError("not_found", "会员不存在", status_code=404)
-    if not ctx.is_site_admin:
-        mid = ctx.resolve_merchant_id()
-        linked = db.scalar(
-            select(MerchantMember).where(
-                MerchantMember.member_id == member.id, MerchantMember.merchant_id == mid
-            )
-        )
-        if linked is None:
-            raise AppError("forbidden", "无权操作该会员", status_code=403)
-    return member
+_member_in_scope = assert_member_in_scope
 
 
 def _promoter_link(promoter: PromoterCode | None) -> str | None:
@@ -307,7 +295,7 @@ def list_member_promotions(
     """会员推广一览：人人一码、生效比例与返点账户。"""
     ctx.require_permission("promoter:read", "promoter:manage")
     stmt = select(Member).where(Member.site_id == ctx.site_id)
-    if not ctx.is_site_admin:
+    if not ctx.is_site_wide:
         mid = ctx.resolve_merchant_id()
         member_ids = select(MerchantMember.member_id).where(MerchantMember.merchant_id == mid)
         stmt = stmt.where(Member.id.in_(member_ids))
@@ -451,10 +439,9 @@ def list_rebate_ledgers(
     """返点流水。"""
     ctx.require_permission("promoter:read", "promoter:manage")
     stmt = select(MemberRebateLedger).where(MemberRebateLedger.site_id == ctx.site_id)
-    if not ctx.is_site_admin:
+    if not ctx.is_site_wide:
         mid = ctx.resolve_merchant_id()
-        member_ids = select(MerchantMember.member_id).where(MerchantMember.merchant_id == mid)
-        stmt = stmt.where(MemberRebateLedger.member_id.in_(member_ids))
+        stmt = stmt.where(MemberRebateLedger.merchant_id == mid)
     if member_id is not None:
         stmt = stmt.where(MemberRebateLedger.member_id == member_id)
     if from_member_id is not None:

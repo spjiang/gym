@@ -738,3 +738,48 @@ def test_coach_profile_fields(client: TestClient, admin_headers: dict):
     assert patched.status_code == 200, patched.text
     assert patched.json()["title"] == "团课+私教"
     assert patched.json()["intro_image_urls"] == [gallery[0]]
+
+    # 同一员工不能绑两个教练；清空后台账号应生效
+    staff2 = client.post(
+        "/api/v1/staff",
+        headers=admin_headers,
+        json={
+            "username": "coach_staff_dup",
+            "password": "Coach@123456",
+            "display_name": "重复绑定员工",
+            "merchant_id": gym_id,
+            "role_codes": ["gym_coach"],
+        },
+    ).json()
+    other = client.post(
+        "/api/v1/coaches",
+        headers=admin_headers,
+        json={
+            "merchant_id": gym_id,
+            "staff_user_id": staff2["id"],
+            "member_id": new_coach_member(client, admin_headers, gym_id)["id"],
+            "display_name": "另一教练",
+        },
+    )
+    assert other.status_code == 200, other.text
+    dup = client.patch(
+        f"/api/v1/coaches/{other.json()['id']}",
+        headers=admin_headers,
+        json={
+            "staff_user_id": staff["id"],
+            "member_id": other.json()["member_id"],
+            "display_name": "另一教练",
+        },
+    )
+    assert dup.status_code == 400
+    cleared = client.patch(
+        f"/api/v1/coaches/{body['id']}",
+        headers=admin_headers,
+        json={
+            "staff_user_id": None,
+            "member_id": patched.json()["member_id"],
+            "display_name": "林教练",
+        },
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["staff_user_id"] is None

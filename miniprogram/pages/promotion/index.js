@@ -4,6 +4,7 @@ Page({
     downlines: [],
     ledgers: [],
     payouts: [],
+    withdrawBlocked: false,
     tab: 'downline',
     amount: '',
     kindMap: {
@@ -42,6 +43,7 @@ Page({
         rebateText: this.pct(me.rebate_rate),
         discountText: this.pct(me.downline_discount_rate),
         myDiscountText: this.pct(me.my_discount_rate),
+        withdrawBlocked: Boolean(me.payout_in_progress),
         downlines: down.items || [],
         ledgers: ledgers.items || [],
         payouts: payouts.items || [],
@@ -65,6 +67,10 @@ Page({
     wx.setClipboardData({ data: link })
   },
   async withdraw() {
+    if (this.data.withdrawBlocked) {
+      wx.showToast({ title: '有一笔提现在处理中', icon: 'none' })
+      return
+    }
     const { request } = require('../../utils/api')
     const amount = this.data.amount
     if (!amount || Number(amount) <= 0) {

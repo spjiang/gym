@@ -21,6 +21,8 @@ from app.core.schemas.common import MemberBrief, OrderOut
 from app.core.schemas.paging import PageOut, paginate
 from app.systems.platform.models.commerce import Order, OrderStatus
 from app.systems.gym.services.coach_member import coach_promotion_code, link_coach_member
+from app.systems.gym.models.commission import CommissionBeneficiary, CommissionRule, CommissionScope
+from app.systems.gym.services.commission import validate_profile_commission_rule
 from app.systems.gym.models.course import (
     Coach,
     GroupBooking,
@@ -102,6 +104,8 @@ class CoachIn(BaseModel):
     hourly_rate: Decimal | None = Field(default=None, ge=0)
     # 私教课佣金比例，0.4 表示课时单价的 40%
     pt_commission_rate: Decimal | None = Field(default=None, ge=0, le=1)
+    group_commission_rule_id: int | None = None
+    pt_commission_rule_id: int | None = None
     specialties: str | None = None
     certifications: str | None = None
     bio: str | None = None
@@ -125,6 +129,10 @@ class CoachOut(BaseModel):
     years_experience: int | None
     hourly_rate: Decimal | None
     pt_commission_rate: Decimal | None = None
+    group_commission_rule_id: int | None = None
+    pt_commission_rule_id: int | None = None
+    group_commission_rule_name: str | None = None
+    pt_commission_rule_name: str | None = None
     specialties: str | None
     certifications: str | None
     bio: str | None
@@ -134,6 +142,30 @@ class CoachOut(BaseModel):
     is_active: bool
 
     model_config = ConfigDict(from_attributes=True)
+
+
+def _rule_name(db: Session, rule_id: int | None) -> str | None:
+    if rule_id is None:
+        return None
+    rule = db.get(CommissionRule, rule_id)
+    return rule.name if rule else None
+
+
+def _validate_coach_rules(db: Session, *, merchant_id: int, body: CoachIn) -> None:
+    validate_profile_commission_rule(
+        db,
+        rule_id=body.group_commission_rule_id,
+        merchant_id=merchant_id,
+        allowed_scopes={CommissionScope.GROUP_SESSION.value},
+        beneficiary=CommissionBeneficiary.COACH.value,
+    )
+    validate_profile_commission_rule(
+        db,
+        rule_id=body.pt_commission_rule_id,
+        merchant_id=merchant_id,
+        allowed_scopes={CommissionScope.PT_SESSION.value},
+        beneficiary=CommissionBeneficiary.COACH.value,
+    )
 
 
 def _coach_out(db: Session, coach: Coach) -> CoachOut:
@@ -153,6 +185,10 @@ def _coach_out(db: Session, coach: Coach) -> CoachOut:
         years_experience=coach.years_experience,
         hourly_rate=coach.hourly_rate,
         pt_commission_rate=coach.pt_commission_rate,
+        group_commission_rule_id=coach.group_commission_rule_id,
+        pt_commission_rule_id=coach.pt_commission_rule_id,
+        group_commission_rule_name=_rule_name(db, coach.group_commission_rule_id),
+        pt_commission_rule_name=_rule_name(db, coach.pt_commission_rule_id),
         specialties=coach.specialties,
         certifications=coach.certifications,
         bio=coach.bio,
@@ -450,6 +486,17 @@ def list_coaches(
     return PageOut(items=[_coach_out(db, row) for row in rows], total=total, page=page, page_size=page_size)
 
 
+def _assert_staff_available(db: Session, *, site_id: int, staff_user_id: int, coach_id: int | None) -> None:
+    staff = db.get(StaffUser, staff_user_id)
+    if staff is None or staff.site_id != site_id:
+        raise AppError("invalid_staff", "员工不存在", status_code=400)
+    q = select(Coach.id).where(Coach.staff_user_id == staff_user_id)
+    if coach_id is not None:
+        q = q.where(Coach.id != coach_id)
+    if db.scalar(q) is not None:
+        raise AppError("staff_in_use", "该员工已绑定其他教练档案", status_code=400)
+
+
 @router.post("/coaches", response_model=CoachOut)
 def create_coach(
     body: CoachIn,
@@ -459,14 +506,12 @@ def create_coach(
     ctx.require_permission("coach:manage")
     mid = ctx.resolve_merchant_id(body.merchant_id)
     assert_merchant_has_system(db, mid, "gym")
-    staff = None
     if body.staff_user_id is not None:
-        staff = db.get(StaffUser, body.staff_user_id)
-        if staff is None or staff.site_id != ctx.site_id:
-            raise AppError("invalid_staff", "员工不存在", status_code=400)
+        _assert_staff_available(db, site_id=ctx.site_id, staff_user_id=body.staff_user_id, coach_id=None)
     name = (body.display_name or "").strip()
     if not name:
         raise AppError("validation_error", "请填写教练显示名", status_code=422)
+    _validate_coach_rules(db, merchant_id=mid, body=body)
     coach = Coach(
         merchant_id=mid,
         staff_user_id=body.staff_user_id,
@@ -477,6 +522,8 @@ def create_coach(
         years_experience=body.years_experience,
         hourly_rate=body.hourly_rate,
         pt_commission_rate=body.pt_commission_rate,
+        group_commission_rule_id=body.group_commission_rule_id,
+        pt_commission_rule_id=body.pt_commission_rule_id,
         specialties=_blank(body.specialties),
         certifications=_blank(body.certifications),
         bio=_blank(body.bio),
@@ -525,10 +572,12 @@ def update_coach(
     name = (body.display_name or "").strip()
     if not name:
         raise AppError("validation_error", "请填写教练显示名", status_code=422)
-    if body.staff_user_id is not None:
-        staff = db.get(StaffUser, body.staff_user_id)
-        if staff is None or staff.site_id != ctx.site_id:
-            raise AppError("invalid_staff", "员工不存在", status_code=400)
+    # staff_user_id 显式传入（含 null）即可改绑或清空
+    if "staff_user_id" in body.model_fields_set:
+        if body.staff_user_id is not None:
+            _assert_staff_available(
+                db, site_id=ctx.site_id, staff_user_id=body.staff_user_id, coach_id=coach.id
+            )
         coach.staff_user_id = body.staff_user_id
     coach.display_name = name
     coach.title = _blank(body.title)
@@ -537,6 +586,9 @@ def update_coach(
     coach.years_experience = body.years_experience
     coach.hourly_rate = body.hourly_rate
     coach.pt_commission_rate = body.pt_commission_rate
+    _validate_coach_rules(db, merchant_id=coach.merchant_id, body=body)
+    coach.group_commission_rule_id = body.group_commission_rule_id
+    coach.pt_commission_rule_id = body.pt_commission_rule_id
     coach.specialties = _blank(body.specialties)
     coach.certifications = _blank(body.certifications)
     coach.bio = _blank(body.bio)

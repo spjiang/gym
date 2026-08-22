@@ -12,6 +12,7 @@ from app.core.errors import AppError
 from app.systems.platform.models.access import AccessDevice
 from app.systems.platform.models.identity import StaffRole, StaffUser
 from app.systems.platform.models.member import Member, MerchantMember
+from app.systems.platform.models.org import Merchant, MerchantStatus
 from app.core.security import decode_access_token, verify_device_api_key
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -40,6 +41,13 @@ class RequestContext:
     def is_site_wide(self) -> bool:
         """场地超管或场地运营：可按场地查看全部商户，写操作仍受权限约束。"""
         return self.is_site_admin or self.site_scoped
+
+    @property
+    def can_force_payment_reconcile(self) -> bool:
+        """超管或场地财务等具备对账权限的场地级账号，可执行强制补单/补退。"""
+        return self.is_site_admin or (
+            self.is_site_wide and "payment:reconcile" in self.permissions
+        )
 
     @property
     def can_reset_account_password(self) -> bool:
@@ -88,6 +96,12 @@ class MemberContext:
     site_id: int
 
     def require_merchant(self, db: Session, merchant_id: int) -> int:
+        """校验会员可访问该商户；同场地首次访问时自动挂靠。"""
+        merchant = db.get(Merchant, merchant_id)
+        if merchant is None or merchant.site_id != self.site_id:
+            raise AppError("forbidden", "未关联该商户", status_code=403)
+        if merchant.status != MerchantStatus.ACTIVE.value:
+            raise AppError("not_found", "商户不存在或未启用", status_code=404)
         link = db.scalar(
             select(MerchantMember).where(
                 MerchantMember.member_id == self.member.id,
@@ -95,7 +109,8 @@ class MemberContext:
             )
         )
         if link is None:
-            raise AppError("forbidden", "未关联该商户", status_code=403)
+            db.add(MerchantMember(merchant_id=merchant_id, member_id=self.member.id))
+            db.commit()
         return merchant_id
 
 

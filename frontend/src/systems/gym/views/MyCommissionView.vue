@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import http from '../../../core/api/http'
 import {
@@ -10,13 +10,26 @@ import {
   percentLabel,
 } from '../../../core/labels'
 
-type Profile = {
+type CoachSlice = {
   coach_id: number
   display_name: string
   title: string | null
   pt_commission_rate: string | null
 }
+type SalesSlice = {
+  sales_rep_id: number
+  display_name: string
+  promotion_code: string | null
+}
+type Profile = {
+  display_name: string
+  roles: string[]
+  coach: CoachSlice | null
+  sales_rep: SalesSlice | null
+}
 type Summary = {
+  display_name: string
+  roles: string[]
   pending_amount: string
   confirmed_amount: string
   paid_amount: string
@@ -24,6 +37,8 @@ type Summary = {
   settleable_amount: string
   settleable_count: number
   withdrawing_amount: string
+  debt_amount?: string
+  settle_hold_days?: number
   by_scope: { scope: string; count: number; amount: string }[]
 }
 type Record_ = {
@@ -56,12 +71,24 @@ const summary = ref<Summary | null>(null)
 const records = ref<Record_[]>([])
 const payouts = ref<Payout[]>([])
 const loading = ref(false)
+const noProfile = ref(false)
 const recordTotal = ref(0)
 const recordPage = ref(1)
 const payoutTotal = ref(0)
 const payoutPage = ref(1)
 const query = reactive({ status: '' })
 const submitting = ref(false)
+
+const roleHint = computed(() => {
+  const roles = profile.value?.roles || []
+  if (roles.includes('sales') && roles.includes('coach')) {
+    return '销售开单提成与教练课时提成均展示在此。'
+  }
+  if (roles.includes('sales')) {
+    return '展示当前登录销售绑定会员的开单提成（会籍、零售、课包等）。'
+  }
+  return '展示当前登录教练绑定会员的课时提成。'
+})
 
 function fmtTime(iso: string | null) {
   if (!iso) return '—'
@@ -73,9 +100,10 @@ function fmtTime(iso: string | null) {
 
 async function refresh() {
   loading.value = true
+  noProfile.value = false
   try {
     const [p, s, r, w] = await Promise.all([
-      http.get<Profile>('/my/coach-profile'),
+      http.get<Profile>('/my/commission-profile'),
       http.get<Summary>('/my/commission-summary'),
       http.get<Page<Record_>>('/my/commission-records', {
         params: { status: query.status || undefined, page: recordPage.value, page_size: 20 },
@@ -89,7 +117,16 @@ async function refresh() {
     payouts.value = w.data.items
     payoutTotal.value = w.data.total
   } catch (e: unknown) {
-    ElMessage.error(e instanceof Error ? e.message : '加载失败')
+    const msg = e instanceof Error ? e.message : '加载失败'
+    if (msg.includes('未绑定') || msg.includes('not_found')) {
+      noProfile.value = true
+      profile.value = null
+      summary.value = null
+      records.value = []
+      payouts.value = []
+      return
+    }
+    ElMessage.error(msg)
   } finally {
     loading.value = false
   }
@@ -103,8 +140,10 @@ async function requestPayout() {
     return
   }
   try {
+    const debt = Number(summary.value?.debt_amount || 0)
+    const debtHint = debt > 0 ? `将优先抵扣欠额 ¥${summary.value?.debt_amount}，现金以审核页为准。` : '打款由运营线下完成。'
     await ElMessageBox.confirm(
-      `申请提现已确认佣金 ${count} 笔，合计 ¥${amount}？打款由运营线下完成。`,
+      `申请提现已确认佣金 ${count} 笔，合计 ¥${amount}。${debtHint}`,
       '申请提现',
       { type: 'info' },
     )
@@ -132,17 +171,40 @@ onMounted(refresh)
       <div>
         <h3>我的佣金</h3>
         <p class="lead">
-          仅展示当前登录教练绑定会员的课时提成。每笔有类别，并可追溯到具体场次 / 预约。提现线下打款，进度在此同步。
+          {{ roleHint }}每笔有类别，并可追溯到具体订单 / 场次 / 预约。提现线下打款，进度在此同步。
+          <template v-if="Number(summary?.settle_hold_days || 0) > 0">
+            计提满 {{ summary?.settle_hold_days }} 天后方可提现。
+          </template>
         </p>
       </div>
-      <el-button type="primary" :loading="submitting" @click="requestPayout">申请提现</el-button>
+      <el-button v-if="!noProfile" type="primary" :loading="submitting" @click="requestPayout">申请提现</el-button>
     </div>
 
+    <el-alert
+      v-if="noProfile"
+      type="info"
+      :closable="false"
+      show-icon
+      title="当前账号未绑定销售或教练档案"
+      description="此页仅供已绑定档案的销售/教练查看本人提成。管理员请使用「提成结算」查看全员数据。"
+      class="no-profile"
+    />
+
+    <template v-if="!noProfile">
     <el-descriptions v-if="profile" :column="3" border class="profile">
-      <el-descriptions-item label="教练">{{ profile.display_name }}</el-descriptions-item>
-      <el-descriptions-item label="头衔">{{ profile.title || '—' }}</el-descriptions-item>
-      <el-descriptions-item label="私教提成比例">
-        {{ profile.pt_commission_rate ? percentLabel(profile.pt_commission_rate) : '按商户规则' }}
+      <el-descriptions-item label="姓名">{{ profile.display_name }}</el-descriptions-item>
+      <el-descriptions-item v-if="profile.sales_rep" label="销售档案">
+        {{ profile.sales_rep.display_name }}
+        <template v-if="profile.sales_rep.promotion_code">
+          · 推广码 {{ profile.sales_rep.promotion_code }}
+        </template>
+      </el-descriptions-item>
+      <el-descriptions-item v-if="profile.coach" label="教练档案">
+        {{ profile.coach.display_name }}
+        <template v-if="profile.coach.title"> · {{ profile.coach.title }}</template>
+      </el-descriptions-item>
+      <el-descriptions-item v-if="profile.coach" label="私教提成比例">
+        {{ profile.coach.pt_commission_rate ? percentLabel(profile.coach.pt_commission_rate) : '按商户规则' }}
       </el-descriptions-item>
     </el-descriptions>
 
@@ -158,6 +220,10 @@ onMounted(refresh)
       <el-card shadow="never">
         <div class="kpi-label">提现中</div>
         <div class="kpi-value">¥{{ summary?.withdrawing_amount ?? '0.00' }}</div>
+      </el-card>
+      <el-card shadow="never">
+        <div class="kpi-label">待追回欠额</div>
+        <div class="kpi-value">¥{{ summary?.debt_amount ?? '0.00' }}</div>
       </el-card>
       <el-card shadow="never">
         <div class="kpi-label">已打款</div>
@@ -245,6 +311,7 @@ onMounted(refresh)
         </div>
       </el-tab-pane>
     </el-tabs>
+    </template>
   </div>
 </template>
 
@@ -267,6 +334,9 @@ onMounted(refresh)
 }
 .profile {
   margin-bottom: 14px;
+}
+.no-profile {
+  margin-bottom: 16px;
 }
 .kpis {
   display: grid;

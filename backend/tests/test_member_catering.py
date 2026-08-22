@@ -51,6 +51,49 @@ def test_member_me_includes_merchants(client: TestClient, admin_headers: dict):
     assert bar["id"] not in me["merchant_ids"]
 
 
+def test_member_dines_at_unlinked_same_site_merchant(client: TestClient, admin_headers: dict):
+    """会员门户可选全场商户；首次进入未挂靠门店时应自动关联，而非报未关联。"""
+    merchants = client.get("/api/v1/merchants", headers=admin_headers).json()
+    gym_id = merchants[0]["id"]
+    types = client.get("/api/v1/merchant-types", headers=admin_headers).json()
+    bar_type = next(t for t in types if t["code"] == "bar")
+    bar = client.post(
+        "/api/v1/merchants",
+        headers=admin_headers,
+        json={
+            "merchant_type_id": bar_type["id"],
+            "name": "自动挂靠清吧",
+            "status": "active",
+            "subsystem_codes": ["catering"],
+        },
+    ).json()
+    bar_id = bar["id"]
+
+    client.post(
+        "/api/v1/catering/menu-items",
+        headers=admin_headers,
+        json={"merchant_id": bar_id, "name": "测试啤酒", "category": "酒水", "price": "18.00"},
+    )
+
+    client.post(
+        "/api/v1/members",
+        headers=admin_headers,
+        json={"phone": "13880000096", "name": "小军", "merchant_id": gym_id},
+    )
+    mheaders = _member_login(client, "13880000096")
+
+    menu = client.get(
+        "/api/v1/member/catering/menu",
+        params={"merchant_id": bar_id},
+        headers=mheaders,
+    )
+    assert menu.status_code == 200, menu.text
+    assert menu.json()
+
+    me = client.get("/api/v1/member/me", headers=mheaders).json()
+    assert bar_id in me["merchant_ids"]
+
+
 def test_member_dining_checkout_pay_refund(client: TestClient, admin_headers: dict):
     os.environ["ONLINE_PAYMENT_MODE"] = "mock"
     get_settings.cache_clear()

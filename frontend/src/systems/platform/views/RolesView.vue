@@ -9,10 +9,14 @@ type Role = {
   code: string
   name: string
   merchant_id: number | null
+  is_site_scope: boolean
   is_system: boolean
   permission_codes: string[]
   menu_codes: string[]
 }
+
+/** 范围筛选：场地级 / 角色模板 / 具体商户 id */
+type ScopeFilter = '' | 'site' | 'template' | number
 type Perm = { code: string; subsystem_code: string; name: string }
 type Menu = { code: string; subsystem_code: string; name: string; path: string }
 type Merchant = { id: number; name: string }
@@ -29,7 +33,14 @@ const grantPerms = ref<string[]>([])
 const grantMenus = ref<string[]>([])
 const creating = ref(false)
 const createVisible = ref(false)
-const query = reactive({ q: '', merchant_id: undefined as number | undefined, is_system: '' as string })
+const query = reactive({
+  q: '',
+  scope: '' as ScopeFilter,
+  code_prefix: '' as string,
+  perm_q: '',
+  is_system: '' as string,
+  wildcard_only: false,
+})
 const form = reactive({
   code: '',
   name: '',
@@ -40,11 +51,27 @@ const page = ref(1)
 const pageSize = ref(20)
 const filteredRoles = computed(() => {
   return roles.value.filter((r) => {
-    const kw = query.q.trim()
-    if (kw && !r.code.includes(kw) && !r.name.includes(kw)) return false
-    if (query.merchant_id !== undefined && r.merchant_id !== query.merchant_id) return false
+    const kw = query.q.trim().toLowerCase()
+    if (kw && !r.code.toLowerCase().includes(kw) && !r.name.toLowerCase().includes(kw)) return false
+
+    if (query.scope === 'site') {
+      if (!(r.merchant_id == null && r.is_site_scope)) return false
+    } else if (query.scope === 'template') {
+      if (!(r.merchant_id == null && r.code.startsWith('tpl_'))) return false
+    } else if (typeof query.scope === 'number' && r.merchant_id !== query.scope) {
+      return false
+    }
+
+    if (query.code_prefix && !r.code.startsWith(query.code_prefix)) return false
+
+    const permKw = query.perm_q.trim().toLowerCase()
+    if (permKw && !r.permission_codes.some((p) => p.toLowerCase().includes(permKw))) return false
+
     if (query.is_system === '1' && !r.is_system) return false
     if (query.is_system === '0' && r.is_system) return false
+
+    if (query.wildcard_only && !r.permission_codes.includes('*')) return false
+
     return true
   })
 })
@@ -58,8 +85,11 @@ watch(query, () => {
 
 function resetRoleSearch() {
   query.q = ''
-  query.merchant_id = undefined
+  query.scope = ''
+  query.code_prefix = ''
+  query.perm_q = ''
   query.is_system = ''
+  query.wildcard_only = false
   page.value = 1
 }
 
@@ -167,9 +197,15 @@ async function removeRole(row: Role) {
   }
 }
 
-function merchantName(id: number | null) {
-  if (id == null) return '场地级'
-  return merchants.value.find((m) => m.id === id)?.name || `#${id}`
+function scopeLabel(row: Role) {
+  if (row.merchant_id != null) {
+    return merchants.value.find((m) => m.id === row.merchant_id)?.name || `#${row.merchant_id}`
+  }
+  if (row.is_site_scope) return '场地级'
+  if (row.code.startsWith('tpl_gym_')) return '健身房 · 模板'
+  if (row.code.startsWith('tpl_bar_')) return '清吧 · 模板'
+  if (row.code.startsWith('tpl_')) return '角色模板'
+  return '未绑定商户'
 }
 
 onMounted(load)
@@ -186,14 +222,24 @@ onMounted(load)
     </div>
 
     <div class="filters">
-      <el-input v-model="query.q" clearable placeholder="编码 / 名称" style="width: 200px" />
-      <el-select v-if="isSiteAdmin" v-model="query.merchant_id" clearable placeholder="范围" style="width: 200px">
+      <el-input v-model="query.q" clearable placeholder="编码 / 名称" style="width: 180px" />
+      <el-select v-if="isSiteAdmin" v-model="query.scope" clearable placeholder="范围" style="width: 180px">
+        <el-option label="场地级" value="site" />
+        <el-option label="角色模板" value="template" />
         <el-option v-for="m in merchants" :key="m.id" :label="m.name" :value="m.id" />
       </el-select>
-      <el-select v-model="query.is_system" clearable placeholder="是否系统角色" style="width: 160px">
+      <el-select v-model="query.code_prefix" clearable placeholder="编码前缀" style="width: 140px">
+        <el-option label="site_" value="site_" />
+        <el-option label="tpl_" value="tpl_" />
+        <el-option label="gym_" value="gym_" />
+        <el-option label="bar_" value="bar_" />
+      </el-select>
+      <el-input v-model="query.perm_q" clearable placeholder="权限关键字" style="width: 160px" />
+      <el-select v-model="query.is_system" clearable placeholder="是否系统角色" style="width: 140px">
         <el-option label="系统角色" value="1" />
         <el-option label="自定义" value="0" />
       </el-select>
+      <el-checkbox v-model="query.wildcard_only">仅超管权限</el-checkbox>
       <el-button @click="resetRoleSearch">重置</el-button>
     </div>
 
@@ -201,7 +247,7 @@ onMounted(load)
       <el-table-column prop="code" label="编码" width="140" />
       <el-table-column prop="name" label="名称" min-width="140" />
       <el-table-column label="范围" width="160">
-        <template #default="{ row }">{{ merchantName(row.merchant_id) }}</template>
+        <template #default="{ row }">{{ scopeLabel(row) }}</template>
       </el-table-column>
       <el-table-column label="系统" width="80">
         <template #default="{ row }">{{ row.is_system ? '是' : '否' }}</template>
@@ -259,6 +305,7 @@ onMounted(load)
         </el-form-item>
         <el-form-item v-if="isSiteAdmin" label="所属范围">
           <el-select v-model="form.merchant_id" clearable placeholder="场地级（空）或商户" style="width: 100%">
+            <el-option :value="undefined" label="场地级" />
             <el-option v-for="m in merchants" :key="m.id" :label="m.name" :value="m.id" />
           </el-select>
         </el-form-item>

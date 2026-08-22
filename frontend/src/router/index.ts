@@ -44,9 +44,11 @@ import EquipmentRepairsView from '../systems/gym/views/EquipmentRepairsView.vue'
 import PtAppointmentsView from '../systems/gym/views/PtAppointmentsView.vue'
 import ActivitiesView from '../systems/gym/views/ActivitiesView.vue'
 import ActivityRegistrationsView from '../systems/gym/views/ActivityRegistrationsView.vue'
+import CommissionSettingsView from '../systems/gym/views/CommissionSettingsView.vue'
 import CommissionRulesView from '../systems/gym/views/CommissionRulesView.vue'
 import CommissionRecordsView from '../systems/gym/views/CommissionRecordsView.vue'
 import MyCommissionView from '../systems/gym/views/MyCommissionView.vue'
+import SalesRepsView from '../systems/gym/views/SalesRepsView.vue'
 import CateringCategoriesView from '../systems/catering/views/CateringCategoriesView.vue'
 import CateringMenuView from '../systems/catering/views/CateringMenuView.vue'
 import CateringOrdersView from '../systems/catering/views/CateringOrdersView.vue'
@@ -92,6 +94,12 @@ const children: RouteRecordRaw[] = [
     name: 'platform-agreements',
     component: AgreementsView,
     meta: { system: 'platform', anyOf: ['org:read', 'org:write', '*'] },
+  },
+  {
+    path: 'platform/commission-settings',
+    name: 'platform-commission-settings',
+    component: CommissionSettingsView,
+    meta: { system: 'platform', anyOf: ['commission:manage', 'org:write', '*'] },
   },
   {
     path: 'platform/payment-reconcile',
@@ -167,6 +175,12 @@ const children: RouteRecordRaw[] = [
   },
   { path: 'coaches', name: 'coaches', component: CoachesView, meta: { system: 'gym', anyOf: ['coach:manage', '*'] } },
   {
+    path: 'sales-reps',
+    name: 'sales-reps',
+    component: SalesRepsView,
+    meta: { system: 'gym', anyOf: ['sales:manage', 'commission:manage', '*'] },
+  },
+  {
     path: 'pt-products',
     name: 'pt-products',
     component: PtProductsView,
@@ -212,7 +226,7 @@ const children: RouteRecordRaw[] = [
     path: 'my-commission',
     name: 'my-commission',
     component: MyCommissionView,
-    meta: { system: 'gym', anyOf: ['commission:self', '*'] },
+    meta: { system: 'gym', anyOf: ['commission:self'] },
   },
   {
     path: 'group-templates',

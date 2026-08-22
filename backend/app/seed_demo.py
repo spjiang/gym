@@ -1,4 +1,4 @@
-"""目录级 Demo 数据：覆盖各业务列表页，便于本地体验。
+"""交付级 Demo 数据：覆盖各业务列表页，便于本地体验与演示交付。
 
 幂等策略：按唯一业务键（用户名/手机号/名称/设备码等）存在则跳过。
 不预置已支付订单或已履约会籍，避免污染正式流水语义。
@@ -17,6 +17,13 @@ from app.systems.platform.models.access import AccessDevice, AccessPoint
 from app.systems.gym.models.coupon import ApplicableTo, CouponTemplate, DiscountType, MemberCoupon, MemberCouponStatus
 from app.systems.gym.models.activity import Activity, ActivityStatus
 from app.systems.gym.models.course import Coach, GroupCourse, GroupSession, GroupSessionStatus, PtPackageProduct
+from app.systems.gym.models.commission import (
+    CommissionBasis,
+    CommissionBeneficiary,
+    CommissionRule,
+    CommissionScope,
+)
+from app.systems.gym.models.sales import SalesRep
 from app.systems.gym.models.equipment import EquipmentAsset, EquipmentStatus
 from app.systems.platform.models.identity import Role, StaffRole, StaffUser
 from app.systems.platform.models.member import AcquisitionSource, FaceStatus, Member, MerchantMember
@@ -29,8 +36,10 @@ from app.systems.gym.models.retail import ProductCategory, RetailSku, StockMovem
 from app.systems.catering.models.catering import CateringMenuCategory, CateringMenuItem, CateringTable
 from app.systems.catering.services.tables import generate_table_code
 from app.core.security import hash_device_api_key, hash_password
+from app.systems.gym.services.sales_member import link_sales_member
 
 UTC = timezone.utc
+DEMO_PASSWORD = "Demo@123456"
 
 
 def _now() -> datetime:
@@ -85,6 +94,7 @@ def _ensure_member(
     merchant_id: int,
     phone: str,
     name: str,
+    referrer_member_id: int | None = None,
 ) -> Member:
     member = db.scalar(select(Member).where(Member.site_id == site_id, Member.phone == phone))
     if member is None:
@@ -93,8 +103,12 @@ def _ensure_member(
             phone=phone,
             name=name,
             face_status=FaceStatus.NOT_ENROLLED.value,
+            referrer_member_id=referrer_member_id,
         )
         db.add(member)
+        db.flush()
+    elif referrer_member_id is not None and member.referrer_member_id is None:
+        member.referrer_member_id = referrer_member_id
         db.flush()
     link = db.scalar(
         select(MerchantMember).where(
@@ -195,25 +209,72 @@ def _ensure_product(
     return product
 
 
-def seed_demo_catalog(db: Session, *, site: Site, gym: Merchant, role_map: dict[str, Role]) -> None:
-    """写入目录级体验数据。"""
+def _ensure_commission_rule(
+    db: Session,
+    *,
+    merchant_id: int,
+    name: str,
+    scope: str,
+    beneficiary: str,
+    basis: str,
+    rate: str | None = None,
+    unit_amount: str | None = None,
+    first_order_only: bool = False,
+    priority: int = 100,
+) -> CommissionRule:
+    """按商户 + 规则名幂等写入提成规则。"""
+    row = db.scalar(
+        select(CommissionRule).where(
+            CommissionRule.merchant_id == merchant_id,
+            CommissionRule.name == name,
+        )
+    )
+    if row is None:
+        row = CommissionRule(
+            merchant_id=merchant_id,
+            name=name,
+            scope=scope,
+            beneficiary=beneficiary,
+            basis=basis,
+            rate=Decimal(rate) if rate is not None else None,
+            unit_amount=Decimal(unit_amount) if unit_amount is not None else None,
+            first_order_only=first_order_only,
+            priority=priority,
+            is_active=True,
+        )
+        db.add(row)
+        db.flush()
+    return row
+
+
+def seed_demo_catalog(
+    db: Session,
+    *,
+    site: Site,
+    gym: Merchant,
+    bar: Merchant | None,
+    role_map: dict[str, Role],
+) -> None:
+    """写入交付级 Demo 目录数据。"""
     bar_type = db.scalar(select(MerchantType).where(MerchantType.code == "bar"))
-    bar = None
-    if bar_type is not None:
+    if bar is None and bar_type is not None:
         bar = db.scalar(
             select(Merchant).where(Merchant.merchant_type_id == bar_type.id).order_by(Merchant.id)
         )
-    if bar is None and bar_type is not None:
-        bar = Merchant(
-            site_id=site.id,
-            merchant_type_id=bar_type.id,
-            name="观野BAR",
-            status=MerchantStatus.ACTIVE.value,
-        )
-        db.add(bar)
-        db.flush()
+        if bar is None:
+            bar = Merchant(
+                site_id=site.id,
+                merchant_type_id=bar_type.id,
+                name="观野BAR",
+                status=MerchantStatus.ACTIVE.value,
+            )
+            db.add(bar)
+            db.flush()
+        else:
+            bar.name = "观野BAR"
     elif bar is not None:
         bar.name = "观野BAR"
+
     if bar is not None:
         from app.core.domain.subsystems import replace_merchant_subsystems
         from app.systems.platform.models.org import MerchantSubsystem
@@ -227,82 +288,137 @@ def seed_demo_catalog(db: Session, *, site: Site, gym: Merchant, role_map: dict[
 
     ensure_merchant_role_packs(db, gym.id)
 
+    # —— 提成规则 ——
+    rule_membership = _ensure_commission_rule(
+        db,
+        merchant_id=gym.id,
+        name="会籍销售提成10%",
+        scope=CommissionScope.MEMBERSHIP_SALE.value,
+        beneficiary=CommissionBeneficiary.SELLER.value,
+        basis=CommissionBasis.PERCENT.value,
+        rate="0.10",
+        priority=100,
+    )
+    rule_pt_sale = _ensure_commission_rule(
+        db,
+        merchant_id=gym.id,
+        name="私教课包销售8%",
+        scope=CommissionScope.PT_SALE.value,
+        beneficiary=CommissionBeneficiary.SELLER.value,
+        basis=CommissionBasis.PERCENT.value,
+        rate="0.08",
+        priority=110,
+    )
+    rule_retail = _ensure_commission_rule(
+        db,
+        merchant_id=gym.id,
+        name="零售销售5%",
+        scope=CommissionScope.RETAIL_SALE.value,
+        beneficiary=CommissionBeneficiary.SELLER.value,
+        basis=CommissionBasis.PERCENT.value,
+        rate="0.05",
+        priority=120,
+    )
+    rule_activity = _ensure_commission_rule(
+        db,
+        merchant_id=gym.id,
+        name="活动报名固定20元",
+        scope=CommissionScope.ACTIVITY_SALE.value,
+        beneficiary=CommissionBeneficiary.SELLER.value,
+        basis=CommissionBasis.FIXED.value,
+        unit_amount="20.00",
+        priority=130,
+    )
+    rule_group = _ensure_commission_rule(
+        db,
+        merchant_id=gym.id,
+        name="团课按出席15元/人",
+        scope=CommissionScope.GROUP_SESSION.value,
+        beneficiary=CommissionBeneficiary.COACH.value,
+        basis=CommissionBasis.PER_HEAD.value,
+        unit_amount="15.00",
+        priority=140,
+    )
+    rule_pt_session = _ensure_commission_rule(
+        db,
+        merchant_id=gym.id,
+        name="私教课时60元/节",
+        scope=CommissionScope.PT_SESSION.value,
+        beneficiary=CommissionBeneficiary.COACH.value,
+        basis=CommissionBasis.PER_SESSION.value,
+        unit_amount="60.00",
+        priority=150,
+    )
+    rule_referral = _ensure_commission_rule(
+        db,
+        merchant_id=gym.id,
+        name="推荐成交首单50元",
+        scope=CommissionScope.REFERRAL.value,
+        beneficiary=CommissionBeneficiary.REFERRER.value,
+        basis=CommissionBasis.FIXED.value,
+        unit_amount="50.00",
+        first_order_only=True,
+        priority=160,
+    )
+    _ = (rule_pt_sale, rule_retail, rule_activity, rule_referral)
+
     def merchant_role(merchant_id: int, code: str) -> Role | None:
         return db.scalar(select(Role).where(Role.merchant_id == merchant_id, Role.code == code))
 
-    # —— 组织角色演示账号 ——
+    # —— 场地级员工 ——
     if "site_ops" in role_map:
-        _get_or_create_staff(
+        site_ops = _get_or_create_staff(
             db,
             site_id=site.id,
             merchant_id=None,
             username="site_ops",
-            password="Demo@123456",
-            display_name="场地运营",
+            password=DEMO_PASSWORD,
+            display_name="综合运营·张敏",
             role=role_map["site_ops"],
         )
-        # 兼容旧账号名
-        _get_or_create_staff(
+        _ensure_staff_role(db, site_ops, role_map["site_ops"])
+    if "site_finance" in role_map:
+        finance = _get_or_create_staff(
             db,
             site_id=site.id,
             merchant_id=None,
-            username="platform_admin",
-            password="Demo@123456",
-            display_name="场地运营",
-            role=role_map["site_ops"],
+            username="finance",
+            password=DEMO_PASSWORD,
+            display_name="财务·李会计",
+            role=role_map["site_finance"],
         )
+        _ensure_staff_role(db, finance, role_map["site_finance"])
 
+    # —— 健身房员工 ——
     gym_admin_role = merchant_role(gym.id, "gym_admin")
-    gym_ops_role = merchant_role(gym.id, "gym_ops")
     gym_coach_role = merchant_role(gym.id, "gym_coach")
+    gym_ops_role = merchant_role(gym.id, "gym_ops")
+    gym_front_role = merchant_role(gym.id, "gym_front")
+    gym_sales_role = merchant_role(gym.id, "gym_sales")
 
+    gym_admin: StaffUser | None = None
     if gym_admin_role is not None:
         gym_admin = _get_or_create_staff(
             db,
             site_id=site.id,
             merchant_id=gym.id,
             username="gym_admin",
-            password="Demo@123456",
-            display_name="健身房管理员",
+            password=DEMO_PASSWORD,
+            display_name="陈店长",
             role=gym_admin_role,
         )
         _ensure_staff_role(db, gym_admin, gym_admin_role)
-    else:
-        gym_admin = None
 
-    if gym_ops_role is not None:
-        gym_ops = _get_or_create_staff(
-            db,
-            site_id=site.id,
-            merchant_id=gym.id,
-            username="gym_ops",
-            password="Demo@123456",
-            display_name="健身房运营·小王",
-            role=gym_ops_role,
-        )
-        _ensure_staff_role(db, gym_ops, gym_ops_role)
-        # 兼容旧前台账号
-        front = _get_or_create_staff(
-            db,
-            site_id=site.id,
-            merchant_id=gym.id,
-            username="front01",
-            password="Demo@123456",
-            display_name="健身房运营·小王",
-            role=gym_ops_role,
-        )
-        _ensure_staff_role(db, front, gym_ops_role)
-    else:
-        front = None
-
+    coach_staff_1: StaffUser | None = None
+    coach_staff_2: StaffUser | None = None
     if gym_coach_role is not None:
         coach_staff_1 = _get_or_create_staff(
             db,
             site_id=site.id,
             merchant_id=gym.id,
             username="coach01",
-            password="Demo@123456",
-            display_name="教练阿强",
+            password=DEMO_PASSWORD,
+            display_name="教练·阿强",
             role=gym_coach_role,
         )
         _ensure_staff_role(db, coach_staff_1, gym_coach_role)
@@ -311,14 +427,56 @@ def seed_demo_catalog(db: Session, *, site: Site, gym: Merchant, role_map: dict[
             site_id=site.id,
             merchant_id=gym.id,
             username="coach02",
-            password="Demo@123456",
-            display_name="教练小雅",
+            password=DEMO_PASSWORD,
+            display_name="教练·小雅",
             role=gym_coach_role,
         )
         _ensure_staff_role(db, coach_staff_2, gym_coach_role)
-    else:
-        coach_staff_1 = coach_staff_2 = None
 
+    if gym_ops_role is not None:
+        gym_ops = _get_or_create_staff(
+            db,
+            site_id=site.id,
+            merchant_id=gym.id,
+            username="gym_ops",
+            password=DEMO_PASSWORD,
+            display_name="运营·小陈",
+            role=gym_ops_role,
+        )
+        _ensure_staff_role(db, gym_ops, gym_ops_role)
+
+    if gym_front_role is not None:
+        front = _get_or_create_staff(
+            db,
+            site_id=site.id,
+            merchant_id=gym.id,
+            username="front01",
+            password=DEMO_PASSWORD,
+            display_name="前台·小王",
+            role=gym_front_role,
+        )
+        _ensure_staff_role(db, front, gym_front_role)
+
+    sales_staff: list[StaffUser] = []
+    if gym_sales_role is not None:
+        for username, display_name in (
+            ("sales01", "销售·大明"),
+            ("sales02", "销售·小芳"),
+            ("sales03", "销售·小军"),
+        ):
+            staff = _get_or_create_staff(
+                db,
+                site_id=site.id,
+                merchant_id=gym.id,
+                username=username,
+                password=DEMO_PASSWORD,
+                display_name=display_name,
+                role=gym_sales_role,
+            )
+            _ensure_staff_role(db, staff, gym_sales_role)
+            sales_staff.append(staff)
+
+    # —— 清吧员工 ——
     if bar is not None:
         bar_admin_role = merchant_role(bar.id, "bar_admin")
         bar_ops_role = merchant_role(bar.id, "bar_ops")
@@ -329,42 +487,33 @@ def seed_demo_catalog(db: Session, *, site: Site, gym: Merchant, role_map: dict[
                 site_id=site.id,
                 merchant_id=bar.id,
                 username="bar_admin",
-                password="Demo@123456",
-                display_name="清吧管理人员",
+                password=DEMO_PASSWORD,
+                display_name="赵店长",
                 role=bar_admin_role,
             )
             _ensure_staff_role(db, bar_admin, bar_admin_role)
-            _get_or_create_staff(
-                db,
-                site_id=site.id,
-                merchant_id=bar.id,
-                username="catering_admin",
-                password="Demo@123456",
-                display_name="清吧管理人员",
-                role=bar_admin_role,
-            )
         if bar_ops_role is not None:
-            _get_or_create_staff(
+            bar_ops = _get_or_create_staff(
                 db,
                 site_id=site.id,
                 merchant_id=bar.id,
                 username="bar_ops",
-                password="Demo@123456",
-                display_name="清吧运营",
+                password=DEMO_PASSWORD,
+                display_name="运营·小周",
                 role=bar_ops_role,
             )
+            _ensure_staff_role(db, bar_ops, bar_ops_role)
         if bar_cashier_role is not None:
-            _get_or_create_staff(
+            bar_cashier = _get_or_create_staff(
                 db,
                 site_id=site.id,
                 merchant_id=bar.id,
                 username="bar_cashier",
-                password="Demo@123456",
-                display_name="清吧收银",
+                password=DEMO_PASSWORD,
+                display_name="收银·小刘",
                 role=bar_cashier_role,
             )
-
-    _ = (gym_admin, front, coach_staff_1, coach_staff_2)
+            _ensure_staff_role(db, bar_cashier, bar_cashier_role)
 
     # —— 门禁 ——
     main_door = _ensure_point(db, site_id=site.id, merchant_id=gym.id, name="健身房正门")
@@ -377,15 +526,86 @@ def seed_demo_catalog(db: Session, *, site: Site, gym: Merchant, role_map: dict[
     _ensure_device(db, access_point_id=public_door.id, device_code="pad-site-gate", api_key="demo-pad-gate")
     gym_point_ids = [main_door.id, side_door.id]
 
-    # —— 会员 ——
-    members = [
-        _ensure_member(db, site_id=site.id, merchant_id=gym.id, phone="13800001001", name="演示会员·张三"),
-        _ensure_member(db, site_id=site.id, merchant_id=gym.id, phone="13800001002", name="演示会员·李四"),
-        _ensure_member(db, site_id=site.id, merchant_id=gym.id, phone="13800001003", name="演示会员·王五"),
+    # —— 健身房会员（含推荐链） ——
+    zhang_san = _ensure_member(
+        db, site_id=site.id, merchant_id=gym.id, phone="13800001001", name="会员·张三"
+    )
+    li_si = _ensure_member(
+        db,
+        site_id=site.id,
+        merchant_id=gym.id,
+        phone="13800001002",
+        name="会员·李四",
+        referrer_member_id=zhang_san.id,
+    )
+    wang_wu = _ensure_member(
+        db,
+        site_id=site.id,
+        merchant_id=gym.id,
+        phone="13800001003",
+        name="会员·王五",
+        referrer_member_id=li_si.id,
+    )
+    zhao_liu = _ensure_member(
+        db,
+        site_id=site.id,
+        merchant_id=gym.id,
+        phone="13800001004",
+        name="会员·赵六",
+        referrer_member_id=zhang_san.id,
+    )
+    sun_qi = _ensure_member(
+        db,
+        site_id=site.id,
+        merchant_id=gym.id,
+        phone="13800001005",
+        name="会员·孙七",
+        referrer_member_id=zhang_san.id,
+    )
+    zhou_ba = _ensure_member(
+        db,
+        site_id=site.id,
+        merchant_id=gym.id,
+        phone="13800001006",
+        name="会员·周八",
+        referrer_member_id=zhao_liu.id,
+    )
+    wu_jiu = _ensure_member(
+        db, site_id=site.id, merchant_id=gym.id, phone="13800001007", name="会员·吴九"
+    )
+    zheng_shi = _ensure_member(
+        db,
+        site_id=site.id,
+        merchant_id=gym.id,
+        phone="13800001008",
+        name="会员·郑十",
+        referrer_member_id=li_si.id,
+    )
+    qian_shiyi = _ensure_member(
+        db, site_id=site.id, merchant_id=gym.id, phone="13800001009", name="会员·钱十一"
+    )
+    chen_shier = _ensure_member(
+        db, site_id=site.id, merchant_id=gym.id, phone="13800001010", name="会员·陈十二"
+    )
+    gym_members = [
+        zhang_san,
+        li_si,
+        wang_wu,
+        zhao_liu,
+        sun_qi,
+        zhou_ba,
+        wu_jiu,
+        zheng_shi,
+        qian_shiyi,
+        chen_shier,
     ]
+
     if bar is not None:
-        # 跨业态关联：张三同时关联酒吧
-        _ensure_member(db, site_id=site.id, merchant_id=bar.id, phone="13800001001", name="演示会员·张三")
+        _ensure_member(db, site_id=site.id, merchant_id=bar.id, phone="13800001001", name="会员·张三")
+        _ensure_member(db, site_id=site.id, merchant_id=bar.id, phone="13800002001", name="会员·林夜")
+
+    for member in gym_members:
+        ensure_member_promoter_code(db, member, force=False)
 
     # —— 会籍卡种 ——
     _ensure_product(
@@ -437,8 +657,8 @@ def seed_demo_catalog(db: Session, *, site: Site, gym: Merchant, role_map: dict[
         access_point_ids=gym_point_ids,
     )
 
-    # —— 教练档案（主身份挂会员） ——
-    def ensure_coach_member(phone: str, name: str) -> Member:
+    # —— 员工关联会员（MERCHANT 来源，独立手机号） ——
+    def ensure_staff_member(phone: str, name: str) -> Member:
         member = db.scalar(select(Member).where(Member.site_id == site.id, Member.phone == phone))
         if member is None:
             member = Member(
@@ -453,7 +673,8 @@ def seed_demo_catalog(db: Session, *, site: Site, gym: Merchant, role_map: dict[
             db.flush()
         linked = db.scalar(
             select(MerchantMember).where(
-                MerchantMember.member_id == member.id, MerchantMember.merchant_id == gym.id
+                MerchantMember.member_id == member.id,
+                MerchantMember.merchant_id == gym.id,
             )
         )
         if linked is None:
@@ -463,7 +684,7 @@ def seed_demo_catalog(db: Session, *, site: Site, gym: Merchant, role_map: dict[
         return member
 
     def ensure_coach(staff: StaffUser, display_name: str, specialties: str, *, phone: str) -> Coach:
-        member = ensure_coach_member(phone, display_name)
+        member = ensure_staff_member(phone, display_name)
         coach = db.scalar(select(Coach).where(Coach.staff_user_id == staff.id))
         if coach is None:
             coach = Coach(
@@ -479,19 +700,62 @@ def seed_demo_catalog(db: Session, *, site: Site, gym: Merchant, role_map: dict[
             db.flush()
         else:
             coach.member_id = member.id
+            coach.display_name = display_name
         return coach
 
-    coach_qiang = ensure_coach(coach_staff_1, "阿强", "增肌,力量", phone="13800001001")
-    coach_ya = ensure_coach(coach_staff_2, "小雅", "减脂,团操", phone="13800001002")
+    coach_qiang: Coach | None = None
+    coach_ya: Coach | None = None
+    if coach_staff_1 is not None:
+        coach_qiang = ensure_coach(coach_staff_1, "教练·阿强", "增肌,力量", phone="13910001001")
+        coach_qiang.title = "金牌私教"
+        coach_qiang.gender = "male"
+        coach_qiang.years_experience = 8
+        coach_qiang.bio = "力量训练与增肌方向，带过多名备赛学员。"
+        coach_qiang.group_commission_rule_id = rule_group.id
+        coach_qiang.pt_commission_rule_id = rule_pt_session.id
+    if coach_staff_2 is not None:
+        coach_ya = ensure_coach(coach_staff_2, "教练·小雅", "减脂,团操", phone="13910001002")
+        coach_ya.title = "团课主教练"
+        coach_ya.gender = "female"
+        coach_ya.years_experience = 6
+        coach_ya.bio = "减脂塑形与团操，课堂氛围活泼。"
+        coach_ya.group_commission_rule_id = rule_group.id
+        coach_ya.pt_commission_rule_id = rule_pt_session.id
 
-    coach_qiang.title = "金牌私教"
-    coach_qiang.gender = "male"
-    coach_qiang.years_experience = 8
-    coach_qiang.bio = "力量训练与增肌方向，带过多名备赛学员。"
-    coach_ya.title = "团课主教练"
-    coach_ya.gender = "female"
-    coach_ya.years_experience = 6
-    coach_ya.bio = "减脂塑形与团操，课堂氛围活泼。"
+    # —— 销售档案（仅 sales01/02/03） ——
+    sales_phone_map = {
+        "sales01": ("13910001011", "销售·大明"),
+        "sales02": ("13910001012", "销售·小芳"),
+        "sales03": ("13910001013", "销售·小军"),
+    }
+
+    def ensure_sales_rep(staff: StaffUser) -> SalesRep | None:
+        phone, display_name = sales_phone_map.get(staff.username, (None, staff.display_name))
+        if phone is None:
+            return None
+        member = ensure_staff_member(phone, display_name)
+        rep = db.scalar(select(SalesRep).where(SalesRep.staff_user_id == staff.id))
+        if rep is None:
+            rep = SalesRep(
+                merchant_id=gym.id,
+                staff_user_id=staff.id,
+                member_id=member.id,
+                display_name=display_name,
+                commission_rule_id=rule_membership.id,
+                is_active=True,
+            )
+            db.add(rep)
+            db.flush()
+        else:
+            rep.commission_rule_id = rule_membership.id
+            rep.display_name = display_name
+        link_sales_member(
+            db, sales_rep=rep, site_id=site.id, merchant_id=gym.id, member_id=member.id
+        )
+        return rep
+
+    for staff in sales_staff:
+        ensure_sales_rep(staff)
 
     # —— 私教课包 ——
     pt = db.scalar(
@@ -590,12 +854,13 @@ def seed_demo_catalog(db: Session, *, site: Site, gym: Merchant, role_map: dict[
                 )
             )
 
-    tomorrow = (_now() + timedelta(days=1)).replace(hour=19, minute=0, second=0, microsecond=0)
-    day_after = (_now() + timedelta(days=2)).replace(hour=10, minute=0, second=0, microsecond=0)
-    ensure_session(course, coach_ya, tomorrow, "团操房 A")
-    ensure_session(yoga, coach_ya, day_after, "团操房 B")
-    ensure_session(course, coach_qiang, day_after.replace(hour=19), "团操房 A")
-    db.flush()
+    if coach_qiang is not None and coach_ya is not None:
+        tomorrow = (_now() + timedelta(days=1)).replace(hour=19, minute=0, second=0, microsecond=0)
+        day_after = (_now() + timedelta(days=2)).replace(hour=10, minute=0, second=0, microsecond=0)
+        ensure_session(course, coach_ya, tomorrow, "团操房 A")
+        ensure_session(yoga, coach_ya, day_after, "团操房 B")
+        ensure_session(course, coach_qiang, day_after.replace(hour=19), "团操房 A")
+        db.flush()
 
     # —— 零售 ——
     cat = db.scalar(
@@ -645,7 +910,7 @@ def seed_demo_catalog(db: Session, *, site: Site, gym: Merchant, role_map: dict[
             )
             db.add(sku)
             db.flush()
-            if stock > 0:
+            if stock > 0 and gym_admin is not None:
                 db.add(
                     StockMovement(
                         merchant_id=gym.id,
@@ -749,7 +1014,7 @@ def seed_demo_catalog(db: Session, *, site: Site, gym: Merchant, role_map: dict[
     ensure_asset("EQ-SG-001", "史密斯机", "strength", "力量区")
     db.flush()
 
-    # —— 活动：会员 H5 / 小程序首页可见 ——
+    # —— 活动 ——
     demo_activity = db.scalar(
         select(Activity).where(Activity.merchant_id == gym.id, Activity.name == "夏季体测")
     )
@@ -773,7 +1038,7 @@ def seed_demo_catalog(db: Session, *, site: Site, gym: Merchant, role_map: dict[
         )
         db.flush()
 
-    # —— 清吧 Demo 菜单 ——
+    # —— 清吧菜单 ——
     if bar is not None:
         def ensure_menu_category(name: str, sort_order: int) -> CateringMenuCategory:
             row = db.scalar(
@@ -859,26 +1124,25 @@ def seed_demo_catalog(db: Session, *, site: Site, gym: Merchant, role_map: dict[
             )
             db.add(dining_tpl)
             db.flush()
-        if members:
-            owned = db.scalar(
-                select(MemberCoupon).where(
-                    MemberCoupon.member_id == members[0].id,
-                    MemberCoupon.template_id == dining_tpl.id,
+        owned = db.scalar(
+            select(MemberCoupon).where(
+                MemberCoupon.member_id == zhang_san.id,
+                MemberCoupon.template_id == dining_tpl.id,
+            )
+        )
+        if owned is None:
+            db.add(
+                MemberCoupon(
+                    merchant_id=bar.id,
+                    template_id=dining_tpl.id,
+                    member_id=zhang_san.id,
+                    status=MemberCouponStatus.UNUSED.value,
+                    starts_at=dining_tpl.starts_at,
+                    ends_at=dining_tpl.ends_at,
                 )
             )
-            if owned is None:
-                db.add(
-                    MemberCoupon(
-                        merchant_id=bar.id,
-                        template_id=dining_tpl.id,
-                        member_id=members[0].id,
-                        status=MemberCouponStatus.UNUSED.value,
-                        starts_at=dining_tpl.starts_at,
-                        ends_at=dining_tpl.ends_at,
-                    )
-                )
-                dining_tpl.issued_count = int(dining_tpl.issued_count or 0) + 1
-                db.flush()
+            dining_tpl.issued_count = int(dining_tpl.issued_count or 0) + 1
+            db.flush()
 
         for idx, table_name in enumerate(["吧台", "A1", "A2", "A3", "B1", "卡座1", "卡座2"]):
             table = db.scalar(
@@ -962,14 +1226,14 @@ def seed_demo_catalog(db: Session, *, site: Site, gym: Merchant, role_map: dict[
                 audience="staff",
                 event_type="demo.welcome",
                 title=notice_title,
-                body="已预置会员、卡种、教练、团课、零售与优惠券等目录数据，可直接在各菜单体验。",
+                body="已预置会员、卡种、教练、销售、团课、零售与优惠券等目录数据，可直接在各菜单体验。",
             )
         )
         db.add(
             Notification(
                 site_id=site.id,
                 merchant_id=gym.id,
-                member_id=members[0].id,
+                member_id=zhang_san.id,
                 audience="member",
                 event_type="demo.welcome",
                 title="【Demo】会员端欢迎通知",

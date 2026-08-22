@@ -10,15 +10,25 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.deps import RequestContext, get_current_context
+from app.core.merchant_scope import assert_merchant_in_site
 from app.core.domain.subsystems import assert_merchant_has_system
 from app.core.errors import AppError
 from app.core.schemas.paging import PageOut, paginate
 from app.systems.gym.models.commission import (
+    CommissionCategory,
+    CommissionDebtAccount,
     CommissionRecord,
     CommissionRule,
     CommissionStatus,
 )
 from app.systems.gym.services.commission import change_record_status, validate_rule_config
+from app.systems.gym.services.commission_policy import (
+    get_or_create_settings,
+    record_hold_until,
+    record_ready_to_settle,
+    recover_debt_cash,
+    settle_hold_days,
+)
 from app.systems.platform.models.commerce import Order, OrderStatus
 from app.systems.platform.models.identity import StaffUser
 from app.systems.platform.models.org import Merchant
@@ -92,6 +102,8 @@ class RecordOut(ORMModel):
     note: str | None
     settled_at: datetime | None
     created_at: datetime
+    settle_ready: bool = True
+    settle_hold_until: datetime | None = None
 
 
 class RecordStatusIn(BaseModel):
@@ -260,6 +272,7 @@ def update_rule(
     rule = db.get(CommissionRule, rule_id)
     if rule is None:
         raise AppError("not_found", "分成规则不存在", status_code=404)
+    assert_merchant_in_site(db, ctx, rule.merchant_id)
     mid = ctx.resolve_merchant_id(body.merchant_id or rule.merchant_id)
     if rule.merchant_id != mid:
         raise AppError("forbidden", "禁止跨商户修改", status_code=403)
@@ -312,6 +325,7 @@ def delete_rule(
     rule = db.get(CommissionRule, rule_id)
     if rule is None:
         raise AppError("not_found", "分成规则不存在", status_code=404)
+    assert_merchant_in_site(db, ctx, rule.merchant_id)
     ctx.resolve_merchant_id(rule.merchant_id)
     used = db.scalar(select(CommissionRecord.id).where(CommissionRecord.rule_id == rule.id).limit(1))
     if used is not None:
@@ -333,7 +347,7 @@ def delete_rule(
     return {"ok": True, "deactivated": False}
 
 
-def _record_out(row: CommissionRecord, rule_names: dict[int, str]) -> RecordOut:
+def _record_out(row: CommissionRecord, rule_names: dict[int, str], *, hold_days: int = 0) -> RecordOut:
     return RecordOut(
         id=row.id,
         merchant_id=row.merchant_id,
@@ -357,6 +371,8 @@ def _record_out(row: CommissionRecord, rule_names: dict[int, str]) -> RecordOut:
         note=row.note,
         settled_at=row.settled_at,
         created_at=row.created_at,
+        settle_ready=record_ready_to_settle(row, hold_days),
+        settle_hold_until=record_hold_until(row, hold_days),
     )
 
 
@@ -408,8 +424,9 @@ def list_records(
         r.id: r.name
         for r in db.scalars(select(CommissionRule).where(CommissionRule.id.in_(rule_ids or {-1}))).all()
     }
+    hold_days = settle_hold_days(db, ctx.site_id)
     return PageOut(
-        items=[_record_out(r, rule_names) for r in rows],
+        items=[_record_out(r, rule_names, hold_days=hold_days) for r in rows],
         total=total,
         page=page,
         page_size=page_size,
@@ -428,6 +445,7 @@ def update_record_status(
     record = db.get(CommissionRecord, record_id)
     if record is None:
         raise AppError("not_found", "提成记录不存在", status_code=404)
+    assert_merchant_in_site(db, ctx, record.merchant_id)
     ctx.resolve_merchant_id(record.merchant_id)
     change_record_status(db, record, body.status)
     write_audit(
@@ -447,7 +465,7 @@ def update_record_status(
         rule = db.get(CommissionRule, record.rule_id)
         if rule is not None:
             rule_names[rule.id] = rule.name
-    return _record_out(record, rule_names)
+    return _record_out(record, rule_names, hold_days=settle_hold_days(db, ctx.site_id))
 
 
 @router.post("/commission-records/batch-status", response_model=RecordBatchOut)
@@ -464,6 +482,7 @@ def batch_update_record_status(
     updated = 0
     skipped = 0
     for row in rows:
+        assert_merchant_in_site(db, ctx, row.merchant_id)
         ctx.resolve_merchant_id(row.merchant_id)
         try:
             change_record_status(db, row, body.status)
@@ -479,7 +498,7 @@ def batch_update_record_status(
         summary=f"批量改为 {body.status}：成功 {updated}，跳过 {skipped}",
         actor_staff_id=ctx.staff.id,
         site_id=ctx.site_id,
-        merchant_id=None if ctx.is_site_admin else ctx.merchant_id,
+        merchant_id=None if ctx.is_site_wide else ctx.merchant_id,
     )
     db.commit()
     return RecordBatchOut(updated=updated, skipped=skipped)
@@ -573,11 +592,18 @@ def commission_summary(
         for s in db.scalars(select(StaffUser).where(StaffUser.id.in_(staff_ids or {-1}))).all()
     }
     seller_commission: dict[int, Decimal] = {}
+    order_sellers: dict[int, int] = {}
+    for oid in {r.order_id for r in records if r.order_id}:
+        order = db.get(Order, oid)
+        if order is not None and order.seller_staff_id is not None:
+            order_sellers[oid] = order.seller_staff_id
     for row in records:
-        if row.beneficiary_type == "staff":
-            seller_commission[row.beneficiary_id] = seller_commission.get(
-                row.beneficiary_id, Decimal("0")
-            ) + Decimal(row.amount or 0)
+        if row.order_id and row.category == CommissionCategory.SALE.value:
+            staff_id = order_sellers.get(row.order_id)
+            if staff_id is not None:
+                seller_commission[staff_id] = seller_commission.get(staff_id, Decimal("0")) + Decimal(
+                    row.amount or 0
+                )
 
     sellers = [
         SellerPerformanceRow(
@@ -620,6 +646,143 @@ def commission_summary(
             reverse=True,
         ),
         sellers=sellers,
+    )
+
+
+class CommissionSettingsOut(BaseModel):
+    site_id: int
+    settle_hold_days: int
+    remark: str | None = None
+
+
+class CommissionSettingsIn(BaseModel):
+    settle_hold_days: int = Field(ge=0, le=365)
+    remark: str | None = Field(default=None, max_length=255)
+
+
+class DebtAccountOut(BaseModel):
+    id: int
+    beneficiary_type: str
+    beneficiary_id: int
+    beneficiary_name: str
+    debt_amount: Decimal
+
+
+class DebtRecoverIn(BaseModel):
+    beneficiary_type: str
+    beneficiary_id: int
+    amount: Decimal
+    note: str | None = Field(default=None, max_length=255)
+
+
+@router.get("/site/commission-settings", response_model=CommissionSettingsOut)
+def get_commission_settings(
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    ctx.require_permission("commission:manage", "commission:read", "org:write", "*")
+    row = get_or_create_settings(db, ctx.site_id)
+    db.flush()
+    return CommissionSettingsOut(
+        site_id=row.site_id, settle_hold_days=row.settle_hold_days, remark=row.remark
+    )
+
+
+@router.put("/site/commission-settings", response_model=CommissionSettingsOut)
+def put_commission_settings(
+    body: CommissionSettingsIn,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    ctx.require_permission("commission:manage", "org:write", "*")
+    row = get_or_create_settings(db, ctx.site_id)
+    row.settle_hold_days = int(body.settle_hold_days)
+    row.remark = (body.remark or "").strip() or None
+    row.updated_by_staff_id = ctx.staff.id
+    write_audit(
+        db,
+        action="commission_settings.update",
+        target_type="site_commission_settings",
+        target_id=ctx.site_id,
+        summary=f"提成结算冷却 {row.settle_hold_days} 天",
+        actor_staff_id=ctx.staff.id,
+        site_id=ctx.site_id,
+    )
+    db.commit()
+    db.refresh(row)
+    return CommissionSettingsOut(
+        site_id=row.site_id, settle_hold_days=row.settle_hold_days, remark=row.remark
+    )
+
+
+@router.get("/commission-debts", response_model=list[DebtAccountOut])
+def list_commission_debts(
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    ctx.require_permission("commission:read", "commission:manage", "*")
+    rows = list(
+        db.scalars(
+            select(CommissionDebtAccount)
+            .where(
+                CommissionDebtAccount.site_id == ctx.site_id,
+                CommissionDebtAccount.debt_amount > 0,
+            )
+            .order_by(CommissionDebtAccount.debt_amount.desc())
+        ).all()
+    )
+    return [
+        DebtAccountOut(
+            id=r.id,
+            beneficiary_type=r.beneficiary_type,
+            beneficiary_id=r.beneficiary_id,
+            beneficiary_name=r.beneficiary_name,
+            debt_amount=r.debt_amount,
+        )
+        for r in rows
+    ]
+
+
+@router.post("/commission-debts/recover", response_model=DebtAccountOut)
+def recover_commission_debt(
+    body: DebtRecoverIn,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    ctx.require_permission("commission:manage", "*")
+    recover_debt_cash(
+        db,
+        site_id=ctx.site_id,
+        beneficiary_type=body.beneficiary_type,
+        beneficiary_id=body.beneficiary_id,
+        amount=body.amount,
+        actor_staff_id=ctx.staff.id,
+        note=body.note,
+    )
+    write_audit(
+        db,
+        action="commission_debt.recover",
+        target_type="commission_debt_account",
+        target_id=body.beneficiary_id,
+        summary=f"现金追回 {body.amount} {body.beneficiary_type}#{body.beneficiary_id}",
+        actor_staff_id=ctx.staff.id,
+        site_id=ctx.site_id,
+    )
+    db.commit()
+    account = db.scalar(
+        select(CommissionDebtAccount).where(
+            CommissionDebtAccount.site_id == ctx.site_id,
+            CommissionDebtAccount.beneficiary_type == body.beneficiary_type,
+            CommissionDebtAccount.beneficiary_id == body.beneficiary_id,
+        )
+    )
+    assert account is not None
+    return DebtAccountOut(
+        id=account.id,
+        beneficiary_type=account.beneficiary_type,
+        beneficiary_id=account.beneficiary_id,
+        beneficiary_name=account.beneficiary_name,
+        debt_amount=account.debt_amount,
     )
 
 

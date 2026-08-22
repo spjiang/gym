@@ -27,8 +27,9 @@
   <view class="muted" wx:if="{{me.held_amount > 0}}">冷却中 ¥{{me.held_amount}}（满 {{me.withdraw_hold_days}} 天可提）</view>
 
   <view class="card">
-    <input type="digit" placeholder="提现金额" value="{{amount}}" bindinput="onAmount" />
-    <button bindtap="withdraw">申请提现</button>
+    <view class="pending" wx:if="{{withdrawBlocked}}">有一笔提现在处理中，请等待完成后再申请</view>
+    <input type="digit" placeholder="提现金额" value="{{amount}}" bindinput="onAmount" disabled="{{withdrawBlocked}}" />
+    <button bindtap="withdraw" disabled="{{withdrawBlocked}}">申请提现</button>
     <view class="muted">打款在线下完成，审核通过后运营登记即为到账。</view>
   </view>
 

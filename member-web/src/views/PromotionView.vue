@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import http from '../api/http'
 
@@ -21,6 +21,7 @@ type Promotion = {
   withdraw_hold_days?: number
   held_amount?: string
   available_balance?: string
+  payout_in_progress?: boolean
 }
 type Downline = {
   name: string
@@ -73,6 +74,8 @@ const tip = ref('')
 const amount = ref('')
 const submitting = ref(false)
 const tab = ref<'downline' | 'ledger' | 'payout'>('downline')
+
+const withdrawBlocked = computed(() => Boolean(me.value?.payout_in_progress))
 
 function pct(v: string | number | null | undefined) {
   return `${(Number(v || 0) * 100).toFixed(1).replace(/\.0$/, '')}%`
@@ -178,6 +181,7 @@ onMounted(() => {
 
     <div class="mw-card withdraw">
       <label class="mw-field__label" for="amt">申请提现</label>
+      <p v-if="withdrawBlocked" class="meta pending">有一笔提现在处理中，请等待审核或打款完成后再申请。</p>
       <div class="row">
         <input
           id="amt"
@@ -186,9 +190,10 @@ onMounted(() => {
           type="number"
           min="0"
           step="0.01"
+          :disabled="withdrawBlocked"
           :placeholder="`最低 ¥${me?.min_withdraw_amount ?? '1.00'}`"
         />
-        <button class="mw-btn" type="button" :disabled="submitting" @click="withdraw">
+        <button class="mw-btn" type="button" :disabled="submitting || withdrawBlocked" @click="withdraw">
           {{ submitting ? '提交中' : '申请' }}
         </button>
       </div>
@@ -294,6 +299,9 @@ onMounted(() => {
 }
 .freeze {
   margin-top: -4px;
+}
+.pending {
+  color: #b45309;
 }
 .row {
   display: grid;

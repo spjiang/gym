@@ -155,6 +155,7 @@ function menuIcon(path: string): Component {
     '/platform/payment-settings': Setting,
     '/platform/sms-settings': Setting,
     '/platform/agreements': Document,
+    '/platform/commission-settings': TrendCharts,
     '/catering/categories': Collection,
     '/catering/menu': Food,
     '/catering/tables': Grid,
@@ -164,6 +165,7 @@ function menuIcon(path: string): Component {
     '/memberships': CreditCard,
     '/products': CreditCard,
     '/coaches': User,
+    '/sales-reps': User,
     '/retail': Goods,
     '/equipment': Setting,
   }
@@ -197,6 +199,7 @@ function groupIcon(key: string): Component {
     activity: Calendar,
     commission: TrendCharts,
     coach: User,
+    sales: User,
     retail: Goods,
     equipment: Setting,
   }
@@ -330,7 +333,11 @@ function logout() {
           active-text-color="#f2e6d2"
         >
           <template v-for="g in gymGroups.groups" :key="g.key">
-            <el-sub-menu :index="g.key">
+            <el-menu-item v-if="g.flat && g.items[0]" :index="g.items[0].path">
+              <el-icon><component :is="menuIcon(g.items[0].path)" /></el-icon>
+              <span>{{ g.label }}</span>
+            </el-menu-item>
+            <el-sub-menu v-else :index="g.key">
               <template #title>
                 <el-icon><component :is="groupIcon(g.key)" /></el-icon>
                 <span>{{ g.label }}</span>

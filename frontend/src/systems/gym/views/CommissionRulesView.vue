@@ -33,8 +33,8 @@ type Rule = {
 }
 type Page<T> = { items: T[]; total: number; page: number; page_size: number }
 
-/** 场景 → 受益方固定对应，避免配错组合 */
-const BENEFICIARY_BY_SCOPE: Record<string, string> = {
+/** 场景 → 默认受益方 */
+const DEFAULT_BENEFICIARY_BY_SCOPE: Record<string, string> = {
   membership_sale: 'seller',
   pt_sale: 'seller',
   retail_sale: 'seller',
@@ -42,6 +42,17 @@ const BENEFICIARY_BY_SCOPE: Record<string, string> = {
   group_session: 'coach',
   pt_session: 'coach',
   referral: 'referrer',
+}
+
+/** 各场景允许的受益方 */
+const ALLOWED_BENEFICIARIES_BY_SCOPE: Record<string, string[]> = {
+  membership_sale: ['seller', 'coach'],
+  pt_sale: ['seller', 'coach'],
+  retail_sale: ['seller', 'coach'],
+  activity_sale: ['seller', 'coach'],
+  group_session: ['coach', 'seller'],
+  pt_session: ['coach', 'seller'],
+  referral: ['referrer'],
 }
 
 /** 各场景允许的计提方式 */
@@ -76,6 +87,7 @@ const query = reactive({ q: '', scope: '', is_active: undefined as boolean | und
 const form = reactive({
   name: '',
   scope: 'membership_sale',
+  beneficiary: 'seller',
   basis: 'percent',
   rate: '',
   unit_amount: '',
@@ -94,14 +106,20 @@ const rules: FormRules = {
 }
 
 const dialogTitle = computed(() => (editing.value ? `编辑规则 #${editing.value.id}` : '新建分成规则'))
-const beneficiary = computed(() => BENEFICIARY_BY_SCOPE[form.scope] || 'seller')
+const allowedBeneficiaries = computed(
+  () => ALLOWED_BENEFICIARIES_BY_SCOPE[form.scope] || ['seller'],
+)
 const allowedBasis = computed(() => BASIS_BY_SCOPE[form.scope] || ['percent', 'fixed'])
 const isPercent = computed(() => form.basis === 'percent')
 
 watch(
   () => form.scope,
-  () => {
+  (scope) => {
     if (!allowedBasis.value.includes(form.basis)) form.basis = allowedBasis.value[0]
+    const allowed = ALLOWED_BENEFICIARIES_BY_SCOPE[scope] || ['seller']
+    if (!allowed.includes(form.beneficiary)) {
+      form.beneficiary = DEFAULT_BENEFICIARY_BY_SCOPE[scope] || allowed[0]
+    }
   },
 )
 
@@ -168,6 +186,7 @@ function openCreate() {
   Object.assign(form, {
     name: '',
     scope: 'membership_sale',
+    beneficiary: 'seller',
     basis: 'percent',
     rate: '',
     unit_amount: '',
@@ -189,6 +208,7 @@ function openEdit(row: Rule) {
   Object.assign(form, {
     name: row.name,
     scope: row.scope,
+    beneficiary: row.beneficiary,
     basis: row.basis,
     rate: row.rate ?? '',
     unit_amount: row.unit_amount ?? '',
@@ -210,7 +230,7 @@ function payload(mid: number) {
     merchant_id: mid,
     name: form.name.trim(),
     scope: form.scope,
-    beneficiary: beneficiary.value,
+    beneficiary: form.beneficiary,
     basis: form.basis,
     rate: isPercent.value ? form.rate || null : null,
     unit_amount: isPercent.value ? null : form.unit_amount || null,
@@ -301,7 +321,7 @@ onMounted(refresh)
       <div>
         <h3>分成规则</h3>
         <p class="lead">
-          按业务场景配置提成：销售类归属开单员工，团课与私教课时归属教练，推荐成交归属推荐人。同场景多条规则时按优先级取首条生效。
+          按业务场景配置提成规则：销售类（会籍/课包/零售/活动）受益方为销售，课时类（团课/私教）受益方为教练，推荐成交用于会员返点比例为 0 时的 fallback。同场景多条规则时按优先级取首条；销售/教练档案可绑定指定规则覆盖默认。
         </p>
       </div>
       <el-button type="primary" @click="openCreate">新建规则</el-button>
@@ -402,8 +422,15 @@ onMounted(refresh)
           </el-select>
         </el-form-item>
         <el-form-item label="受益方">
-          <el-tag type="info">{{ commissionBeneficiaryLabel(beneficiary) }}</el-tag>
-          <span class="hint">由场景自动决定</span>
+          <el-select v-model="form.beneficiary" style="width: 100%">
+            <el-option
+              v-for="code in allowedBeneficiaries"
+              :key="code"
+              :label="commissionBeneficiaryLabel(code)"
+              :value="code"
+            />
+          </el-select>
+          <span class="hint">决定提成记给谁；实际人员由订单 / 场次上下文解析</span>
         </el-form-item>
         <el-form-item label="计提方式">
           <el-radio-group v-model="form.basis">

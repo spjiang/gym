@@ -53,7 +53,7 @@ export const PLATFORM_MENU_GROUPS: { key: string; label: string; paths: string[]
   {
     key: 'base',
     label: '基础配置',
-    paths: ['/platform/site-profile', '/platform/subsystems', '/platform/payment-settings', '/platform/sms-settings', '/platform/agreements'],
+    paths: ['/platform/site-profile', '/platform/subsystems', '/platform/payment-settings', '/platform/sms-settings', '/platform/agreements', '/platform/commission-settings'],
   },
 ]
 
@@ -97,14 +97,20 @@ export const GYM_MENU_GROUPS: { key: string; label: string; paths: string[]; fla
     paths: ['/activities', '/activity-registrations'],
   },
   {
-    key: 'commission',
-    label: '分成管理',
-    paths: ['/commission-rules', '/commission-records', '/my-commission'],
-  },
-  {
     key: 'coach',
     label: '教练管理',
     paths: ['/coaches'],
+  },
+  {
+    key: 'sales',
+    label: '销售管理',
+    paths: ['/sales-reps'],
+    flat: true,
+  },
+  {
+    key: 'commission',
+    label: '分成管理',
+    paths: ['/commission-rules', '/commission-records', '/my-commission', '/platform/commission-settings'],
   },
   {
     key: 'retail',

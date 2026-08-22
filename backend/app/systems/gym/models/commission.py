@@ -43,9 +43,9 @@ ORDER_SCOPES = {
 class CommissionBeneficiary(str, Enum):
     """受益方角色。"""
 
-    SELLER = "seller"
-    COACH = "coach"
-    REFERRER = "referrer"
+    SELLER = "seller"  # 开单销售 → 销售档案绑定会员
+    COACH = "coach"  # 上课教练 → 教练档案绑定会员
+    REFERRER = "referrer"  # 推荐会员（仅返点 fallback 规则）
 
 
 class CommissionBasis(str, Enum):
@@ -87,6 +87,47 @@ SCOPE_CATEGORY = {
     CommissionScope.GROUP_SESSION.value: CommissionCategory.SESSION.value,
     CommissionScope.PT_SESSION.value: CommissionCategory.SESSION.value,
     CommissionScope.REFERRAL.value: CommissionCategory.REFERRAL.value,
+}
+
+# 各场景可选受益方；默认推荐值供前端初始化
+DEFAULT_BENEFICIARY_BY_SCOPE = {
+    CommissionScope.MEMBERSHIP_SALE.value: CommissionBeneficiary.SELLER.value,
+    CommissionScope.PT_SALE.value: CommissionBeneficiary.SELLER.value,
+    CommissionScope.RETAIL_SALE.value: CommissionBeneficiary.SELLER.value,
+    CommissionScope.ACTIVITY_SALE.value: CommissionBeneficiary.SELLER.value,
+    CommissionScope.GROUP_SESSION.value: CommissionBeneficiary.COACH.value,
+    CommissionScope.PT_SESSION.value: CommissionBeneficiary.COACH.value,
+    CommissionScope.REFERRAL.value: CommissionBeneficiary.REFERRER.value,
+}
+
+ALLOWED_BENEFICIARIES_BY_SCOPE: dict[str, set[str]] = {
+    CommissionScope.MEMBERSHIP_SALE.value: {
+        CommissionBeneficiary.SELLER.value,
+        CommissionBeneficiary.COACH.value,
+    },
+    CommissionScope.PT_SALE.value: {
+        CommissionBeneficiary.SELLER.value,
+        CommissionBeneficiary.COACH.value,
+    },
+    CommissionScope.RETAIL_SALE.value: {
+        CommissionBeneficiary.SELLER.value,
+        CommissionBeneficiary.COACH.value,
+    },
+    CommissionScope.ACTIVITY_SALE.value: {
+        CommissionBeneficiary.SELLER.value,
+        CommissionBeneficiary.COACH.value,
+    },
+    CommissionScope.GROUP_SESSION.value: {
+        CommissionBeneficiary.COACH.value,
+        CommissionBeneficiary.SELLER.value,
+    },
+    CommissionScope.PT_SESSION.value: {
+        CommissionBeneficiary.COACH.value,
+        CommissionBeneficiary.SELLER.value,
+    },
+    CommissionScope.REFERRAL.value: {
+        CommissionBeneficiary.REFERRER.value,
+    },
 }
 
 
@@ -164,3 +205,86 @@ class CommissionRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class ClawbackLedgerKind(str, Enum):
+    """提成欠额流水：退款挂账 / 结算抵扣 / 现金追回。"""
+
+    CLAWBACK = "clawback"
+    OFFSET = "offset"
+    RECOVER = "recover"
+
+
+class SiteCommissionSettings(Base):
+    """场地级分成政策：结算冷却等。"""
+
+    __tablename__ = "site_commission_settings"
+    __table_args__ = (UniqueConstraint("site_id", name="uq_site_commission_settings_site"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id"), nullable=False, index=True)
+    # 提成计提后满该天数才可结算/提现；0 表示立即可以
+    settle_hold_days: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    remark: Mapped[str | None] = mapped_column(String(255))
+    updated_by_staff_id: Mapped[int | None] = mapped_column(ForeignKey("staff_users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class CommissionDebtAccount(Base):
+    """受益人提成欠额：已打款后又退款时挂账，后续结算优先抵扣。"""
+
+    __tablename__ = "commission_debt_accounts"
+    __table_args__ = (
+        UniqueConstraint(
+            "site_id",
+            "beneficiary_type",
+            "beneficiary_id",
+            name="uq_commission_debt_account_beneficiary",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id"), nullable=False, index=True)
+    beneficiary_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    beneficiary_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    beneficiary_name: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    debt_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class CommissionClawbackLedger(Base):
+    """提成欠额流水，同一退款+同一提成记录幂等。"""
+
+    __tablename__ = "commission_clawback_ledgers"
+    __table_args__ = (
+        UniqueConstraint(
+            "kind",
+            "source_type",
+            "source_id",
+            "commission_record_id",
+            name="uq_commission_clawback_source",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id"), nullable=False, index=True)
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("commission_debt_accounts.id"), nullable=False, index=True
+    )
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    commission_record_id: Mapped[int | None] = mapped_column(
+        ForeignKey("commission_records.id"), nullable=True, index=True
+    )
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id"), index=True)
+    note: Mapped[str | None] = mapped_column(String(255))
+    actor_staff_id: Mapped[int | None] = mapped_column(ForeignKey("staff_users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)

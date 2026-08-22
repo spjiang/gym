@@ -39,3 +39,8 @@
   border-color: #f36b21;
   color: #f2e6d2;
 }
+.pending {
+  color: #f59e0b;
+  font-size: 24rpx;
+  margin-bottom: 12rpx;
+}

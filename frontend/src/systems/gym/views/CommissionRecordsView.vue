@@ -38,6 +38,8 @@ type Record_ = {
   note: string | null
   settled_at: string | null
   created_at: string
+  settle_ready?: boolean
+  settle_hold_until?: string | null
 }
 type Page<T> = { items: T[]; total: number; page: number; page_size: number }
 type Summary = {
@@ -105,7 +107,9 @@ const query = reactive({
 const summaryRange = ref<[string, string]>([daysAgo(29), today()])
 
 const canBatchConfirm = computed(() => selected.value.some((r) => r.status === 'pending'))
-const canBatchPay = computed(() => selected.value.some((r) => r.status === 'confirmed'))
+const canBatchPay = computed(() =>
+  selected.value.some((r) => r.status === 'confirmed' && r.settle_ready !== false),
+)
 
 function fmtTime(iso: string | null) {
   if (!iso) return '—'
@@ -234,7 +238,11 @@ async function changeStatus(row: Record_, status: string, label: string) {
 
 async function batchStatus(status: string, label: string) {
   const ids = selected.value
-    .filter((r) => (status === 'confirmed' ? r.status === 'pending' : r.status === 'confirmed'))
+    .filter((r) =>
+      status === 'confirmed'
+        ? r.status === 'pending'
+        : r.status === 'confirmed' && r.settle_ready !== false,
+    )
     .map((r) => r.id)
   if (!ids.length) {
     ElMessage.warning(`勾选的记录中没有可${label}的条目`)
@@ -266,7 +274,7 @@ onMounted(refresh)
       <div>
         <h3>提成结算</h3>
         <p class="lead">
-          销售开单、团课签到、私教核销与推荐成交产生的提成在此确认与结算。流转顺序为待确认 → 已确认 → 已结算，订单退款时未结算记录自动作废。
+          销售开单、团课签到、私教核销与推荐成交产生的提成在此确认与结算。流转顺序为待确认 → 已确认 → 已结算。冷却期内不可结算；未打款退款自动作废，已打款退款记欠额并在下次结算抵扣。冷却天数在「分成配置」中设置。
         </p>
       </div>
     </div>
@@ -343,7 +351,7 @@ onMounted(refresh)
           style="width: 100%"
           @selection-change="(v: Record_[]) => (selected = v)"
         >
-          <el-table-column type="selection" width="46" :selectable="(row: Record_) => row.status === 'pending' || row.status === 'confirmed'" />
+          <el-table-column type="selection" width="46" :selectable="(row: Record_) => row.status === 'pending' || (row.status === 'confirmed' && row.settle_ready !== false)" />
           <el-table-column prop="id" label="ID" width="70" />
           <el-table-column label="受益人" min-width="150">
             <template #default="{ row }">
@@ -377,6 +385,9 @@ onMounted(refresh)
           <el-table-column label="状态" width="100">
             <template #default="{ row }">
               <el-tag size="small" :type="statusTagType(row.status)">{{ commissionStatusLabel(row.status) }}</el-tag>
+              <div v-if="row.status === 'confirmed' && row.settle_ready === false" class="sub">
+                冷却至 {{ fmtTime(row.settle_hold_until || null) }}
+              </div>
             </template>
           </el-table-column>
           <el-table-column label="计提时间" width="150">
@@ -399,7 +410,7 @@ onMounted(refresh)
                 确认
               </el-button>
               <el-button
-                v-if="row.status === 'confirmed'"
+                v-if="row.status === 'confirmed' && row.settle_ready !== false"
                 link
                 type="success"
                 @click="changeStatus(row, 'paid', '结算')"

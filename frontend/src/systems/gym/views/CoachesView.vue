@@ -1,17 +1,19 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, type FormInstance, type FormRules, type UploadRequestOptions, type UploadUserFile } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import http from '../../../core/api/http'
-import { percentLabel } from '../../../core/labels'
+import { percentLabel, commissionScopeLabel } from '../../../core/labels'
 import { merchantsWithSystem } from '../../../core/nav/systems'
 import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
 
 type Merchant = { id: number; name: string; subsystem_codes?: string[] }
-type Staff = { id: number; display_name: string; username: string }
+type StaffOption = { id: number; display_name: string; username: string }
+type CommissionRule = { id: number; name: string; scope: string; is_active: boolean }
 type MemberOption = { id: number; name: string; phone: string }
 type Coach = {
   id: number
+  merchant_id: number
   member_id?: number | null
   member_name?: string | null
   member_phone?: string | null
@@ -23,6 +25,10 @@ type Coach = {
   years_experience: number | null
   hourly_rate: string | null
   pt_commission_rate: string | null
+  group_commission_rule_id?: number | null
+  pt_commission_rule_id?: number | null
+  group_commission_rule_name?: string | null
+  pt_commission_rule_name?: string | null
   specialties: string | null
   certifications: string | null
   bio: string | null
@@ -37,7 +43,8 @@ const INTRO_IMAGE_LIMIT = 9
 const GENDER_LABEL: Record<string, string> = { male: '男', female: '女', other: '其他' }
 
 const merchants = ref<Merchant[]>([])
-const staff = ref<Staff[]>([])
+const staffOptions = ref<StaffOption[]>([])
+const commissionRules = ref<CommissionRule[]>([])
 const members = ref<MemberOption[]>([])
 const coaches = ref<Coach[]>([])
 const { merchantId, requireMerchant } = useOpsMerchant(() => {
@@ -69,6 +76,8 @@ const form = reactive({
   years_experience: undefined as number | undefined,
   hourly_rate: '',
   pt_commission_rate: '',
+  group_commission_rule_id: undefined as number | undefined,
+  pt_commission_rule_id: undefined as number | undefined,
   specialties: '',
   certifications: '',
   bio: '',
@@ -82,10 +91,25 @@ const rules: FormRules = {
   display_name: [{ required: true, message: '请填写教练显示名', trigger: 'blur' }],
 }
 
+const groupRules = computed(() =>
+  commissionRules.value.filter((r) => r.is_active && r.scope === 'group_session'),
+)
+const ptRules = computed(() =>
+  commissionRules.value.filter((r) => r.is_active && r.scope === 'pt_session'),
+)
+
+function staffLabel(s: StaffOption) {
+  return `${s.display_name || s.username} (${s.username})`
+}
+
+function ruleLabel(r: CommissionRule) {
+  return `${r.name}（${commissionScopeLabel(r.scope)}）`
+}
+
 function staffName(id: number | null | undefined) {
   if (id == null) return '—'
-  const s = staff.value.find((x) => x.id === id)
-  return s ? `${s.display_name} (${s.username})` : `#${id}`
+  const s = staffOptions.value.find((x) => x.id === id)
+  return s ? staffLabel(s) : `#${id}`
 }
 
 function memberLabel(m: MemberOption) {
@@ -112,6 +136,8 @@ function resetForm() {
   form.years_experience = undefined
   form.hourly_rate = ''
   form.pt_commission_rate = ''
+  form.group_commission_rule_id = undefined
+  form.pt_commission_rule_id = undefined
   form.specialties = ''
   form.certifications = ''
   form.bio = ''
@@ -141,15 +167,22 @@ function onMemberChange(id: number | undefined) {
   if (!form.phone.trim()) form.phone = m.phone
 }
 
+async function loadDialogOptions(mid: number) {
+  const [staffResp, ruleResp] = await Promise.all([
+    http.get<StaffOption[]>('/staff/options', { params: { merchant_id: mid } }),
+    http.get<{ items: CommissionRule[] }>('/commission-rules', {
+      params: { merchant_id: mid, is_active: true, page: 1, page_size: 100 },
+    }),
+  ])
+  staffOptions.value = staffResp.data || []
+  commissionRules.value = ruleResp.data.items || []
+}
+
 async function refresh() {
   loading.value = true
   try {
-    const [m, s] = await Promise.all([
-      http.get('/merchants'),
-      http.get('/staff', { params: { page: 1, page_size: 100 } }),
-    ])
+    const m = await http.get('/merchants')
     merchants.value = merchantsWithSystem(m.data, 'gym')
-    staff.value = s.data.items
     if (merchantId.value && !merchants.value.some((x) => x.id === merchantId.value)) {
       merchantId.value = undefined
     }
@@ -186,11 +219,12 @@ function resetSearch() {
 }
 
 async function openDialog() {
-  if (!requireMerchant('请先选择商户后再新建教练')) return
+  const mid = requireMerchant('请先选择商户后再新建教练')
+  if (!mid) return
   editingId.value = null
   resetForm()
   formRef.value?.clearValidate()
-  await searchMembers('')
+  await Promise.all([searchMembers(''), loadDialogOptions(mid)])
   dialogVisible.value = true
 }
 
@@ -205,6 +239,8 @@ async function openEdit(row: Coach) {
   form.years_experience = row.years_experience ?? undefined
   form.hourly_rate = row.hourly_rate || ''
   form.pt_commission_rate = row.pt_commission_rate || ''
+  form.group_commission_rule_id = row.group_commission_rule_id ?? undefined
+  form.pt_commission_rule_id = row.pt_commission_rule_id ?? undefined
   form.specialties = row.specialties || ''
   form.certifications = row.certifications || ''
   form.bio = row.bio || ''
@@ -220,6 +256,7 @@ async function openEdit(row: Coach) {
   } else {
     await searchMembers('')
   }
+  await loadDialogOptions(row.merchant_id)
   formRef.value?.clearValidate()
   dialogVisible.value = true
 }
@@ -300,6 +337,8 @@ async function saveCoach() {
       years_experience: form.years_experience ?? null,
       hourly_rate: form.hourly_rate.trim() || null,
       pt_commission_rate: form.pt_commission_rate.trim() || null,
+      group_commission_rule_id: form.group_commission_rule_id ?? null,
+      pt_commission_rule_id: form.pt_commission_rule_id ?? null,
       specialties: form.specialties.trim() || null,
       certifications: form.certifications.trim() || null,
       bio: form.bio.trim() || null,
@@ -397,9 +436,16 @@ onMounted(refresh)
       <el-table-column label="后台账号" min-width="150">
         <template #default="{ row }">{{ staffName(row.staff_user_id) }}</template>
       </el-table-column>
+      <el-table-column label="团课提成" min-width="120">
+        <template #default="{ row }">{{ row.group_commission_rule_name || '商户默认' }}</template>
+      </el-table-column>
       <el-table-column label="私教提成" width="110">
         <template #default="{ row }">
-          {{ row.pt_commission_rate ? percentLabel(row.pt_commission_rate) : '商户规则' }}
+          {{
+            row.pt_commission_rate
+              ? percentLabel(row.pt_commission_rate)
+              : row.pt_commission_rule_name || '商户规则'
+          }}
         </template>
       </el-table-column>
       <el-table-column label="启用" width="80">
@@ -455,7 +501,7 @@ onMounted(refresh)
         </el-form-item>
         <el-form-item label="后台账号">
           <el-select v-model="form.staff_user_id" filterable clearable placeholder="可选，用于登录后台看佣金" style="width: 100%">
-            <el-option v-for="s in staff" :key="s.id" :label="`${s.display_name} (${s.username})`" :value="s.id" />
+            <el-option v-for="s in staffOptions" :key="s.id" :label="staffLabel(s)" :value="s.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="显示名" prop="display_name">
@@ -480,8 +526,31 @@ onMounted(refresh)
         <el-form-item label="课时参考价">
           <el-input v-model="form.hourly_rate" placeholder="如 300，选填" />
         </el-form-item>
+        <el-form-item label="团课提成规则">
+          <el-select
+            v-model="form.group_commission_rule_id"
+            filterable
+            clearable
+            placeholder="留空则按商户默认规则"
+            style="width: 100%"
+          >
+            <el-option v-for="r in groupRules" :key="r.id" :label="ruleLabel(r)" :value="r.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="私教提成规则">
+          <el-select
+            v-model="form.pt_commission_rule_id"
+            filterable
+            clearable
+            placeholder="留空则按商户默认规则"
+            style="width: 100%"
+          >
+            <el-option v-for="r in ptRules" :key="r.id" :label="ruleLabel(r)" :value="r.id" />
+          </el-select>
+          <p class="hint">若填写下方「私教提成比例」，则优先于规则。</p>
+        </el-form-item>
         <el-form-item label="私教提成比例">
-          <el-input v-model="form.pt_commission_rate" placeholder="0.4 表示 40%，留空走商户规则" />
+          <el-input v-model="form.pt_commission_rate" placeholder="0.4 表示 40%，留空走规则" />
         </el-form-item>
         <el-form-item label="擅长">
           <el-input v-model="form.specialties" placeholder="如：减脂 / 力量训练 / 普拉提" maxlength="255" />
@@ -568,8 +637,14 @@ onMounted(refresh)
             {{ detail.years_experience != null ? `${detail.years_experience} 年` : '—' }}
           </el-descriptions-item>
           <el-descriptions-item label="课时参考价">{{ detail.hourly_rate ? `¥${detail.hourly_rate}` : '—' }}</el-descriptions-item>
+          <el-descriptions-item label="团课提成规则">
+            {{ detail.group_commission_rule_name || '商户默认' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="私教提成规则">
+            {{ detail.pt_commission_rule_name || '按商户规则' }}
+          </el-descriptions-item>
           <el-descriptions-item label="私教提成比例">
-            {{ detail.pt_commission_rate ? percentLabel(detail.pt_commission_rate) : '按商户规则' }}
+            {{ detail.pt_commission_rate ? percentLabel(detail.pt_commission_rate) : '—' }}
           </el-descriptions-item>
           <el-descriptions-item label="擅长" :span="2">{{ detail.specialties || '—' }}</el-descriptions-item>
           <el-descriptions-item label="可约时段" :span="2">{{ detail.availability_note || '—' }}</el-descriptions-item>

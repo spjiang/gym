@@ -19,7 +19,7 @@ from app.systems.platform.models.commerce import Order, OrderStatus
 from app.systems.platform.models.member import Member
 from app.systems.platform.models.payout import Payout, PayoutSource, PayoutStatus
 from app.systems.platform.models.rebate import MemberRebateLedger, RebateLedgerKind
-from app.systems.platform.services.payouts import create_rebate_payout
+from app.systems.platform.services.payouts import create_rebate_payout, has_open_rebate_payout
 from app.systems.platform.services.promotion import (
     count_downline,
     downline_query,
@@ -54,6 +54,7 @@ class MyPromotionOut(BaseModel):
     withdraw_hold_days: int
     held_amount: Decimal
     available_balance: Decimal
+    payout_in_progress: bool = False
 
 
 class MyDownlineOut(BaseModel):
@@ -157,6 +158,7 @@ def my_promotion(
         withdraw_hold_days=settings.withdraw_hold_days,
         held_amount=snap.held_amount,
         available_balance=snap.available_balance,
+        payout_in_progress=has_open_rebate_payout(db, member.id),
     )
 
 
@@ -271,17 +273,10 @@ def request_withdraw(
     mctx: MemberContext = Depends(get_current_member),
 ):
     """申请返点提现，线下打款后由运营登记完成。"""
+    from app.systems.platform.services.payouts import has_open_rebate_payout
+
     member = mctx.member
-    pending = db.scalar(
-        select(func.count())
-        .select_from(Payout)
-        .where(
-            Payout.source == PayoutSource.REBATE.value,
-            Payout.beneficiary_id == member.id,
-            Payout.status.in_([PayoutStatus.REQUESTED.value, PayoutStatus.APPROVED.value]),
-        )
-    )
-    if int(pending or 0) > 0:
+    if has_open_rebate_payout(db, member.id):
         raise AppError("payout_in_progress", "已有提现在处理中，请等待完成", status_code=400)
     payout = create_rebate_payout(
         db,

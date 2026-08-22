@@ -151,9 +151,9 @@ def pay_offline(
     ctx: RequestContext = Depends(get_current_context),
 ):
     ctx.require_permission("order:write")
-    order = db.get(Order, order_id)
-    if order is None or order.site_id != ctx.site_id:
-        raise AppError("not_found", "订单不存在", status_code=404)
+    from app.systems.platform.services.order_lock import lock_order
+
+    order = lock_order(db, order_id, site_id=ctx.site_id)
     ctx.assert_merchant_access(order.merchant_id)
     if order.status != OrderStatus.PENDING.value:
         raise AppError("invalid_state", "仅待支付订单可登记线下收款", status_code=400)
@@ -217,9 +217,9 @@ def pay_online(
     ctx: RequestContext = Depends(get_current_context),
 ):
     ctx.require_permission("order:write")
-    order = db.get(Order, order_id)
-    if order is None or order.site_id != ctx.site_id:
-        raise AppError("not_found", "订单不存在", status_code=404)
+    from app.systems.platform.services.order_lock import lock_order
+
+    order = lock_order(db, order_id, site_id=ctx.site_id)
     ctx.assert_merchant_access(order.merchant_id)
     if order.status != OrderStatus.PENDING.value:
         raise AppError("invalid_state", "仅待支付订单可发起线上支付", status_code=400)
@@ -239,7 +239,8 @@ def pay_online(
 
     from app.systems.platform.services.order_fulfill import fulfill_paid_order
 
-    fulfill_paid_order(db, order, provider_ref=result.provider_ref, actor_staff_id=ctx.staff.id)
+    if result.immediate_capture:
+        fulfill_paid_order(db, order, provider_ref=result.provider_ref, actor_staff_id=ctx.staff.id)
     write_audit(
         db,
         action="order.pay_online",
@@ -288,6 +289,7 @@ def pay_query(
     order = db.get(Order, order_id)
     if order is None or order.site_id != ctx.site_id:
         raise AppError("not_found", "订单不存在", status_code=404)
+    ctx.assert_merchant_access(order.merchant_id)
     from app.systems.platform.api.payment_notify import sync_pay_query
 
     return sync_pay_query(db, order)
@@ -301,9 +303,9 @@ def refund_order(
     ctx: RequestContext = Depends(get_current_context),
 ):
     ctx.require_permission("order:write")
-    order = db.get(Order, order_id)
-    if order is None or order.site_id != ctx.site_id:
-        raise AppError("not_found", "订单不存在", status_code=404)
+    from app.systems.platform.services.order_lock import lock_order
+
+    order = lock_order(db, order_id, site_id=ctx.site_id)
     ctx.assert_merchant_access(order.merchant_id)
 
     body = body or RefundIn()
@@ -334,7 +336,7 @@ def refund_order(
         reason=body.reason,
         force=body.force,
         actor_staff_id=ctx.staff.id,
-        is_site_admin=ctx.is_site_admin,
+        can_force=ctx.can_force_payment_reconcile,
     )
     db.commit()
     db.refresh(order)
