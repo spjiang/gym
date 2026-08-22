@@ -1,9 +1,9 @@
 """场地级会员主档。"""
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import Date, DateTime, ForeignKey, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -41,6 +41,12 @@ class Member(Base):
     referral_code: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     # 会员自己上传的展示头像，与门禁人脸照分开
     avatar_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    gender: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    birthday: Mapped[date | None] = mapped_column(Date, nullable=True)
+    email: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    remark: Mapped[str | None] = mapped_column(Text, nullable=True)
+    emergency_contact: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    emergency_phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

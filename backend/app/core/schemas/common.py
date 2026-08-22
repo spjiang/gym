@@ -175,7 +175,18 @@ class MemberReferrerMixin(BaseModel):
     referral_code: str | None = Field(default=None, max_length=32)
 
 
-class MemberCreateIn(MemberReferrerMixin):
+class MemberProfileMixin(BaseModel):
+    """会员档案扩展字段。"""
+
+    gender: str | None = Field(default=None, max_length=16)
+    birthday: date | None = None
+    email: str | None = Field(default=None, max_length=128)
+    remark: str | None = None
+    emergency_contact: str | None = Field(default=None, max_length=64)
+    emergency_phone: str | None = Field(default=None, max_length=32)
+
+
+class MemberCreateIn(MemberReferrerMixin, MemberProfileMixin):
     phone: str = Field(min_length=1, max_length=32)
     name: str = Field(min_length=1, max_length=128)
     merchant_id: int | None = None
@@ -200,14 +211,21 @@ class MemberOut(ORMModel):
     referrer_display: str | None = None
     referred_count: int = 0
     avatar_url: str | None = None
+    gender: str | None = None
+    birthday: date | None = None
+    email: str | None = None
+    remark: str | None = None
+    emergency_contact: str | None = None
+    emergency_phone: str | None = None
 
 
 class MemberLinkIn(BaseModel):
     merchant_id: int
 
 
-class MemberUpdateIn(MemberReferrerMixin):
+class MemberUpdateIn(MemberReferrerMixin, MemberProfileMixin):
     name: str | None = Field(default=None, min_length=1, max_length=128)
+    phone: str | None = Field(default=None, min_length=1, max_length=32)
 
 
 class MemberImportErrorOut(BaseModel):

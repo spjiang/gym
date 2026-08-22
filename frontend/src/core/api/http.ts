@@ -8,6 +8,7 @@ const http = axios.create({
 
 http.interceptors.request.use((config) => {
   const auth = useAuthStore()
+  config.headers['X-Client-Channel'] = 'admin_web'
   if (auth.token) {
     config.headers.Authorization = `Bearer ${auth.token}`
   }

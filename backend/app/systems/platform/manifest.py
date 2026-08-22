@@ -26,6 +26,7 @@ SYSTEM = {
         {"code": "promoter:manage", "name": "推广管理"},
         {"code": "payout:read", "name": "查看提现单"},
         {"code": "payout:manage", "name": "提现审核与打款登记"},
+        {"code": "audit:read", "name": "查看操作日志"},
     ],
     "menus": [
         {
@@ -188,6 +189,13 @@ SYSTEM = {
             "name": "站内通知",
             "required_any": ["order:read", "member:read", "access:read", "*"],
             "sort_order": 60,
+        },
+        {
+            "code": "platform.audit_logs",
+            "path": "/platform/audit-logs",
+            "name": "操作日志",
+            "required_any": ["audit:read", "*"],
+            "sort_order": 61,
         },
     ],
 }

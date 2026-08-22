@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type UploadRequestOptions } from 'element-plus'
 import http from '../../../core/api/http'
@@ -22,6 +22,12 @@ type Member = {
   referral_code?: string | null
   referrer_display?: string | null
   referred_count?: number
+  gender?: string | null
+  birthday?: string | null
+  email?: string | null
+  remark?: string | null
+  emergency_contact?: string | null
+  emergency_phone?: string | null
 }
 type Merchant = { id: number; name: string }
 type Page<T> = { items: T[]; total: number; page: number; page_size: number }
@@ -96,6 +102,12 @@ const form = reactive({
   referrer_member_id: undefined as number | undefined,
   referrer_note: '',
   referral_code: '',
+  gender: '',
+  birthday: '',
+  email: '',
+  remark: '',
+  emergency_contact: '',
+  emergency_phone: '',
 })
 const linkForm = reactive({ merchant_id: undefined as number | undefined })
 const editForm = reactive({
@@ -104,6 +116,14 @@ const editForm = reactive({
   referrer_type: '' as '' | 'member' | 'note',
   referrer_member_id: undefined as number | undefined,
   referrer_note: '',
+  referral_code: '',
+  phone: '',
+  gender: '',
+  birthday: '',
+  email: '',
+  remark: '',
+  emergency_contact: '',
+  emergency_phone: '',
 })
 const pwdForm = reactive({ password: '', confirm: '' })
 const linkTarget = ref<Member | null>(null)
@@ -112,6 +132,15 @@ const pwdTarget = ref<Member | null>(null)
 const pwdVisible = ref(false)
 const detail = ref<Member | null>(null)
 const uploadingAvatar = ref(false)
+const createTab = ref('basic')
+const editTab = ref('basic')
+const detailTab = ref('profile')
+const promotionLink = ref('')
+const promotionCode = ref('')
+const promotionQrDataUrl = ref('')
+const promotionQrLoading = ref(false)
+let promotionQrMemberId = 0
+const editReferralCodeOriginal = ref('')
 
 const rules: FormRules = {
   phone: [{ required: true, message: '请填写手机号', trigger: 'blur' }],
@@ -135,6 +164,7 @@ const linkRules: FormRules = {
 
 const editRules: FormRules = {
   name: [{ required: true, message: '请填写姓名', trigger: 'blur' }],
+  phone: [{ required: true, message: '请填写手机号', trigger: 'blur' }],
 }
 
 const pwdRules: FormRules = {
@@ -160,6 +190,32 @@ function merchantName(id: number) {
 
 function faceLabel(status: string) {
   return { enrolled: '已录入', not_enrolled: '未录入', pending: '待审核' }[status] || status
+}
+
+function genderLabel(code: string | null | undefined) {
+  return ({ male: '男', female: '女', other: '其他' } as Record<string, string>)[code || ''] || '—'
+}
+
+function fmtDate(value: string | null | undefined) {
+  return value ? value.slice(0, 10) : '—'
+}
+
+function profilePayload(src: {
+  gender: string
+  birthday: string
+  email: string
+  remark: string
+  emergency_contact: string
+  emergency_phone: string
+}) {
+  return {
+    gender: src.gender || null,
+    birthday: src.birthday || null,
+    email: src.email.trim() || null,
+    remark: src.remark.trim() || null,
+    emergency_contact: src.emergency_contact.trim() || null,
+    emergency_phone: src.emergency_phone.trim() || null,
+  }
 }
 
 function sourceLabel(row: Member) {
@@ -232,6 +288,8 @@ async function searchReferrerMembers(keyword: string) {
 }
 
 function goPromotion(row: Member) {
+  detailVisible.value = false
+  editDialog.value = false
   router.push({
     path: '/platform/promotion-settings',
     query: { member_id: String(row.id) },
@@ -308,6 +366,13 @@ function openCreate() {
   form.referrer_member_id = undefined
   form.referrer_note = ''
   form.referral_code = ''
+  form.gender = ''
+  form.birthday = ''
+  form.email = ''
+  form.remark = ''
+  form.emergency_contact = ''
+  form.emergency_phone = ''
+  createTab.value = 'basic'
   referrerCandidates.value = []
   formRef.value?.clearValidate()
   createDialog.value = true
@@ -327,7 +392,10 @@ function referrerPayload(src: {
 
 async function create() {
   const ok = await formRef.value?.validate().catch(() => false)
-  if (!ok) return
+  if (!ok) {
+    createTab.value = 'basic'
+    return
+  }
   submitting.value = true
   try {
     await http.post('/members', {
@@ -335,6 +403,7 @@ async function create() {
       name: form.name.trim(),
       merchant_id: form.merchant_id,
       ...referrerPayload(form),
+      ...profilePayload(form),
       referral_code: form.referral_code.trim().toUpperCase() || null,
       ...(canResetPassword.value && form.password ? { password: form.password } : {}),
     })
@@ -350,7 +419,76 @@ async function create() {
 
 function openDetail(row: Member) {
   detail.value = row
+  detailTab.value = 'profile'
+  promotionLink.value = ''
+  promotionCode.value = ''
+  promotionQrDataUrl.value = ''
   detailVisible.value = true
+  void http
+    .get<Member>(`/members/${row.id}`)
+    .then(({ data }) => {
+      if (detail.value?.id === data.id) detail.value = data
+    })
+    .catch(() => {})
+}
+
+async function renderMemberQr(link: string | null | undefined) {
+  promotionQrDataUrl.value = ''
+  if (!link) return
+  try {
+    const QRCode = (await import('qrcode')).default
+    promotionQrDataUrl.value = await QRCode.toDataURL(link, { width: 220, margin: 2 })
+  } catch {
+    promotionQrDataUrl.value = ''
+  }
+}
+
+async function loadPromotionQr(memberId: number) {
+  promotionQrMemberId = memberId
+  promotionLink.value = ''
+  promotionCode.value = ''
+  promotionQrDataUrl.value = ''
+  if (!canPromote.value) return
+  promotionQrLoading.value = true
+  try {
+    const { data } = await http.get<{ code: string | null; link: string | null }>(
+      `/members/${memberId}/promotion`,
+    )
+    if (promotionQrMemberId !== memberId) return
+    promotionCode.value = data.code || ''
+    promotionLink.value = data.link || ''
+    await renderMemberQr(data.link)
+    if (promotionQrMemberId !== memberId) {
+      promotionQrDataUrl.value = ''
+    }
+  } catch (e: unknown) {
+    if (promotionQrMemberId === memberId) {
+      ElMessage.error(e instanceof Error ? e.message : '加载推广码失败')
+    }
+  } finally {
+    if (promotionQrMemberId === memberId) {
+      promotionQrLoading.value = false
+    }
+  }
+}
+
+async function copyPromotionLink() {
+  if (!promotionLink.value) return
+  try {
+    await navigator.clipboard.writeText(promotionLink.value)
+    ElMessage.success('推广链接已复制')
+  } catch {
+    ElMessage.error('复制失败，请手动选择链接')
+  }
+}
+
+function downloadPromotionQr() {
+  if (!promotionQrDataUrl.value) return
+  const name = editTarget.value?.name || detail.value?.name || '会员'
+  const a = document.createElement('a')
+  a.href = promotionQrDataUrl.value
+  a.download = `推广码-${name}.png`
+  a.click()
 }
 
 async function uploadAvatar(opt: UploadRequestOptions, target?: Member | null) {
@@ -389,33 +527,66 @@ async function clearAvatar(row: Member) {
 }
 
 function openEdit(row: Member) {
+  detailVisible.value = false
   editTarget.value = row
+  editForm.phone = row.phone
   editForm.name = row.name
   editForm.password = ''
+  editForm.gender = row.gender || ''
+  editForm.birthday = row.birthday ? row.birthday.slice(0, 10) : ''
+  editForm.email = row.email || ''
+  editForm.remark = row.remark || ''
+  editForm.emergency_contact = row.emergency_contact || ''
+  editForm.emergency_phone = row.emergency_phone || ''
   editForm.referrer_member_id = row.referrer_member_id ?? undefined
   editForm.referrer_note = row.referrer_note ?? ''
   editForm.referrer_type = row.referrer_member_id ? 'member' : row.referrer_note ? 'note' : ''
+  editForm.referral_code = row.referral_code || ''
+  editReferralCodeOriginal.value = row.referral_code || ''
+  editTab.value = 'basic'
   referrerCandidates.value = row.referrer_member_id
     ? [{ id: row.referrer_member_id, phone: '', name: row.referrer_display || `#${row.referrer_member_id}` } as Member]
     : []
   editFormRef.value?.clearValidate()
   editDialog.value = true
+  if (editTab.value === 'promotion') {
+    void loadPromotionQr(row.id)
+  }
 }
+
+watch(detailTab, (tab) => {
+  if (tab === 'promotion' && detail.value) void loadPromotionQr(detail.value.id)
+})
+
+watch(editTab, (tab) => {
+  if (tab === 'promotion' && editTarget.value) void loadPromotionQr(editTarget.value.id)
+})
 
 async function saveEdit() {
   if (!editTarget.value) return
   const ok = await editFormRef.value?.validate().catch(() => false)
-  if (!ok) return
+  if (!ok) {
+    editTab.value = 'basic'
+    return
+  }
   if (canResetPassword.value && editForm.password && editForm.password.length < 6) {
     ElMessage.error('密码至少 6 位')
     return
   }
   submitting.value = true
   try {
-    const { data } = await http.patch<Member>(`/members/${editTarget.value.id}`, {
+    const patch: Record<string, unknown> = {
+      phone: editForm.phone.trim(),
       name: editForm.name.trim(),
       ...referrerPayload(editForm),
-    })
+      ...profilePayload(editForm),
+    }
+    const nextReferral = editForm.referral_code.trim().toUpperCase()
+    const origReferral = editReferralCodeOriginal.value.trim().toUpperCase()
+    if (nextReferral !== origReferral) {
+      patch.referral_code = nextReferral || null
+    }
+    const { data } = await http.patch<Member>(`/members/${editTarget.value.id}`, patch)
     if (canResetPassword.value && editForm.password) {
       await http.post(`/members/${editTarget.value.id}/password`, { password: editForm.password })
       data.has_password = true
@@ -456,6 +627,7 @@ async function link() {
 }
 
 function openResetPwd(row: Member) {
+  detailVisible.value = false
   pwdTarget.value = row
   pwdForm.password = ''
   pwdForm.confirm = ''
@@ -630,47 +802,88 @@ onMounted(load)
       />
     </div>
 
-    <el-drawer v-model="detailVisible" title="会员详情" size="420px">
+    <el-dialog
+      v-model="detailVisible"
+      :title="detail ? `会员详情 · ${detail.name || detail.phone}` : '会员详情'"
+      width="560px"
+      destroy-on-close
+      class="member-form-dialog"
+    >
       <template v-if="detail">
-        <el-descriptions :column="1" border>
-          <el-descriptions-item label="头像">
-            <img v-if="detail.avatar_url" class="detail-avatar" :src="detail.avatar_url" alt="" />
-            <div v-else class="detail-avatar avatar-fallback">{{ (detail.name || '?').slice(0, 1) }}</div>
-          </el-descriptions-item>
-          <el-descriptions-item label="ID">{{ detail.id }}</el-descriptions-item>
-          <el-descriptions-item label="手机号">{{ detail.phone }}</el-descriptions-item>
-          <el-descriptions-item label="姓名">{{ detail.name }}</el-descriptions-item>
-          <el-descriptions-item label="人脸">{{ faceLabel(detail.face_status) }}</el-descriptions-item>
-          <el-descriptions-item label="登录密码">
-            {{ detail.has_password ? '已设置' : '未设置（仅可用验证码登录）' }}
-          </el-descriptions-item>
-          <el-descriptions-item label="首次来源">{{ sourceLabel(detail) }}</el-descriptions-item>
-          <el-descriptions-item label="推荐人">{{ referrerText(detail) }}</el-descriptions-item>
-          <el-descriptions-item label="推广码">{{ detail.referral_code || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="累计推荐">{{ detail.referred_count ?? 0 }} 人</el-descriptions-item>
-          <el-descriptions-item label="关联商户">
-            <template v-if="detail.merchant_ids.length">
-              <el-tag
-                v-for="id in detail.merchant_ids"
-                :key="id"
-                size="small"
-                style="margin-right: 6px"
-              >
-                {{ merchantName(id) }}
-              </el-tag>
-            </template>
-            <span v-else>—</span>
-          </el-descriptions-item>
-        </el-descriptions>
-        <div v-if="canWrite || canResetPassword || canPromote" class="drawer-actions">
-          <el-button v-if="canWrite" type="primary" @click="openEdit(detail)">编辑</el-button>
-          <el-button v-if="canPromote" plain @click="goPromotion(detail)">推广配置</el-button>
-          <el-button v-if="canResetPassword" type="warning" plain @click="openResetPwd(detail)">
-            修改密码
-          </el-button>
-        </div>
+        <el-tabs v-model="detailTab" class="member-form-tabs">
+          <el-tab-pane label="会员档案" name="profile">
+            <el-descriptions :column="1" border size="small">
+              <el-descriptions-item label="头像">
+                <img v-if="detail.avatar_url" class="detail-avatar" :src="detail.avatar_url" alt="" />
+                <div v-else class="detail-avatar avatar-fallback">{{ (detail.name || '?').slice(0, 1) }}</div>
+              </el-descriptions-item>
+              <el-descriptions-item label="ID">{{ detail.id }}</el-descriptions-item>
+              <el-descriptions-item label="手机号">{{ detail.phone }}</el-descriptions-item>
+              <el-descriptions-item label="姓名">{{ detail.name }}</el-descriptions-item>
+              <el-descriptions-item label="性别">{{ genderLabel(detail.gender) }}</el-descriptions-item>
+              <el-descriptions-item label="生日">{{ fmtDate(detail.birthday) }}</el-descriptions-item>
+              <el-descriptions-item label="邮箱">{{ detail.email || '—' }}</el-descriptions-item>
+              <el-descriptions-item label="紧急联系人">
+                {{ detail.emergency_contact || '—' }}
+                <span v-if="detail.emergency_phone" class="sub">（{{ detail.emergency_phone }}）</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="运营备注">{{ detail.remark || '—' }}</el-descriptions-item>
+              <el-descriptions-item label="人脸">{{ faceLabel(detail.face_status) }}</el-descriptions-item>
+              <el-descriptions-item label="登录密码">
+                {{ detail.has_password ? '已设置' : '未设置（仅可用验证码登录）' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="注册时间">{{ fmtDate(detail.created_at) }}</el-descriptions-item>
+              <el-descriptions-item label="首次来源">{{ sourceLabel(detail) }}</el-descriptions-item>
+              <el-descriptions-item label="推荐人">{{ referrerText(detail) }}</el-descriptions-item>
+              <el-descriptions-item label="注册推广码">{{ detail.referral_code || '—' }}</el-descriptions-item>
+              <el-descriptions-item label="累计推荐">{{ detail.referred_count ?? 0 }} 人</el-descriptions-item>
+              <el-descriptions-item label="关联商户">
+                <template v-if="detail.merchant_ids.length">
+                  <el-tag
+                    v-for="id in detail.merchant_ids"
+                    :key="id"
+                    size="small"
+                    style="margin-right: 6px"
+                  >
+                    {{ merchantName(id) }}
+                  </el-tag>
+                </template>
+                <span v-else>—</span>
+              </el-descriptions-item>
+            </el-descriptions>
+          </el-tab-pane>
+          <el-tab-pane label="推广二维码" name="promotion">
+            <div v-loading="promotionQrLoading" class="qr-box">
+              <template v-if="canPromote">
+                <img v-if="promotionQrDataUrl" :src="promotionQrDataUrl" alt="推广二维码" class="qr-img" />
+                <p v-else-if="promotionLink" class="qr-hint">二维码生成中…</p>
+                <p v-else class="qr-hint">暂无推广链接，请稍后重试或联系管理员开通推广码。</p>
+                <el-descriptions :column="1" border size="small" class="qr-meta">
+                  <el-descriptions-item label="会员推广码">{{ promotionCode || '—' }}</el-descriptions-item>
+                </el-descriptions>
+                <el-input :model-value="promotionLink" readonly type="textarea" :rows="2" />
+                <p class="qr-hint">会员分享此码/链接，新用户扫码注册后将挂靠为下级并计入返点。</p>
+                <div class="qr-actions">
+                  <el-button @click="copyPromotionLink" :disabled="!promotionLink">复制链接</el-button>
+                  <el-button type="primary" @click="downloadPromotionQr" :disabled="!promotionQrDataUrl">
+                    下载二维码
+                  </el-button>
+                </div>
+              </template>
+              <el-alert v-else type="info" :closable="false" show-icon title="当前账号无推广查看权限" />
+            </div>
+          </el-tab-pane>
+        </el-tabs>
       </template>
-    </el-drawer>
+      <template #footer>
+        <el-button @click="detailVisible = false">关闭</el-button>
+        <el-button v-if="canWrite && detail" type="primary" @click="openEdit(detail)">编辑</el-button>
+        <el-button v-if="canPromote && detail" plain @click="goPromotion(detail)">推广配置</el-button>
+        <el-button v-if="canResetPassword && detail" type="warning" plain @click="openResetPwd(detail)">
+          修改密码
+        </el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog v-model="importDialog" title="导入商户会员" width="620px" destroy-on-close>
       <el-alert
@@ -720,63 +933,114 @@ onMounted(load)
       </template>
     </el-dialog>
 
-    <el-dialog v-model="createDialog" title="创建会员" width="480px" destroy-on-close>
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
-        <el-form-item label="手机号" prop="phone">
-          <el-input v-model="form.phone" placeholder="会员手机号，必填" maxlength="32" />
-        </el-form-item>
-        <el-form-item label="姓名" prop="name">
-          <el-input v-model="form.name" placeholder="会员姓名，必填" maxlength="128" />
-        </el-form-item>
-        <el-form-item label="商户" prop="merchant_id">
-          <el-select v-model="form.merchant_id" style="width: 100%">
-            <el-option v-for="m in merchants" :key="m.id" :label="m.name" :value="m.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="推荐来源">
-          <el-select v-model="form.referrer_type" clearable placeholder="无推荐人" style="width: 100%">
-            <el-option label="会员推广" value="member" />
-            <el-option label="登记姓名" value="note" />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="form.referrer_type === 'member'" label="推广会员">
-          <el-select
-            v-model="form.referrer_member_id"
-            filterable
-            remote
-            :remote-method="searchReferrerMembers"
-            :loading="referrerLoading"
-            placeholder="输入手机号或姓名搜索"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="x in referrerCandidates"
-              :key="x.id"
-              :label="`${x.name} ${x.phone}`"
-              :value="x.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="form.referrer_type === 'note'" label="推荐人姓名">
-          <el-input v-model="form.referrer_note" maxlength="128" placeholder="仅登记，不参与返点结算" />
-        </el-form-item>
-        <el-form-item label="推广码">
+    <el-dialog v-model="createDialog" title="创建会员" width="520px" destroy-on-close class="member-form-dialog">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="96px">
+        <el-tabs v-model="createTab" class="member-form-tabs">
+          <el-tab-pane label="基本信息" name="basic">
+            <el-form-item label="手机号" prop="phone">
+              <el-input v-model="form.phone" placeholder="会员手机号，必填" maxlength="32" />
+            </el-form-item>
+            <el-form-item label="姓名" prop="name">
+              <el-input v-model="form.name" placeholder="会员姓名，必填" maxlength="128" />
+            </el-form-item>
+            <el-form-item label="商户" prop="merchant_id">
+              <el-select v-model="form.merchant_id" style="width: 100%">
+                <el-option v-for="m in merchants" :key="m.id" :label="m.name" :value="m.id" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="性别">
+              <el-select v-model="form.gender" clearable placeholder="选填" style="width: 100%">
+                <el-option label="男" value="male" />
+                <el-option label="女" value="female" />
+                <el-option label="其他" value="other" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="生日">
+              <el-date-picker
+                v-model="form.birthday"
+                type="date"
+                value-format="YYYY-MM-DD"
+                placeholder="选填"
+                style="width: 100%"
+              />
+            </el-form-item>
+            <el-form-item label="邮箱">
+              <el-input v-model="form.email" maxlength="128" placeholder="选填" />
+            </el-form-item>
+          </el-tab-pane>
+          <el-tab-pane label="紧急联系" name="emergency">
+            <el-form-item label="联系人">
+              <el-input v-model="form.emergency_contact" maxlength="64" placeholder="选填" />
+            </el-form-item>
+            <el-form-item label="联系电话">
+              <el-input v-model="form.emergency_phone" maxlength="32" placeholder="选填" />
+            </el-form-item>
+          </el-tab-pane>
+          <el-tab-pane label="推荐推广" name="referral">
+            <el-form-item label="推荐来源">
+              <el-select v-model="form.referrer_type" clearable placeholder="无推荐人" style="width: 100%">
+                <el-option label="会员推广" value="member" />
+                <el-option label="登记姓名" value="note" />
+              </el-select>
+            </el-form-item>
+            <el-form-item v-if="form.referrer_type === 'member'" label="推广会员">
+              <el-select
+                v-model="form.referrer_member_id"
+                filterable
+                remote
+                :remote-method="searchReferrerMembers"
+                :loading="referrerLoading"
+                placeholder="输入手机号或姓名搜索"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="x in referrerCandidates"
+                  :key="x.id"
+                  :label="`${x.name} ${x.phone}`"
+                  :value="x.id"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item v-if="form.referrer_type === 'note'" label="推荐人姓名">
+              <el-input v-model="form.referrer_note" maxlength="128" placeholder="仅登记，不参与返点结算" />
+            </el-form-item>
+        <el-form-item label="注册推广码">
           <el-input v-model="form.referral_code" maxlength="32" placeholder="选填，扫码注册会自动写入" />
         </el-form-item>
-        <template v-if="canResetPassword">
-          <el-form-item label="登录密码" prop="password">
-            <el-input
-              v-model="form.password"
-              type="password"
-              show-password
-              maxlength="64"
-              placeholder="选填，至少 6 位；不填则仅验证码登录"
-            />
-          </el-form-item>
-          <el-form-item v-if="form.password" label="确认密码" prop="confirm">
-            <el-input v-model="form.confirm" type="password" show-password maxlength="64" placeholder="再次输入密码" />
-          </el-form-item>
-        </template>
+          </el-tab-pane>
+          <el-tab-pane label="运营备注" name="remark">
+            <el-form-item label="备注">
+              <el-input
+                v-model="form.remark"
+                type="textarea"
+                :rows="6"
+                maxlength="2000"
+                show-word-limit
+                placeholder="前台可见的内部备注，如训练偏好、注意事项"
+              />
+            </el-form-item>
+          </el-tab-pane>
+          <el-tab-pane v-if="canResetPassword" label="账号安全" name="security">
+            <el-form-item label="登录密码" prop="password">
+              <el-input
+                v-model="form.password"
+                type="password"
+                show-password
+                maxlength="64"
+                placeholder="选填，至少 6 位；不填则仅验证码登录"
+              />
+            </el-form-item>
+            <el-form-item v-if="form.password" label="确认密码" prop="confirm">
+              <el-input
+                v-model="form.confirm"
+                type="password"
+                show-password
+                maxlength="64"
+                placeholder="再次输入密码"
+              />
+            </el-form-item>
+          </el-tab-pane>
+        </el-tabs>
       </el-form>
       <template #footer>
         <el-button @click="createDialog = false">取消</el-button>
@@ -784,71 +1048,167 @@ onMounted(load)
       </template>
     </el-dialog>
 
-    <el-dialog v-model="editDialog" title="编辑会员" width="420px" destroy-on-close>
-      <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-width="80px">
-        <el-form-item label="头像">
-          <div class="avatar-edit">
-            <img v-if="editTarget?.avatar_url" class="detail-avatar" :src="editTarget.avatar_url" alt="" />
-            <div v-else class="detail-avatar avatar-fallback">{{ (editForm.name || '?').slice(0, 1) }}</div>
-            <div>
-              <el-upload :show-file-list="false" accept="image/jpeg,image/png,image/webp" :http-request="uploadAvatar">
-                <el-button :loading="uploadingAvatar">上传头像</el-button>
-              </el-upload>
-              <el-button
-                v-if="editTarget?.avatar_url"
-                link
-                type="danger"
-                :disabled="uploadingAvatar"
-                @click="editTarget && clearAvatar(editTarget)"
+    <el-dialog v-model="editDialog" title="编辑会员" width="520px" destroy-on-close class="member-form-dialog">
+      <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-width="96px">
+        <el-tabs v-model="editTab" class="member-form-tabs">
+          <el-tab-pane label="基本信息" name="basic">
+            <el-form-item label="头像">
+              <div class="avatar-edit">
+                <img v-if="editTarget?.avatar_url" class="detail-avatar" :src="editTarget.avatar_url" alt="" />
+                <div v-else class="detail-avatar avatar-fallback">{{ (editForm.name || '?').slice(0, 1) }}</div>
+                <div>
+                  <el-upload
+                    :show-file-list="false"
+                    accept="image/jpeg,image/png,image/webp"
+                    :http-request="uploadAvatar"
+                  >
+                    <el-button :loading="uploadingAvatar">上传头像</el-button>
+                  </el-upload>
+                  <el-button
+                    v-if="editTarget?.avatar_url"
+                    link
+                    type="danger"
+                    :disabled="uploadingAvatar"
+                    @click="editTarget && clearAvatar(editTarget)"
+                  >
+                    清除
+                  </el-button>
+                  <p class="hint">JPG / PNG / WEBP，不超过 8MB</p>
+                </div>
+              </div>
+            </el-form-item>
+            <el-form-item label="手机号" prop="phone">
+              <el-input v-model="editForm.phone" maxlength="32" />
+            </el-form-item>
+            <el-form-item label="姓名" prop="name">
+              <el-input v-model="editForm.name" maxlength="128" />
+            </el-form-item>
+            <el-form-item label="性别">
+              <el-select v-model="editForm.gender" clearable placeholder="选填" style="width: 100%">
+                <el-option label="男" value="male" />
+                <el-option label="女" value="female" />
+                <el-option label="其他" value="other" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="生日">
+              <el-date-picker
+                v-model="editForm.birthday"
+                type="date"
+                value-format="YYYY-MM-DD"
+                placeholder="选填"
+                style="width: 100%"
+              />
+            </el-form-item>
+            <el-form-item label="邮箱">
+              <el-input v-model="editForm.email" maxlength="128" placeholder="选填" />
+            </el-form-item>
+          </el-tab-pane>
+          <el-tab-pane label="紧急联系" name="emergency">
+            <el-form-item label="联系人">
+              <el-input v-model="editForm.emergency_contact" maxlength="64" placeholder="选填" />
+            </el-form-item>
+            <el-form-item label="联系电话">
+              <el-input v-model="editForm.emergency_phone" maxlength="32" placeholder="选填" />
+            </el-form-item>
+          </el-tab-pane>
+          <el-tab-pane label="推荐推广" name="referral">
+            <el-form-item label="推荐来源">
+              <el-select v-model="editForm.referrer_type" clearable placeholder="无推荐人" style="width: 100%">
+                <el-option label="会员推广" value="member" />
+                <el-option label="登记姓名" value="note" />
+              </el-select>
+            </el-form-item>
+            <el-form-item v-if="editForm.referrer_type === 'member'" label="推广会员">
+              <el-select
+                v-model="editForm.referrer_member_id"
+                filterable
+                remote
+                :remote-method="searchReferrerMembers"
+                :loading="referrerLoading"
+                placeholder="输入手机号或姓名搜索"
+                style="width: 100%"
               >
-                清除
-              </el-button>
-              <p class="hint">JPG / PNG / WEBP，不超过 8MB。会员也可在 H5 / 小程序自行更换。</p>
+                <el-option
+                  v-for="x in referrerCandidates"
+                  :key="x.id"
+                  :label="x.phone ? `${x.name} ${x.phone}` : x.name"
+                  :value="x.id"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item v-if="editForm.referrer_type === 'note'" label="推荐人姓名">
+              <el-input v-model="editForm.referrer_note" maxlength="128" placeholder="仅登记，不参与返点结算" />
+            </el-form-item>
+            <el-form-item label="注册推广码">
+              <el-input v-model="editForm.referral_code" maxlength="32" placeholder="注册时扫描的推广码，选填" />
+            </el-form-item>
+          </el-tab-pane>
+          <el-tab-pane label="推广二维码" name="promotion">
+            <div v-loading="promotionQrLoading" class="qr-box">
+              <template v-if="canPromote">
+                <img v-if="promotionQrDataUrl" :src="promotionQrDataUrl" alt="推广二维码" class="qr-img" />
+                <p v-else-if="promotionLink" class="qr-hint">二维码生成中…</p>
+                <p v-else class="qr-hint">暂无推广链接</p>
+                <el-descriptions :column="1" border size="small" class="qr-meta">
+                  <el-descriptions-item label="会员推广码">{{ promotionCode || '—' }}</el-descriptions-item>
+                </el-descriptions>
+                <el-input :model-value="promotionLink" readonly type="textarea" :rows="2" />
+                <p class="qr-hint">保存档案不影响推广码；比例调整请用「推广配置」。</p>
+                <div class="qr-actions">
+                  <el-button @click="copyPromotionLink" :disabled="!promotionLink">复制链接</el-button>
+                  <el-button type="primary" @click="downloadPromotionQr" :disabled="!promotionQrDataUrl">
+                    下载二维码
+                  </el-button>
+                  <el-button v-if="editTarget" plain @click="goPromotion(editTarget)">推广配置</el-button>
+                </div>
+              </template>
+              <el-alert v-else type="info" :closable="false" show-icon title="当前账号无推广查看权限" />
             </div>
-          </div>
-        </el-form-item>
-        <el-form-item label="姓名" prop="name">
-          <el-input v-model="editForm.name" maxlength="128" />
-        </el-form-item>
-        <el-form-item label="推荐来源">
-          <el-select v-model="editForm.referrer_type" clearable placeholder="无推荐人" style="width: 100%">
-            <el-option label="会员推广" value="member" />
-            <el-option label="登记姓名" value="note" />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="editForm.referrer_type === 'member'" label="推广会员">
-          <el-select
-            v-model="editForm.referrer_member_id"
-            filterable
-            remote
-            :remote-method="searchReferrerMembers"
-            :loading="referrerLoading"
-            placeholder="输入手机号或姓名搜索"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="x in referrerCandidates"
-              :key="x.id"
-              :label="x.phone ? `${x.name} ${x.phone}` : x.name"
-              :value="x.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="editForm.referrer_type === 'note'" label="推荐人姓名">
-          <el-input v-model="editForm.referrer_note" maxlength="128" placeholder="仅登记，不参与返点结算" />
-        </el-form-item>
-        <el-form-item v-if="editTarget?.referral_code" label="推广码">
-          <el-input :model-value="editTarget?.referral_code" disabled />
-        </el-form-item>
-        <el-form-item v-if="canResetPassword" label="新密码">
-          <el-input
-            v-model="editForm.password"
-            type="password"
-            show-password
-            maxlength="64"
-            placeholder="留空不修改"
-          />
-        </el-form-item>
+          </el-tab-pane>
+          <el-tab-pane label="运营备注" name="remark">
+            <el-form-item label="备注">
+              <el-input
+                v-model="editForm.remark"
+                type="textarea"
+                :rows="6"
+                maxlength="2000"
+                show-word-limit
+                placeholder="前台可见的内部备注"
+              />
+            </el-form-item>
+          </el-tab-pane>
+          <el-tab-pane label="档案信息" name="archive">
+            <el-form-item label="会员 ID">
+              <el-input :model-value="String(editTarget?.id || '')" disabled />
+            </el-form-item>
+            <el-form-item label="注册时间">
+              <el-input :model-value="fmtDate(editTarget?.created_at)" disabled />
+            </el-form-item>
+            <el-form-item label="人脸状态">
+              <el-input :model-value="faceLabel(editTarget?.face_status || '')" disabled />
+            </el-form-item>
+            <el-form-item label="首次来源">
+              <el-input :model-value="editTarget ? sourceLabel(editTarget) : '—'" disabled />
+            </el-form-item>
+            <el-form-item label="关联商户">
+              <div v-if="editTarget?.merchant_ids.length" class="merchant-tags">
+                <el-tag v-for="id in editTarget.merchant_ids" :key="id" size="small">{{ merchantName(id) }}</el-tag>
+              </div>
+              <span v-else class="muted">—</span>
+            </el-form-item>
+          </el-tab-pane>
+          <el-tab-pane v-if="canResetPassword" label="账号安全" name="security">
+            <el-form-item label="新密码">
+              <el-input
+                v-model="editForm.password"
+                type="password"
+                show-password
+                maxlength="64"
+                placeholder="留空不修改"
+              />
+            </el-form-item>
+          </el-tab-pane>
+        </el-tabs>
       </el-form>
       <template #footer>
         <el-button @click="editDialog = false">取消</el-button>
@@ -959,6 +1319,64 @@ onMounted(load)
 .sub {
   font-size: 12px;
   color: var(--el-text-color-secondary);
+}
+.form-section-title {
+  margin: 12px 0 8px;
+  padding-left: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  border-left: 3px solid var(--el-color-primary);
+}
+.form-section-title:first-of-type {
+  margin-top: 0;
+}
+.member-form-tabs :deep(.el-tabs__header) {
+  margin-bottom: 12px;
+}
+.member-form-tabs :deep(.el-tabs__content) {
+  max-height: min(52vh, 420px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.member-form-dialog :deep(.el-dialog__body) {
+  padding-top: 8px;
+}
+.merchant-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.muted {
+  color: var(--el-text-color-secondary);
+}
+.qr-box {
+  text-align: center;
+  padding: 4px 0 8px;
+}
+.qr-img {
+  width: 220px;
+  height: 220px;
+  border-radius: 8px;
+  border: 1px solid var(--el-border-color-lighter);
+}
+.qr-hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.5;
+  text-align: left;
+}
+.qr-meta {
+  margin-top: 12px;
+  text-align: left;
+}
+.qr-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 12px;
 }
 .avatar,
 .detail-avatar {

@@ -25,6 +25,7 @@ import PromotionConfigView from '../systems/platform/views/PromotionConfigView.v
 import PromotionSettingsView from '../systems/platform/views/PromotionSettingsView.vue'
 import RebatesView from '../systems/platform/views/RebatesView.vue'
 import PayoutsView from '../systems/platform/views/PayoutsView.vue'
+import AuditLogsView from '../systems/platform/views/AuditLogsView.vue'
 import ProductsView from '../systems/gym/views/ProductsView.vue'
 import MembershipsView from '../systems/gym/views/MembershipsView.vue'
 import CoachesView from '../systems/gym/views/CoachesView.vue'
@@ -160,6 +161,12 @@ const children: RouteRecordRaw[] = [
     name: 'notifications',
     component: NotificationsView,
     meta: { system: 'platform', anyOf: ['order:read', 'member:read', 'access:read', '*'] },
+  },
+  {
+    path: 'platform/audit-logs',
+    name: 'platform-audit-logs',
+    component: AuditLogsView,
+    meta: { system: 'platform', anyOf: ['audit:read', '*'] },
   },
   {
     path: 'products',

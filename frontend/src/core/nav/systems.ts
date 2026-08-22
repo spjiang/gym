@@ -30,6 +30,11 @@ export const PLATFORM_MENU_GROUPS: { key: string; label: string; paths: string[]
     paths: ['/platform/promotion-config', '/platform/promotion-settings', '/rebates', '/payouts'],
   },
   {
+    key: 'devops',
+    label: '运维管理',
+    paths: ['/platform/audit-logs'],
+  },
+  {
     key: 'notify',
     label: '站内通知',
     paths: ['/notifications'],

@@ -17,6 +17,7 @@ from app.core.schemas.common import (
     MemberImportOut,
     MemberLinkIn,
     MemberOut,
+    MemberProfileMixin,
     MemberReferrerMixin,
     MemberUpdateIn,
     PasswordResetIn,
@@ -39,6 +40,50 @@ from app.systems.platform.services.member_import import (
 from app.systems.platform.api.uploads import save_upload_file
 
 router = APIRouter(prefix="/members", tags=["members"])
+
+_GENDER_VALUES = {"male", "female", "other"}
+
+
+def _normalize_gender(value: str | None) -> str | None:
+    if value is None or not str(value).strip():
+        return None
+    code = str(value).strip().lower()
+    if code not in _GENDER_VALUES:
+        raise AppError("invalid_gender", "性别仅支持男 / 女 / 其他", status_code=400)
+    return code
+
+
+def _normalize_email(value: str | None) -> str | None:
+    email = (value or "").strip()
+    if not email:
+        return None
+    if "@" not in email or "." not in email.rsplit("@", 1)[-1]:
+        raise AppError("invalid_email", "邮箱格式不正确", status_code=400)
+    return email
+
+
+def _normalize_optional_text(value: str | None, *, max_len: int) -> str | None:
+    text = (value or "").strip()
+    if not text:
+        return None
+    if len(text) > max_len:
+        raise AppError("validation_error", f"内容不能超过 {max_len} 字", status_code=422)
+    return text
+
+
+def _apply_profile_fields(member: Member, body: MemberProfileMixin, fields_set: set[str]) -> None:
+    if "gender" in fields_set:
+        member.gender = _normalize_gender(body.gender)
+    if "birthday" in fields_set:
+        member.birthday = body.birthday
+    if "email" in fields_set:
+        member.email = _normalize_email(body.email)
+    if "remark" in fields_set:
+        member.remark = _normalize_optional_text(body.remark, max_len=2000)
+    if "emergency_contact" in fields_set:
+        member.emergency_contact = _normalize_optional_text(body.emergency_contact, max_len=64)
+    if "emergency_phone" in fields_set:
+        member.emergency_phone = _normalize_optional_text(body.emergency_phone, max_len=32)
 
 
 def _referrer_display(db: Session, m: Member) -> str | None:
@@ -80,6 +125,12 @@ def _member_out(db: Session, m: Member) -> MemberOut:
         referrer_display=_referrer_display(db, m),
         referred_count=referred_count,
         avatar_url=m.avatar_url,
+        gender=m.gender,
+        birthday=m.birthday,
+        email=m.email,
+        remark=m.remark,
+        emergency_contact=m.emergency_contact,
+        emergency_phone=m.emergency_phone,
     )
 
 
@@ -119,7 +170,10 @@ def _apply_referrer(
         member.referrer_note = (body.referrer_note or "").strip() or None
     if "referral_code" in fields_set:
         code = (body.referral_code or "").strip().upper()
-        if code:
+        current = (member.referral_code or "").strip().upper()
+        if code == current:
+            pass
+        elif code:
             promoter = db.scalar(select(PromoterCode).where(PromoterCode.code == code))
             if promoter is None or promoter.site_id != ctx.site_id:
                 raise AppError("not_found", "推广码不存在", status_code=404)
@@ -130,6 +184,20 @@ def _apply_referrer(
             member.referral_code = code
         else:
             member.referral_code = None
+
+
+def _member_audit_merchant_id(db: Session, ctx: RequestContext, member: Member) -> int | None:
+    """审计写入商户：优先当前操作者商户，否则取会员首店/挂靠商户。"""
+    if ctx.merchant_id is not None:
+        return ctx.merchant_id
+    if member.first_merchant_id is not None:
+        return member.first_merchant_id
+    return db.scalar(
+        select(MerchantMember.merchant_id)
+        .where(MerchantMember.member_id == member.id)
+        .order_by(MerchantMember.id.asc())
+        .limit(1)
+    )
 
 
 def _assert_member_in_scope(db: Session, ctx: RequestContext, member: Member) -> None:
@@ -344,6 +412,7 @@ def create_member(
         first_merchant_id=link_mid,
         password_hash=hash_password(body.password) if body.password else None,
     )
+    _apply_profile_fields(member, body, set(body.model_fields_set))
     db.add(member)
     try:
         db.flush()
@@ -379,7 +448,7 @@ def update_member(
     db: Session = Depends(get_db),
     ctx: RequestContext = Depends(get_current_context),
 ):
-    """编辑会员姓名与推荐关系。"""
+    """编辑会员档案、推荐关系与联系方式。"""
     ctx.require_permission("member:write")
     member = db.get(Member, member_id)
     if member is None or member.site_id != ctx.site_id:
@@ -390,6 +459,18 @@ def update_member(
         if not body.name or not body.name.strip():
             raise AppError("validation_error", "会员姓名不能为空", status_code=422)
         member.name = body.name.strip()
+    if "phone" in fields_set:
+        phone = (body.phone or "").strip()
+        if not phone:
+            raise AppError("validation_error", "手机号不能为空", status_code=422)
+        if phone != member.phone:
+            exists = db.scalar(
+                select(Member.id).where(Member.site_id == ctx.site_id, Member.phone == phone, Member.id != member.id)
+            )
+            if exists is not None:
+                raise AppError("conflict", "该手机号已存在于本场地", status_code=409)
+            member.phone = phone
+    _apply_profile_fields(member, body, fields_set)
     _apply_referrer(db, ctx, member, body, fields_set=fields_set)
     write_audit(
         db,
@@ -399,8 +480,13 @@ def update_member(
         summary=f"更新会员档案 {member.name}",
         actor_staff_id=ctx.staff.id,
         site_id=ctx.site_id,
+        merchant_id=_member_audit_merchant_id(db, ctx, member),
     )
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise AppError("conflict", "该手机号已存在于本场地", status_code=409) from exc
     db.refresh(member)
     return _member_out(db, member)
 
@@ -428,6 +514,7 @@ async def upload_member_avatar(
         summary=f"更新会员头像 {member.phone}",
         actor_staff_id=ctx.staff.id,
         site_id=ctx.site_id,
+        merchant_id=_member_audit_merchant_id(db, ctx, member),
     )
     db.commit()
     db.refresh(member)
@@ -455,6 +542,7 @@ def clear_member_avatar(
         summary=f"清除会员头像 {member.phone}",
         actor_staff_id=ctx.staff.id,
         site_id=ctx.site_id,
+        merchant_id=_member_audit_merchant_id(db, ctx, member),
     )
     db.commit()
     db.refresh(member)
@@ -483,7 +571,7 @@ def reset_member_password(
         summary=f"重置会员登录密码 {member.phone}",
         actor_staff_id=ctx.staff.id,
         site_id=ctx.site_id,
-        merchant_id=None if ctx.is_site_admin else ctx.merchant_id,
+        merchant_id=_member_audit_merchant_id(db, ctx, member),
     )
     db.commit()
     return {"ok": True, "has_password": True}
@@ -566,6 +654,7 @@ def delete_member(
         summary=f"删除会员 {phone}",
         actor_staff_id=ctx.staff.id,
         site_id=ctx.site_id,
+        merchant_id=_member_audit_merchant_id(db, ctx, member),
     )
     db.commit()
     return {"ok": True}

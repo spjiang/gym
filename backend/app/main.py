@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.audit_middleware import AuditMiddleware
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.systems.catering.api import catering, member_catering
@@ -24,6 +25,7 @@ from app.systems.gym.api import (
 from app.systems.platform.api import (
     access,
     agreements,
+    audit_logs,
     auth,
     commerce,
     device,
@@ -68,6 +70,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(AuditMiddleware)
 
     @app.get("/health")
     def health():
@@ -112,6 +115,7 @@ def create_app() -> FastAPI:
     app.include_router(uploads.router, prefix="/api/v1")
     app.include_router(payment_notify.router, prefix="/api/v1")
     app.include_router(payment_reconcile.router, prefix="/api/v1")
+    app.include_router(audit_logs.router, prefix="/api/v1")
     return app
 
 

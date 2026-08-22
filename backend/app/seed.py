@@ -104,6 +104,7 @@ ROLE_DEFS = [
             "promoter:manage",
             "payout:read",
             "payout:manage",
+            "audit:read",
         ],
     },
     {
@@ -123,6 +124,7 @@ ROLE_DEFS = [
             "payout:manage",
             "promoter:read",
             "commission:read",
+            "audit:read",
         ],
     },
     {
@@ -168,6 +170,7 @@ ROLE_DEFS = [
             "equipment:manage",
             "equipment:repair",
             "equipment:read",
+            "audit:read",
         ],
     },
     {

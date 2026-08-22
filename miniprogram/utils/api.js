@@ -20,6 +20,7 @@ function request({ url, method = 'GET', data }) {
       data,
       header: {
         'Content-Type': 'application/json',
+        'X-Client-Channel': 'member_mp',
         Authorization: app.globalData.token ? `Bearer ${app.globalData.token}` : '',
       },
       success(res) {
@@ -39,6 +40,7 @@ function upload({ url, filePath, name = 'file' }) {
       filePath,
       name,
       header: {
+        'X-Client-Channel': 'member_mp',
         Authorization: app.globalData.token ? `Bearer ${app.globalData.token}` : '',
       },
       success(res) {
