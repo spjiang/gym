@@ -1,0 +1,16 @@
+<view wx:if="{{show}}" class="topbar">
+  <view class="user" bindtap="goMe">
+    <view class="avatar">
+      <image wx:if="{{avatarUrl}}" src="{{avatarUrl}}" mode="aspectFill" />
+      <text wx:else>{{initial}}</text>
+    </view>
+    <view class="meta">
+      <view class="name">{{merchantName}}</view>
+      <view class="sub">{{systemLabel}} · {{userName}}</view>
+    </view>
+  </view>
+  <view class="actions">
+    <view class="btn" bindtap="switchStore">切换</view>
+    <view class="btn" bindtap="goMe">我的</view>
+  </view>
+</view>

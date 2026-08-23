@@ -1,3 +1,7 @@
 {
-  "navigationBarTitleText": "餐饮订单"
+  "navigationBarTitleText": "餐饮订单",
+  "usingComponents": {
+    "top-bar": "/components/top-bar/index",
+    "bottom-nav": "/components/bottom-nav/index"
+  }
 }

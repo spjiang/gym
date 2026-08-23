@@ -21,8 +21,16 @@ Page({
     agreeContent: '',
   },
   async onShow() {
-    const { request, fileUrl } = require('../../utils/api')
+    const { requireLogin, refreshMemberSession } = require('../../utils/session')
+    const { goStores } = require('../../utils/merchant')
+    if (!requireLogin()) return
     const app = getApp()
+    if (!app.globalData.merchantId) {
+      goStores()
+      return
+    }
+    await refreshMemberSession()
+    const { request, fileUrl } = require('../../utils/api')
     this.setData({ loading: true, err: '' })
     try {
       const me = await request({ url: '/member/me' })
@@ -92,7 +100,8 @@ Page({
     return String(iso).slice(0, 16).replace('T', ' ')
   },
   go(e) {
-    wx.navigateTo({ url: e.currentTarget.dataset.url })
+    const { go } = require('../../utils/nav')
+    go(e.currentTarget.dataset.url)
   },
   goCoach(e) {
     const id = e.currentTarget.dataset.id

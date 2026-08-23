@@ -1,3 +1,9 @@
+.me .back-stores {
+  font-size: 26rpx;
+  color: #f36b21;
+  margin-bottom: 16rpx;
+}
+
 .me .site {
   font-size: 24rpx;
   color: #7d8389;

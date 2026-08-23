@@ -1,4 +1,5 @@
-<view class="wrap">
+<top-bar />
+<view class="wrap tab-page">
   <view class="title">{{title}}</view>
   <view class="section">会籍卡种</view>
   <block wx:for="{{cards}}" wx:key="id">
@@ -34,3 +35,4 @@
     bind:confirm="onAgreeConfirm"
   />
 </view>
+<bottom-nav active="/pages/shop/index" />

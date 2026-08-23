@@ -1,1 +1,7 @@
-{"navigationBarTitleText":"memberships"}
+{
+  "navigationBarTitleText": "会籍与课包",
+  "usingComponents": {
+    "top-bar": "/components/top-bar/index",
+    "bottom-nav": "/components/bottom-nav/index"
+  }
+}

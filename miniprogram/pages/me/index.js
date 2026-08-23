@@ -13,6 +13,9 @@ Page({
     uploading: false,
   },
   async onShow() {
+    const { requireLogin, refreshMemberSession } = require('../../utils/session')
+    if (!requireLogin()) return
+    await refreshMemberSession()
     await this.loadMe()
   },
   async loadMe() {
@@ -97,11 +100,15 @@ Page({
   },
   enterStore(e) {
     const id = Number(e.currentTarget.dataset.id)
-    getApp().globalData.merchantId = id
-    wx.navigateTo({ url: '/pages/memberships/index' })
+    const me = getApp().globalData.memberMe
+    const m = (me && me.merchants || []).find((x) => x.id === id)
+    if (!m) return
+    const { enterMerchant } = require('../../utils/merchant')
+    enterMerchant(m)
   },
   goStores() {
-    wx.navigateTo({ url: '/pages/stores/index' })
+    const { goStores } = require('../../utils/merchant')
+    goStores()
   },
   goPromotion() {
     wx.navigateTo({ url: '/pages/promotion/index' })
@@ -113,7 +120,12 @@ Page({
     const app = getApp()
     app.globalData.token = ''
     app.globalData.merchantId = null
+    app.globalData.memberMe = null
+    app.globalData.currentMerchant = null
+    app.globalData.systemMode = 'gym'
     wx.removeStorageSync('member_token')
+    wx.removeStorageSync('merchant_id')
+    wx.removeStorageSync('system_mode')
     wx.reLaunch({ url: '/pages/login/index' })
   },
 })

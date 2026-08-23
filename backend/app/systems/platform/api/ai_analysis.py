@@ -154,10 +154,8 @@ def _day_bounds(date_from: date, date_to: date) -> tuple[datetime, datetime]:
 def _analysis_record_scope(ctx: RequestContext, stmt):
     stmt = stmt.where(AiAnalysisRecord.site_id == ctx.site_id)
     if not ctx.is_site_wide:
-        mid = ctx.resolve_merchant_id()
-        stmt = stmt.where(
-            (AiAnalysisRecord.merchant_id == mid) | (AiAnalysisRecord.merchant_id.is_(None))
-        )
+        # 商户账号仅可见本商户分析记录，不可查看全场地（merchant_id 为空）分析
+        stmt = stmt.where(AiAnalysisRecord.merchant_id == ctx.resolve_merchant_id())
     return stmt
 
 
@@ -167,7 +165,7 @@ def _get_analysis_record_or_404(db: Session, ctx: RequestContext, record_id: int
         raise AppError("not_found", "记录不存在", status_code=404)
     if not ctx.is_site_wide:
         mid = ctx.resolve_merchant_id()
-        if row.merchant_id is not None and row.merchant_id != mid:
+        if row.merchant_id != mid:
             raise AppError("forbidden", "无权查看该记录", status_code=403)
     return row
 
@@ -371,6 +369,11 @@ def delete_prompt_template(
         raise AppError("not_found", "模版不存在", status_code=404)
     if row.is_builtin:
         raise AppError("forbidden", "内置模版不可删除，可停用", status_code=403)
+    used = db.scalar(
+        select(func.count()).select_from(AiAnalysisRecord).where(AiAnalysisRecord.template_id == template_id)
+    )
+    if used:
+        raise AppError("conflict", "该模版已有分析记录，无法删除，可停用", status_code=409)
     db.delete(row)
     db.commit()
     return {"ok": True}
@@ -458,6 +461,11 @@ def delete_llm_account(
     row = db.get(AiLlmAccount, account_id)
     if row is None or row.site_id != ctx.site_id:
         raise AppError("not_found", "大模型账号不存在", status_code=404)
+    used = db.scalar(
+        select(func.count()).select_from(AiAnalysisRecord).where(AiAnalysisRecord.llm_account_id == account_id)
+    )
+    if used:
+        raise AppError("conflict", "该账号已有分析记录，无法删除，可停用", status_code=409)
     db.delete(row)
     db.commit()
     return {"ok": True}
@@ -490,6 +498,10 @@ async def run_analysis(
         raise AppError("invalid_range", "结束日期不得早于开始日期", status_code=400)
 
     merchant_id = body.merchant_id
+    if merchant_id is not None:
+        merchant = db.get(Merchant, merchant_id)
+        if merchant is None or merchant.site_id != ctx.site_id:
+            raise AppError("not_found", "商户不存在", status_code=404)
     if merchant_id is not None and not ctx.is_site_wide:
         mid = ctx.resolve_merchant_id()
         if merchant_id != mid:

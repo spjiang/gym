@@ -1,3 +1,7 @@
 {
-  "navigationBarTitleText": "点餐"
+  "navigationBarTitleText": "点餐",
+  "usingComponents": {
+    "top-bar": "/components/top-bar/index",
+    "bottom-nav": "/components/bottom-nav/index"
+  }
 }

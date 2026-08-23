@@ -1,6 +1,8 @@
 {
-  "navigationBarTitleText": "shop",
+  "navigationBarTitleText": "商城",
   "usingComponents": {
-    "agreement-confirm": "/components/agreement-confirm/index"
+    "agreement-confirm": "/components/agreement-confirm/index",
+    "top-bar": "/components/top-bar/index",
+    "bottom-nav": "/components/bottom-nav/index"
   }
 }

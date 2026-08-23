@@ -1,0 +1,24 @@
+<view class="wrap">
+  <view class="back" bindtap="back">← 会籍列表</view>
+  <view wx:if="{{loading}}" class="muted">加载中…</view>
+  <view wx:elif="{{err}}" class="err">{{err}}</view>
+  <block wx:elif="{{item}}">
+    <view class="hero card">
+      <view class="hero-top">
+        <text class="badge">会籍</text>
+        <text class="status {{statusClass}}">{{statusText}}</text>
+      </view>
+      <view class="hero-title">{{item.product_name || ('会籍 #' + item.id)}}</view>
+      <view class="hero-sub">#{{item.id}} · {{typeText}}</view>
+    </view>
+    <view class="card">
+      <view class="row"><text class="label">卡种类型</text><text>{{typeText}}</text></view>
+      <view class="row"><text class="label">生效日期</text><text>{{startsText}}</text></view>
+      <view class="row"><text class="label">到期日期</text><text>{{endsText}}</text></view>
+      <view class="row"><text class="label">剩余次数</text><text>{{remainText}}</text></view>
+      <view class="row"><text class="label">储值余额</text><text>{{balanceText}}</text></view>
+      <view class="row"><text class="label">卡种 ID</text><text>{{item.product_id}}</text></view>
+    </view>
+    <view class="tip">如需冻结、续费或变更，请到店联系前台办理。</view>
+  </block>
+</view>

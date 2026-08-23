@@ -96,14 +96,18 @@ async function analyze() {
   analyzing.value = true
   resultText.value = ''
   try {
-    const { data } = await http.post<{ result_text: string; input_summary: string }>('/ai/analyze', {
-      template_id: form.template_id,
-      llm_account_id: form.llm_account_id,
-      merchant_id: form.merchant_id ?? null,
-      date_from: form.date_from,
-      date_to: form.date_to,
-      extra_instruction: form.extra_instruction.trim() || null,
-    })
+    const { data } = await http.post<{ result_text: string; input_summary: string }>(
+      '/ai/analyze',
+      {
+        template_id: form.template_id,
+        llm_account_id: form.llm_account_id,
+        merchant_id: form.merchant_id ?? null,
+        date_from: form.date_from,
+        date_to: form.date_to,
+        extra_instruction: form.extra_instruction.trim() || null,
+      },
+      { timeout: 180000 },
+    )
     resultText.value = data.result_text
     ElMessage.success('分析完成')
     const hist = await http.get<{ items: AnalysisRecord[] }>('/ai/analysis-records', { params: { page_size: 10 } })

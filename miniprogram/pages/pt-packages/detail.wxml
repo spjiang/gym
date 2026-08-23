@@ -1,0 +1,22 @@
+<view class="wrap">
+  <view class="back" bindtap="back">← 会籍列表</view>
+  <view wx:if="{{loading}}" class="muted">加载中…</view>
+  <view wx:elif="{{err}}" class="err">{{err}}</view>
+  <block wx:elif="{{item}}">
+    <view class="hero card">
+      <view class="hero-top">
+        <text class="badge">私教课包</text>
+        <text class="status {{statusClass}}">{{statusText}}</text>
+      </view>
+      <view class="hero-title">{{item.product_name || ('课包 #' + item.id)}}</view>
+      <view class="hero-sub">#{{item.id}}</view>
+    </view>
+    <view class="card">
+      <view class="row"><text class="label">剩余课时</text><text>{{item.remaining_sessions}}</text></view>
+      <view class="row"><text class="label">生效日期</text><text>{{startsText}}</text></view>
+      <view class="row"><text class="label">到期日期</text><text>{{endsText}}</text></view>
+      <view class="row"><text class="label">产品 ID</text><text>{{item.product_id}}</text></view>
+    </view>
+    <view class="tip">约课与消课请到店或联系教练；如需退款请联系前台。</view>
+  </block>
+</view>

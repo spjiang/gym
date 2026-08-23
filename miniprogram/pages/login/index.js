@@ -11,7 +11,7 @@ Page({
   },
   onLoad(options) {
     const app = getApp()
-    const fromPage = app.resolveReferralCode(options)
+    const fromPage = app.resolveReferralCode((options && options.query) || options)
     if (fromPage) {
       app.globalData.referralCode = fromPage
       wx.setStorageSync('referral_code', fromPage)
@@ -36,6 +36,12 @@ Page({
       table,
       redirect,
     })
+  },
+  onShow() {
+    const app = getApp()
+    if (app.globalData.token) {
+      wx.reLaunch({ url: '/pages/stores/index' })
+    }
   },
   setMode(e) {
     this.setData({ mode: e.currentTarget.dataset.mode })
@@ -92,15 +98,9 @@ Page({
       } catch (bindErr) {
         console.warn('openid bind skipped', bindErr)
       }
+      const { enterMerchant } = require('../../utils/merchant')
       const me = await request({ url: '/member/me' })
-      const keptMerchantId = this.data.merchantId || app.globalData.merchantId
-      if (keptMerchantId) {
-        app.globalData.merchantId = Number(keptMerchantId)
-        wx.setStorageSync('merchant_id', Number(keptMerchantId))
-      } else if (me.merchant_ids && me.merchant_ids.length) {
-        app.globalData.merchantId = me.merchant_ids[0]
-        wx.setStorageSync('merchant_id', me.merchant_ids[0])
-      }
+      app.globalData.memberMe = me
       if (this.data.table && app.globalData.merchantId) {
         try {
           const table = await request({
@@ -116,7 +116,15 @@ Page({
         wx.reLaunch({ url: redirect })
         return
       }
-      wx.reLaunch({ url: '/pages/home/index' })
+      const keptMerchantId = this.data.merchantId || app.globalData.merchantId
+      if (keptMerchantId) {
+        const m = (me.merchants || []).find((x) => x.id === Number(keptMerchantId))
+        if (m) {
+          enterMerchant(m)
+          return
+        }
+      }
+      wx.reLaunch({ url: '/pages/stores/index' })
     } catch (e) {
       wx.showToast({ title: (e && e.message) || '登录失败', icon: 'none' })
     }

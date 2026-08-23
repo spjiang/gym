@@ -1,4 +1,5 @@
-<view class="wrap">
+<top-bar />
+<view class="wrap tab-page">
   <view class="title">优惠卡券</view>
   <view wx:if="{{err}}" class="muted">{{err}}</view>
   <view class="section">可领取</view>
@@ -17,3 +18,4 @@
   </view>
   <view wx:if="{{!mine.length}}" class="muted">暂无卡券</view>
 </view>
+<bottom-nav active="/pages/coupons/index" />

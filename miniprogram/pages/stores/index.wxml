@@ -1,14 +1,100 @@
-<view class="wrap">
-  <view class="title">选择门店</view>
-  <block wx:for="{{merchants}}" wx:key="id">
-    <view
-      class="card {{currentId === item.id ? 'active' : ''}}"
-      bindtap="select"
-      data-id="{{item.id}}"
-    >
-      <view class="name">{{item.name}}</view>
-      <view class="muted">{{item.merchant_type || item.type_code || ''}}</view>
+<view class="portal">
+  <view class="hero">
+    <block wx:if="{{slides.length}}">
+      <image class="hero-bg" src="{{slides[slide]}}" mode="aspectFill"></image>
+    </block>
+    <view wx:else class="hero-fallback"></view>
+    <view class="hero-veil"></view>
+    <view class="hero-bar">
+      <view class="hero-brand">观野<text class="hero-brand-en">SPACE</text></view>
+      <view class="hero-me" bindtap="goMe">我的</view>
     </view>
-  </block>
-  <view wx:if="{{!merchants.length}}" class="muted">暂无门店</view>
+    <view class="hero-copy">
+      <view class="kicker">{{siteName}}</view>
+      <view class="hello">你好，{{memberName || '会员'}}</view>
+      <view class="tag">{{siteTagline}}</view>
+    </view>
+    <view wx:if="{{slides.length > 1}}" class="dots">
+      <view
+        wx:for="{{slides}}"
+        wx:for-index="dotIndex"
+        wx:key="*this"
+        class="dot {{slide == dotIndex ? 'on' : ''}}"
+        data-index="{{dotIndex}}"
+        bindtap="pickSlide"
+      ></view>
+    </view>
+  </view>
+
+  <view class="body">
+    <view wx:if="{{loading}}" class="muted">加载中…</view>
+    <view wx:elif="{{err}}" class="muted">{{err}}</view>
+    <view wx:else>
+      <view class="facts">
+        <view
+          wx:for="{{facts}}"
+          wx:key="key"
+          class="fact {{item.wide ? 'wide' : ''}}"
+          bindtap="callPhone"
+          data-phone="{{item.phone}}"
+        >
+          <text class="fact-k">{{item.key}}</text>
+          <text>{{item.value}}</text>
+        </view>
+      </view>
+
+      <view wx:if="{{!sections.length}}" class="muted empty">暂无可用门店，请联系门店开通业态。</view>
+
+      <view wx:for="{{sections}}" wx:for-item="section" wx:key="key">
+        <view class="sec-head">
+          <view class="sec-title">入驻品牌 · {{section.title}}</view>
+          <view class="sec-sub">{{section.subtitle}}</view>
+        </view>
+        <view
+          wx:for="{{section.items}}"
+          wx:for-item="brand"
+          wx:key="id"
+          class="merchant-card merchant-card-{{section.key}}"
+          bindtap="enter"
+          data-id="{{brand.id}}"
+        >
+          <view class="brand-visual">
+            <image wx:if="{{brand.coverUrl}}" src="{{brand.coverUrl}}" mode="aspectFill"></image>
+            <view wx:else class="brand-wash"><text class="brand-mark">{{brand.mark}}</text></view>
+          </view>
+          <view class="brand-body">
+            <view class="brand-top">
+              <text class="badge">{{section.title}}</text>
+              <text class="go">进入</text>
+            </view>
+            <view class="brand-name">{{brand.name}}</view>
+            <view class="brand-hint">{{brand.hint}}</view>
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{aboutText || gallery.length}}" class="about">
+        <view class="sec-head">
+          <view class="sec-title">场地介绍</view>
+          <view class="sec-sub">{{siteName}}</view>
+        </view>
+        <view wx:if="{{aboutText}}" class="about-text">{{aboutText}}</view>
+        <scroll-view wx:if="{{gallery.length}}" class="gallery" scroll-x enable-flex>
+          <view class="gallery-row">
+            <image
+              wx:for="{{gallery}}"
+              wx:key="*this"
+              class="gallery-img"
+              src="{{item}}"
+              mode="aspectFill"
+              bindtap="previewGallery"
+              data-url="{{item}}"
+            ></image>
+          </view>
+        </scroll-view>
+      </view>
+
+      <view class="tip">进入后可随时点顶栏「切换」回到本页</view>
+    </view>
+  </view>
 </view>

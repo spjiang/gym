@@ -1,15 +1,19 @@
 App({
   globalData: {
-    // 开发时改为本机或网关地址，如 http://127.0.0.1:18000/api/v1
+    // 本地 Docker：18000；线上示例：http://123.56.26.229:18000/api/v1（须 HTTPS + 小程序后台配置合法域名）
     apiBase: 'http://127.0.0.1:18000/api/v1',
     token: '',
     merchantId: null,
-    // 推广码：扫码进入时缓存，注册时随验证码一起提交
+    systemMode: 'gym',
+    currentMerchant: null,
+    memberMe: null,
     referralCode: '',
   },
   onLaunch(options) {
     const token = wx.getStorageSync('member_token')
     if (token) this.globalData.token = token
+    const systemMode = wx.getStorageSync('system_mode')
+    if (systemMode) this.globalData.systemMode = systemMode
     const code = this.resolveReferralCode(options && options.query)
     if (code) {
       this.globalData.referralCode = code
@@ -18,7 +22,8 @@ App({
       this.globalData.referralCode = wx.getStorageSync('referral_code') || ''
     }
     const query = (options && options.query) || {}
-    const merchantId = query.merchant_id ? Number(query.merchant_id) : wx.getStorageSync('merchant_id')
+    const storedMerchantId = wx.getStorageSync('merchant_id')
+    const merchantId = query.merchant_id ? Number(query.merchant_id) : storedMerchantId
     if (merchantId) {
       this.globalData.merchantId = Number(merchantId)
       wx.setStorageSync('merchant_id', Number(merchantId))

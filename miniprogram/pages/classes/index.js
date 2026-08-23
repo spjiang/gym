@@ -6,6 +6,14 @@ Page({
     err: '',
   },
   async onShow() {
+    const { requireLogin, refreshMemberSession } = require('../../utils/session')
+    const { goStores } = require('../../utils/merchant')
+    if (!requireLogin()) return
+    if (!getApp().globalData.merchantId) {
+      goStores()
+      return
+    }
+    await refreshMemberSession()
     await this.load()
   },
   async load() {

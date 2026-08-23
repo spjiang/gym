@@ -154,7 +154,13 @@ def gather_analysis_context(
                 "new_members_in_range": new_in_range,
             },
             "recent_members": [
-                {"id": m.id, "name": m.name, "phone": m.phone, "created_at": m.created_at, "gender": m.gender}
+                {
+                    "id": m.id,
+                    "name": m.name,
+                    "phone_tail": (m.phone or "")[-4:] if m.phone else None,
+                    "created_at": m.created_at,
+                    "gender": m.gender,
+                }
                 for m in recent
             ],
         }
@@ -321,13 +327,25 @@ def gather_analysis_context(
     if merchant_id is not None:
         mids = select(MerchantMember.member_id).where(MerchantMember.merchant_id == merchant_id)
         member_filters.append(Member.id.in_(mids))
+    elif not ctx.is_site_wide:
+        mid = ctx.resolve_merchant_id()
+        mids = select(MerchantMember.member_id).where(MerchantMember.merchant_id == mid)
+        member_filters.append(Member.id.in_(mids))
     member_total = db.scalar(select(func.count()).select_from(Member).where(*member_filters)) or 0
-    audit_count = db.scalar(
-        select(func.count())
-        .select_from(AuditLog)
-        .where(AuditLog.site_id == ctx.site_id, AuditLog.created_at >= start, AuditLog.created_at < end)
-    ) or 0
-    merchants = db.scalars(select(Merchant).where(Merchant.site_id == ctx.site_id)).all()
+    audit_filters = [
+        AuditLog.site_id == ctx.site_id,
+        AuditLog.created_at >= start,
+        AuditLog.created_at < end,
+    ]
+    if merchant_id is not None:
+        audit_filters.append(AuditLog.merchant_id == merchant_id)
+    elif not ctx.is_site_wide:
+        audit_filters.append(AuditLog.merchant_id == ctx.resolve_merchant_id())
+    audit_count = db.scalar(select(func.count()).select_from(AuditLog).where(*audit_filters)) or 0
+    merchant_stmt = select(Merchant).where(Merchant.site_id == ctx.site_id)
+    if merchant_id is not None:
+        merchant_stmt = merchant_stmt.where(Merchant.id == merchant_id)
+    merchants = db.scalars(merchant_stmt).all()
     return {
         **base,
         "summary": {

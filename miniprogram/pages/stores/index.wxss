@@ -1,1 +1,294 @@
-/* 选店沿用 app.wxss 观野主题 */
+.portal {
+  min-height: 100vh;
+  background: #171b1f;
+  color: #f2e6d2;
+}
+
+.hero {
+  position: relative;
+  min-height: 560rpx;
+  padding: 28rpx 32rpx 56rpx;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.hero-bg,
+.hero-fallback,
+.hero-veil {
+  position: absolute;
+  inset: 0;
+}
+
+.hero-bg {
+  width: 100%;
+  height: 100%;
+}
+
+.hero-fallback {
+  background:
+    radial-gradient(ellipse 80% 70% at 18% 20%, rgba(243, 107, 33, 0.28), transparent 55%),
+    radial-gradient(ellipse 60% 50% at 90% 10%, rgba(20, 184, 212, 0.22), transparent 50%),
+    linear-gradient(160deg, #1a1510 0%, #171b1f 55%, #101418 100%);
+}
+
+.hero-veil {
+  background: linear-gradient(180deg, rgba(23, 27, 31, 0.18) 0%, rgba(23, 27, 31, 0.55) 45%, rgba(23, 27, 31, 0.96) 100%);
+}
+
+.hero-bar,
+.hero-copy,
+.dots {
+  position: relative;
+  z-index: 1;
+}
+
+.hero-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.hero-brand {
+  font-size: 34rpx;
+  font-weight: 700;
+  letter-spacing: 4rpx;
+}
+
+.hero-brand-en {
+  margin-left: 8rpx;
+  font-family: Arial, sans-serif;
+}
+
+.hero-me {
+  padding: 10rpx 24rpx;
+  border: 1rpx solid rgba(242, 230, 210, 0.2);
+  border-radius: 999rpx;
+  font-size: 24rpx;
+}
+
+.kicker {
+  font-size: 22rpx;
+  letter-spacing: 0.18em;
+  color: #f36b21;
+  font-weight: 700;
+}
+
+.hello {
+  font-size: 52rpx;
+  font-weight: 700;
+  margin-top: 12rpx;
+}
+
+.tag {
+  margin-top: 16rpx;
+  font-size: 28rpx;
+  color: rgba(242, 230, 210, 0.65);
+}
+
+.dots {
+  display: flex;
+  gap: 12rpx;
+  margin-top: 24rpx;
+}
+
+.dot {
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 999rpx;
+  background: rgba(242, 230, 210, 0.28);
+}
+
+.dot.on {
+  width: 36rpx;
+  background: #f36b21;
+}
+
+.body {
+  padding: 0 32rpx 48rpx;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16rpx;
+  margin: -16rpx 0 32rpx;
+}
+
+.fact {
+  padding: 20rpx 24rpx;
+  border-radius: 20rpx;
+  border: 1rpx solid rgba(242, 230, 210, 0.12);
+  background: #1f252b;
+}
+
+.fact.wide {
+  grid-column: 1 / -1;
+}
+
+.fact-k {
+  display: block;
+  font-size: 22rpx;
+  color: rgba(242, 230, 210, 0.45);
+  margin-bottom: 4rpx;
+}
+
+.sec-head {
+  margin: 16rpx 0 24rpx;
+}
+
+.sec-title {
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.sec-sub {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: rgba(242, 230, 210, 0.55);
+}
+
+.merchant-card {
+  margin-bottom: 24rpx;
+  border-radius: 24rpx;
+  overflow: hidden;
+  border: 1rpx solid rgba(243, 107, 33, 0.28);
+  background: #2a1c14;
+}
+
+.merchant-card-catering {
+  border-color: rgba(20, 184, 212, 0.32);
+  background: #142428;
+}
+
+.merchant-card-other {
+  border-color: rgba(242, 230, 210, 0.12);
+  background: #1f252b;
+}
+
+.brand-visual {
+  height: 336rpx;
+  position: relative;
+}
+
+.brand-visual image {
+  width: 100%;
+  height: 100%;
+}
+
+.brand-wash {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #f36b21 0%, #c45a1c 42%, #7a3010 100%);
+}
+
+.merchant-card-catering .brand-wash {
+  background: linear-gradient(145deg, #2dd4bf 0%, #0f8f9a 45%, #134e4a 100%);
+}
+
+.merchant-card-other .brand-wash {
+  background: linear-gradient(145deg, #4a525a, #2a3138);
+}
+
+.brand-mark {
+  font-size: 104rpx;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: rgba(255, 247, 236, 0.94);
+}
+
+.brand-body {
+  padding: 28rpx 32rpx 32rpx;
+  background: linear-gradient(180deg, rgba(243, 107, 33, 0.16), rgba(42, 28, 20, 0.92));
+}
+
+.merchant-card-catering .brand-body {
+  background: linear-gradient(180deg, rgba(20, 184, 212, 0.16), rgba(20, 36, 40, 0.92));
+}
+
+.merchant-card-other .brand-body {
+  background: #1f252b;
+}
+
+.brand-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.badge {
+  font-size: 22rpx;
+  font-weight: 700;
+  padding: 4rpx 16rpx;
+  border-radius: 12rpx;
+  background: rgba(243, 107, 33, 0.16);
+  color: #f36b21;
+}
+
+.merchant-card-catering .badge {
+  background: rgba(20, 184, 212, 0.14);
+  color: #14b8d4;
+}
+
+.go {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #f36b21;
+}
+
+.merchant-card-catering .go {
+  color: #14b8d4;
+}
+
+.brand-name {
+  margin-top: 12rpx;
+  font-size: 34rpx;
+  font-weight: 700;
+}
+
+.brand-hint {
+  margin-top: 4rpx;
+  font-size: 24rpx;
+  color: rgba(242, 230, 210, 0.55);
+}
+
+.about-text {
+  font-size: 28rpx;
+  line-height: 1.7;
+  color: rgba(242, 230, 210, 0.75);
+  margin-bottom: 24rpx;
+}
+
+.gallery {
+  width: 100%;
+}
+
+.gallery-row {
+  display: flex;
+  flex-direction: row;
+}
+
+.gallery-img {
+  flex-shrink: 0;
+  width: 336rpx;
+  height: 224rpx;
+  margin-right: 16rpx;
+  border-radius: 20rpx;
+  border: 1rpx solid rgba(242, 230, 210, 0.12);
+}
+
+.tip {
+  margin-top: 40rpx;
+  text-align: center;
+  font-size: 24rpx;
+  color: rgba(242, 230, 210, 0.35);
+}
+
+.muted,
+.empty {
+  color: rgba(242, 230, 210, 0.55);
+  padding: 24rpx 0;
+}

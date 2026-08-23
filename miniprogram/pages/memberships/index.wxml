@@ -1,1 +1,47 @@
-<view class="wrap"><view class="title">{{title}}</view><block wx:for="{{items}}" wx:key="id"><view class="card">{{item.name || item.title || ('#' + item.id)}}</view></block></view>
+<top-bar />
+<view class="wrap tab-page">
+  <view class="title">会籍与课包</view>
+  <view class="muted">点击卡片查看详情</view>
+  <view wx:if="{{loading}}" class="muted">加载中…</view>
+  <view wx:elif="{{err}}" class="err">{{err}}</view>
+  <block wx:else>
+    <view class="section">会籍</view>
+    <view
+      wx:for="{{memberships}}"
+      wx:key="id"
+      class="card card-btn"
+      bindtap="goMembership"
+      data-id="{{item.id}}"
+    >
+      <view class="row-main">
+        <view class="name">{{item.title}}</view>
+        <view class="muted tight">{{item.meta}}</view>
+      </view>
+      <view class="row-right">
+        <text class="status {{item.statusClass}}">{{item.statusText}}</text>
+        <text class="go">详情</text>
+      </view>
+    </view>
+    <view wx:if="{{!memberships.length}}" class="empty">暂无会籍</view>
+
+    <view class="section">私教课包</view>
+    <view
+      wx:for="{{packages}}"
+      wx:key="id"
+      class="card card-btn"
+      bindtap="goPackage"
+      data-id="{{item.id}}"
+    >
+      <view class="row-main">
+        <view class="name">{{item.title}}</view>
+        <view class="muted tight">{{item.meta}}</view>
+      </view>
+      <view class="row-right">
+        <text class="status {{item.statusClass}}">{{item.statusText}}</text>
+        <text class="go">详情</text>
+      </view>
+    </view>
+    <view wx:if="{{!packages.length}}" class="empty">暂无课包</view>
+  </block>
+</view>
+<bottom-nav active="/pages/memberships/index" />

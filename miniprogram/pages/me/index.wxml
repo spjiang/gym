@@ -1,4 +1,5 @@
-<view class="wrap me">
+<view class="wrap me tab-page">
+  <view class="back-stores" bindtap="goStores">← 选店</view>
   <view class="site">观野SPACE · 会员中心</view>
 
   <view class="card profile">
@@ -54,3 +55,4 @@
   <button bindtap="goStores">全部门店 / 切换业态</button>
   <button class="ghost" bindtap="logout">退出登录</button>
 </view>
+<bottom-nav active="/pages/me/index" />

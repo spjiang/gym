@@ -1,4 +1,5 @@
-<view class="wrap">
+<top-bar />
+<view class="wrap tab-page">
   <view class="title">团课预约</view>
   <view class="muted">预约前请确认场次时间与取消规则</view>
   <view wx:if="{{err}}" class="muted">{{err}}</view>
@@ -25,3 +26,4 @@
     </view>
   </view>
 </view>
+<bottom-nav active="/pages/classes/index" />

@@ -14,14 +14,27 @@ Page({
     this._tableCode = (options && options.table) || ''
     if (options && options.merchant_id) {
       const mid = Number(options.merchant_id)
-      getApp().globalData.merchantId = mid
+      const app = getApp()
+      app.globalData.merchantId = mid
+      app.globalData.systemMode = 'catering'
       wx.setStorageSync('merchant_id', mid)
+      wx.setStorageSync('system_mode', 'catering')
     }
   },
   async onShow() {
+    const { requireLogin, refreshMemberSession } = require('../../utils/session')
+    const { goStores } = require('../../utils/merchant')
+    if (!requireLogin()) return
+    const app = getApp()
+    if (!app.globalData.merchantId) {
+      goStores()
+      return
+    }
+    app.globalData.systemMode = 'catering'
+    wx.setStorageSync('system_mode', 'catering')
+    await refreshMemberSession()
     const { request, fileUrl } = require('../../utils/api')
     const cart = require('../../utils/cateringCart')
-    const app = getApp()
     const mid = app.globalData.merchantId
     if (!mid) {
       this.setData({ loading: false, err: '请先选择门店' })

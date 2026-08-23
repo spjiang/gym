@@ -1,4 +1,5 @@
-<view class="home">
+<top-bar />
+<view class="home tab-page">
   <view class="hero">
     <image wx:if="{{coverUrl}}" class="hero-cover" src="{{coverUrl}}" mode="aspectFill" />
     <view class="hero-wash"></view>
@@ -30,10 +31,6 @@
       <view class="quick-item" bindtap="go" data-url="/pages/activities/index">
         <view class="quick-name">活动</view>
         <view class="quick-sub">报名参与</view>
-      </view>
-      <view class="quick-item" bindtap="go" data-url="/pages/catering/menu">
-        <view class="quick-name">点餐</view>
-        <view class="quick-sub">扫码下单</view>
       </view>
       <view class="quick-item" bindtap="go" data-url="/pages/coupons/index">
         <view class="quick-name">卡券</view>
@@ -128,3 +125,4 @@
     bind:confirm="onAgreeConfirm"
   />
 </view>
+<bottom-nav active="/pages/home/index" />

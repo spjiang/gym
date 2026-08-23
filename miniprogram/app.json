@@ -1,9 +1,11 @@
 {
   "pages": [
     "pages/login/index",
-    "pages/home/index",
     "pages/stores/index",
+    "pages/home/index",
     "pages/memberships/index",
+    "pages/memberships/detail",
+    "pages/pt-packages/detail",
     "pages/classes/index",
     "pages/classes/detail",
     "pages/activities/index",

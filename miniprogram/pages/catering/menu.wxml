@@ -1,4 +1,5 @@
-<view class="wrap">
+<top-bar />
+<view class="wrap tab-page">
   <view class="title">点餐</view>
   <view wx:if="{{tableLocked && tableNo}}" class="seat">当前桌号 {{tableNo}} · 下单后厨房按此出餐</view>
   <view class="muted" bindtap="goOrders">我的餐饮订单 ›</view>
@@ -26,3 +27,4 @@
     <button size="mini" bindtap="goCheckout">去结算</button>
   </view>
 </view>
+<bottom-nav active="/pages/catering/menu" />

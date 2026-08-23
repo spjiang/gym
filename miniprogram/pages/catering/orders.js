@@ -1,9 +1,19 @@
 Page({
   data: { orders: [], err: '' },
   async onShow() {
+    const { requireLogin, refreshMemberSession } = require('../../utils/session')
+    const { goStores } = require('../../utils/merchant')
+    if (!requireLogin()) return
+    const app = getApp()
+    if (!app.globalData.merchantId) {
+      goStores()
+      return
+    }
+    app.globalData.systemMode = 'catering'
+    wx.setStorageSync('system_mode', 'catering')
+    await refreshMemberSession()
     const { request } = require('../../utils/api')
     const { diningOrderLabel } = require('../../utils/labels')
-    const app = getApp()
     const mid = app.globalData.merchantId
     if (!mid) {
       this.setData({ err: '请先选择门店' })
