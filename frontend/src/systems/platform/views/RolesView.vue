@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import http from '../../../core/api/http'
+import { auditSubsystemLabel } from '../../../core/labels'
 import { useAuthStore } from '../../../core/stores/auth'
 
 type Role = {
@@ -27,7 +29,10 @@ const perms = ref<Perm[]>([])
 const menus = ref<Menu[]>([])
 const merchants = ref<Merchant[]>([])
 const loading = ref(false)
-const drawer = ref(false)
+const grantVisible = ref(false)
+const grantTab = ref<'perms' | 'menus'>('perms')
+const grantSearch = ref('')
+const savingGrants = ref(false)
 const editing = ref<Role | null>(null)
 const grantPerms = ref<string[]>([])
 const grantMenus = ref<string[]>([])
@@ -111,6 +116,33 @@ const menusBySystem = computed(() => {
   return map
 })
 
+function filterGrantItems<T extends { code: string; name: string }>(items: T[]) {
+  const kw = grantSearch.value.trim().toLowerCase()
+  if (!kw) return items
+  return items.filter((item) => item.name.toLowerCase().includes(kw) || item.code.toLowerCase().includes(kw))
+}
+
+const filteredPermsBySystem = computed(() => {
+  const out: Record<string, Perm[]> = {}
+  for (const [sys, list] of Object.entries(permsBySystem.value)) {
+    const filtered = filterGrantItems(list)
+    if (filtered.length) out[sys] = filtered
+  }
+  return out
+})
+
+const filteredMenusBySystem = computed(() => {
+  const out: Record<string, Menu[]> = {}
+  for (const [sys, list] of Object.entries(menusBySystem.value)) {
+    const filtered = filterGrantItems(list)
+    if (filtered.length) out[sys] = filtered
+  }
+  return out
+})
+
+const grantPermCount = computed(() => grantPerms.value.length)
+const grantMenuCount = computed(() => grantMenus.value.length)
+
 async function load() {
   loading.value = true
   try {
@@ -135,22 +167,99 @@ function openGrants(row: Role) {
   editing.value = row
   grantPerms.value = [...row.permission_codes]
   grantMenus.value = [...row.menu_codes]
-  drawer.value = true
+  grantTab.value = 'perms'
+  grantSearch.value = ''
+  grantVisible.value = true
+}
+
+function closeGrants() {
+  grantVisible.value = false
+}
+
+function permCodesInView(sys: string) {
+  return (filteredPermsBySystem.value[sys] || []).map((p) => p.code)
+}
+
+function menuCodesInView(sys: string) {
+  return (filteredMenusBySystem.value[sys] || []).map((m) => m.code)
+}
+
+function selectedCountIn(codes: string[], selected: string[]) {
+  return codes.filter((code) => selected.includes(code)).length
+}
+
+function isPermGroupAll(sys: string) {
+  const codes = permCodesInView(sys)
+  return codes.length > 0 && codes.every((code) => grantPerms.value.includes(code))
+}
+
+function isPermGroupIndeterminate(sys: string) {
+  const codes = permCodesInView(sys)
+  const hit = selectedCountIn(codes, grantPerms.value)
+  return hit > 0 && hit < codes.length
+}
+
+function isMenuGroupAll(sys: string) {
+  const codes = menuCodesInView(sys)
+  return codes.length > 0 && codes.every((code) => grantMenus.value.includes(code))
+}
+
+function isMenuGroupIndeterminate(sys: string) {
+  const codes = menuCodesInView(sys)
+  const hit = selectedCountIn(codes, grantMenus.value)
+  return hit > 0 && hit < codes.length
+}
+
+function togglePermGroup(sys: string, checked: boolean) {
+  const codes = permCodesInView(sys)
+  if (checked) {
+    grantPerms.value = [...new Set([...grantPerms.value, ...codes])]
+    return
+  }
+  grantPerms.value = grantPerms.value.filter((code) => !codes.includes(code))
+}
+
+function toggleMenuGroup(sys: string, checked: boolean) {
+  const codes = menuCodesInView(sys)
+  if (checked) {
+    grantMenus.value = [...new Set([...grantMenus.value, ...codes])]
+    return
+  }
+  grantMenus.value = grantMenus.value.filter((code) => !codes.includes(code))
+}
+
+function selectAllPerms() {
+  grantPerms.value = perms.value.map((p) => p.code)
+}
+
+function selectAllMenus() {
+  grantMenus.value = menus.value.map((m) => m.code)
+}
+
+function clearGrantPerms() {
+  grantPerms.value = []
+}
+
+function clearGrantMenus() {
+  grantMenus.value = []
 }
 
 async function saveGrants() {
   if (!editing.value) return
+  savingGrants.value = true
   try {
     await http.put(`/rbac/roles/${editing.value.id}/grants`, {
       permission_codes: grantPerms.value,
       menu_codes: grantMenus.value,
     })
     ElMessage.success('授权已保存')
-    drawer.value = false
+    grantVisible.value = false
     await load()
     await auth.fetchNavigation()
   } catch (e: unknown) {
     ElMessage.error(e instanceof Error ? e.message : '保存失败')
+  } finally {
+    savingGrants.value = false
   }
 }
 
@@ -260,7 +369,7 @@ onMounted(load)
       </el-table-column>
       <el-table-column label="操作" width="180">
         <template #default="{ row }">
-          <el-button size="small" @click="openGrants(row)">授权</el-button>
+          <el-button size="small" type="primary" plain @click="openGrants(row)">授权</el-button>
           <el-button size="small" :disabled="row.is_system" @click="removeRole(row)">删除</el-button>
         </template>
       </el-table-column>
@@ -277,23 +386,133 @@ onMounted(load)
       />
     </div>
 
-    <el-drawer v-model="drawer" :title="editing ? `授权 · ${editing.name}` : '授权'" size="520px">
-      <h4>权限点</h4>
-      <div v-for="(list, sys) in permsBySystem" :key="sys" class="group">
-        <div class="group-title">{{ sys }}</div>
-        <el-checkbox-group v-model="grantPerms">
-          <el-checkbox v-for="p in list" :key="p.code" :label="p.code">{{ p.name }} ({{ p.code }})</el-checkbox>
-        </el-checkbox-group>
+    <el-dialog
+      v-model="grantVisible"
+      class="grant-dialog"
+      width="760px"
+      top="4vh"
+      destroy-on-close
+      :close-on-click-modal="false"
+    >
+      <template #header>
+        <div class="grant-dialog__title">
+          <span>角色授权</span>
+          <span v-if="editing" class="grant-dialog__role">{{ editing.name }}</span>
+        </div>
+      </template>
+
+      <div class="grant-dialog__inner">
+        <div v-if="editing" class="grant-summary">
+          <div class="grant-summary__main">
+            <div class="grant-summary__name">{{ editing.name }}</div>
+            <div class="grant-summary__meta">
+              <span class="grant-tag">{{ editing.code }}</span>
+              <span>{{ scopeLabel(editing) }}</span>
+              <span v-if="editing.is_system">系统内置</span>
+            </div>
+          </div>
+          <div class="grant-summary__stats">
+            <span class="grant-pill">权限 {{ grantPermCount }}</span>
+            <span class="grant-pill">菜单 {{ grantMenuCount }}</span>
+          </div>
+        </div>
+
+        <div class="grant-toolbar">
+          <el-input
+            v-model="grantSearch"
+            clearable
+            placeholder="搜索权限或菜单名称、编码"
+            :prefix-icon="Search"
+          />
+          <div class="grant-toolbar__actions">
+            <el-button v-if="grantTab === 'perms'" link type="primary" @click="selectAllPerms">全选权限</el-button>
+            <el-button v-else link type="primary" @click="selectAllMenus">全选菜单</el-button>
+            <el-button v-if="grantTab === 'perms'" link @click="clearGrantPerms">清空权限</el-button>
+            <el-button v-else link @click="clearGrantMenus">清空菜单</el-button>
+          </div>
+        </div>
+
+        <el-tabs v-model="grantTab" class="grant-tabs">
+        <el-tab-pane name="perms">
+          <template #label>
+            <span>权限点</span>
+            <el-tag size="small" round type="info" class="grant-tab-tag">{{ grantPermCount }}</el-tag>
+          </template>
+          <div class="grant-body">
+            <el-alert
+              v-if="grantPerms.includes('*')"
+              title="已勾选超管通配权限 *，该角色拥有全部操作权限"
+              type="warning"
+              :closable="false"
+              show-icon
+              class="grant-alert"
+            />
+            <div v-for="(list, sys) in filteredPermsBySystem" :key="sys" class="grant-group">
+              <div class="grant-group__head">
+                <el-checkbox
+                  :model-value="isPermGroupAll(sys)"
+                  :indeterminate="isPermGroupIndeterminate(sys)"
+                  @change="(checked: boolean) => togglePermGroup(sys, checked)"
+                >
+                  <span class="grant-group__title">{{ auditSubsystemLabel(sys) }}</span>
+                  <span class="grant-group__count">
+                    {{ selectedCountIn(permCodesInView(sys), grantPerms) }}/{{ list.length }}
+                  </span>
+                </el-checkbox>
+              </div>
+              <el-checkbox-group v-model="grantPerms" class="grant-grid">
+                <el-checkbox v-for="p in list" :key="p.code" :label="p.code" class="grant-item">
+                  <span class="grant-item__name">{{ p.name }}</span>
+                  <span class="grant-item__code">{{ p.code }}</span>
+                </el-checkbox>
+              </el-checkbox-group>
+            </div>
+            <el-empty v-if="!Object.keys(filteredPermsBySystem).length" description="无匹配权限" />
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane name="menus">
+          <template #label>
+            <span>可见菜单</span>
+            <el-tag size="small" round type="info" class="grant-tab-tag">{{ grantMenuCount }}</el-tag>
+          </template>
+          <div class="grant-body">
+            <div v-for="(list, sys) in filteredMenusBySystem" :key="'m' + sys" class="grant-group">
+              <div class="grant-group__head">
+                <el-checkbox
+                  :model-value="isMenuGroupAll(sys)"
+                  :indeterminate="isMenuGroupIndeterminate(sys)"
+                  @change="(checked: boolean) => toggleMenuGroup(sys, checked)"
+                >
+                  <span class="grant-group__title">{{ auditSubsystemLabel(sys) }}</span>
+                  <span class="grant-group__count">
+                    {{ selectedCountIn(menuCodesInView(sys), grantMenus) }}/{{ list.length }}
+                  </span>
+                </el-checkbox>
+              </div>
+              <el-checkbox-group v-model="grantMenus" class="grant-grid">
+                <el-checkbox v-for="m in list" :key="m.code" :label="m.code" class="grant-item">
+                  <span class="grant-item__name">{{ m.name }}</span>
+                  <span class="grant-item__code">{{ m.path }}</span>
+                </el-checkbox>
+              </el-checkbox-group>
+            </div>
+            <el-empty v-if="!Object.keys(filteredMenusBySystem).length" description="无匹配菜单" />
+          </div>
+        </el-tab-pane>
+      </el-tabs>
       </div>
-      <h4>可见菜单</h4>
-      <div v-for="(list, sys) in menusBySystem" :key="'m' + sys" class="group">
-        <div class="group-title">{{ sys }}</div>
-        <el-checkbox-group v-model="grantMenus">
-          <el-checkbox v-for="m in list" :key="m.code" :label="m.code">{{ m.name }}</el-checkbox>
-        </el-checkbox-group>
-      </div>
-      <el-button type="primary" style="margin-top: 16px" @click="saveGrants">保存授权</el-button>
-    </el-drawer>
+
+      <template #footer>
+        <div class="grant-footer">
+          <span class="grant-footer__hint">保存后立即影响该角色下所有员工的菜单与操作权限</span>
+          <div class="grant-footer__actions">
+            <el-button @click="closeGrants">取消</el-button>
+            <el-button type="primary" :loading="savingGrants" @click="saveGrants">保存授权</el-button>
+          </div>
+        </div>
+      </template>
+    </el-dialog>
 
     <el-dialog v-model="createVisible" title="新建角色" width="480px" destroy-on-close>
       <el-form label-width="90px">
@@ -338,15 +557,255 @@ onMounted(load)
   display: flex;
   justify-content: flex-end;
 }
-.group {
-  margin-bottom: 14px;
-}
-.group-title {
-  font-weight: 600;
-  margin-bottom: 6px;
-}
-.el-checkbox {
+
+.grant-dialog__title {
   display: flex;
-  margin: 4px 0;
+  align-items: center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--admin-ink);
+}
+
+.grant-dialog__role {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--admin-accent-soft);
+  color: var(--admin-accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.grant-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #fffaf3 0%, #f7f2ea 100%);
+}
+
+.grant-summary__name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--admin-ink);
+}
+
+.grant-summary__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--admin-ink-muted);
+}
+
+.grant-tag {
+  padding: 1px 8px;
+  border-radius: 6px;
+  background: rgba(23, 27, 31, 0.06);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.grant-summary__stats {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.grant-pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid var(--el-border-color-lighter);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--admin-accent);
+  white-space: nowrap;
+}
+
+.grant-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+
+.grant-toolbar .el-input {
+  flex: 1;
+}
+
+.grant-toolbar__actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.grant-tabs {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.grant-tabs :deep(.el-tabs__header) {
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+
+.grant-tabs :deep(.el-tabs__content) {
+  flex: 1;
+  min-height: 0;
+}
+
+.grant-tabs :deep(.el-tab-pane) {
+  height: 100%;
+}
+
+.grant-tab-tag {
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.grant-body {
+  height: 100%;
+  max-height: 100%;
+  overflow: auto;
+  padding: 10px 2px 4px;
+}
+
+.grant-alert {
+  margin-bottom: 12px;
+}
+
+.grant-group {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.grant-group__head {
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--el-border-color-lighter);
+}
+
+.grant-group__title {
+  font-weight: 700;
+  color: var(--admin-ink);
+}
+
+.grant-group__count {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--admin-ink-muted);
+}
+
+.grant-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+}
+
+.grant-item {
+  display: flex;
+  align-items: flex-start;
+  margin: 0;
+  height: auto;
+  white-space: normal;
+}
+
+.grant-item :deep(.el-checkbox__label) {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.grant-item__name {
+  font-size: 13px;
+  color: var(--admin-ink);
+}
+
+.grant-item__code {
+  font-size: 11px;
+  color: var(--admin-ink-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.grant-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.grant-footer__hint {
+  font-size: 12px;
+  color: var(--admin-ink-muted);
+}
+
+.grant-footer__actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 860px) {
+  .grant-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .grant-summary {
+    flex-direction: column;
+  }
+
+  .grant-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .grant-footer {
+    flex-direction: column;
+    align-items: flex-end;
+  }
+}
+</style>
+
+<style>
+.grant-dialog.el-dialog {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 48px);
+  margin-bottom: 24px;
+}
+
+.grant-dialog .el-dialog__header,
+.grant-dialog .el-dialog__footer {
+  flex-shrink: 0;
+}
+
+.grant-dialog .el-dialog__body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding-top: 8px;
+  padding-bottom: 12px;
+}
+
+.grant-dialog__inner {
+  display: flex;
+  flex-direction: column;
+  height: min(62vh, calc(100vh - 280px));
+  min-height: 280px;
 }
 </style>
