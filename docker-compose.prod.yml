@@ -8,7 +8,7 @@
 #   m.guanyespace.com     → 主机:8081
 #   www.guanyespace.com   → 主机:8082
 #   api.guanyespace.com   → 主机:18000
-#   file.guanyespace.com  → 主机:8900（MinIO public 桶，控制台不对外）
+#   file.guanyespace.com  → 主机:8900（file-gateway → MinIO public；控制台仅 127.0.0.1:9001）
 
 services:
   postgres:
@@ -61,7 +61,6 @@ services:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-gymminio}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-change-me-minio-secret}
     ports:
-      - "127.0.0.1:8900:9000"
       - "127.0.0.1:9001:9001"
     volumes:
       - minio_data:/data
@@ -71,6 +70,17 @@ services:
       timeout: 5s
       retries: 20
       start_period: 10s
+
+  file-gateway:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "8900:80"
+    volumes:
+      - ./deploy/file-gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      minio:
+        condition: service_healthy
 
   frontend:
     build:
