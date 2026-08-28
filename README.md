@@ -61,32 +61,32 @@ docker compose up --build -d
 
 ## 生产部署（Docker Compose）
 
-服务器：`123.56.26.229` · 代码目录：`/home/gym/gym`
+服务器：`123.56.26.229` · 代码目录：`/home/spjiangl/gym`
 
 ```bash
 ssh -i ~/.ssh/id_rsa_wq_park root@123.56.26.229
-cd /home/gym/gym
+cd /home/spjiangl/gym
 git pull origin master
 ```
 
 准备 `.env`（可参考 `.env.production.example`），并配置主机 Nginx 将 HTTPS 反代到本机端口（见 `docs/域名与线上接入设计.md`）。
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 | 域名（示例） | 反代到 |
 |---|---|
-| `admin.guanyespace.com` | `127.0.0.1:8080`（frontend） |
-| `m.guanyespace.com` | `127.0.0.1:8081`（member-web） |
-| `api.guanyespace.com` | `127.0.0.1:18000`（backend） |
+| `admin.guanyespace.com` | `123.56.26.229:8080`（frontend） |
+| `m.guanyespace.com` | `123.56.26.229:8081`（member-web） |
+| `api.guanyespace.com` | `123.56.26.229:18000`（backend） |
 
-`docker-compose.prod.yml` 会：关闭 uvicorn 热重载、去掉源码挂载、端口仅绑定本机、服务自动重启。
+`docker-compose.prod.yml` 会：关闭 uvicorn 热重载、去掉源码挂载、端口监听 `0.0.0.0`、服务自动重启。
 
 可选启用 RabbitMQ：
 
 ```bash
-docker compose --profile mq -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker compose --profile mq -f docker-compose.yml up -d
 ```
 
 （本地开发仍用 `docker compose --profile mq up -d`。）

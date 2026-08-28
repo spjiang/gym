@@ -1,35 +1,76 @@
-# 生产环境覆盖配置（与 docker-compose.yml 叠加使用）
+# 生产环境 Compose（独立文件，勿与 docker-compose.yml 叠加）
 #
-#   cd /home/gym/gym
-#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#   cd /home/spjiangl/gym
+#   docker compose -f docker-compose.prod.yml up -d --build
 #
-# 配合主机 Nginx（443）反代：
-#   admin.guanyespace.com → 127.0.0.1:8080
-#   m.guanyespace.com     → 127.0.0.1:8081
-#   api.guanyespace.com   → 127.0.0.1:18000
+# 配合运维 Nginx（443）反代（监听 0.0.0.0，与开发 compose 端口一致）：
+#   admin.guanyespace.com → 主机:8080
+#   m.guanyespace.com     → 主机:8081
+#   api.guanyespace.com   → 主机:18000
 
 services:
   postgres:
-    restart: unless-stopped
-    # 生产不暴露数据库端口；运维需直连时可改为 127.0.0.1:35432:5432
-    ports: !override []
-
-  backend:
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
+      POSTGRES_USER: ${POSTGRES_USER:-gym}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gym_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-gym}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gym} -d ${POSTGRES_DB:-gym}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-gym}:${POSTGRES_PASSWORD:-gym_dev_password}@postgres:5432/${POSTGRES_DB:-gym}
+      UPLOAD_DIR: /app/uploads
       UVICORN_RELOAD: "0"
-    ports: !override
-      - "127.0.0.1:18000:8000"
-    # 仅保留上传卷，不挂载源码（使用镜像内代码）
-    volumes: !override
+    ports:
+      - "18000:8000"
+    volumes:
       - backend_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
 
   frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: /api/v1
     restart: unless-stopped
-    ports: !override
-      - "127.0.0.1:8080:80"
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
 
   member-web:
+    build:
+      context: ./member-web
+      args:
+        VITE_API_BASE_URL: /api/v1
     restart: unless-stopped
-    ports: !override
-      - "127.0.0.1:8081:80"
+    ports:
+      - "8081:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  backend_uploads:
