@@ -3,12 +3,12 @@
 #   cd /home/spjiangl/gym
 #   docker compose -f docker-compose.prod.yml up -d --build
 #
-# 配合运维 Nginx（443）反代（监听 0.0.0.0，与开发 compose 端口一致）：
+# 配合运维 Nginx / ALB（443）反代：
 #   admin.guanyespace.com → 主机:8080
 #   m.guanyespace.com     → 主机:8081
-#   www.guanyespace.com   → 主机:8082
 #   api.guanyespace.com   → 主机:18000
 #   file.guanyespace.com  → 主机:8900（file-gateway → MinIO public；控制台仅 127.0.0.1:9001）
+# 官网 website-web 仅 127.0.0.1:8082，自用，不走 www 公网。
 
 services:
   postgres:
@@ -113,7 +113,7 @@ services:
         VITE_API_BASE_URL: /api/v1
     restart: unless-stopped
     ports:
-      - "8082:80"
+      - "127.0.0.1:8082:80"
     depends_on:
       backend:
         condition: service_healthy
