@@ -1,0 +1,35 @@
+# 生产环境覆盖配置（与 docker-compose.yml 叠加使用）
+#
+#   cd /home/gym/gym
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# 配合主机 Nginx（443）反代：
+#   admin.guanyespace.com → 127.0.0.1:8080
+#   m.guanyespace.com     → 127.0.0.1:8081
+#   api.guanyespace.com   → 127.0.0.1:18000
+
+services:
+  postgres:
+    restart: unless-stopped
+    # 生产不暴露数据库端口；运维需直连时可改为 127.0.0.1:35432:5432
+    ports: !override []
+
+  backend:
+    restart: unless-stopped
+    environment:
+      UVICORN_RELOAD: "0"
+    ports: !override
+      - "127.0.0.1:18000:8000"
+    # 仅保留上传卷，不挂载源码（使用镜像内代码）
+    volumes: !override
+      - backend_uploads:/app/uploads
+
+  frontend:
+    restart: unless-stopped
+    ports: !override
+      - "127.0.0.1:8080:80"
+
+  member-web:
+    restart: unless-stopped
+    ports: !override
+      - "127.0.0.1:8081:80"
