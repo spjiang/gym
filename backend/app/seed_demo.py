@@ -1250,5 +1250,6 @@ def seed_demo_catalog(
 
     from app.seed_website import seed_official_website
 
+    # 已有官网配置不覆盖；仅补缺失的演示文章
     seed_official_website(db, site=site)
     db.flush()

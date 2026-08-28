@@ -9,7 +9,13 @@ from app.core.config import get_settings
 OBJECT_NAME_RE = re.compile(r"^[0-9a-f]{32}\.(jpg|png|webp|pdf)$")
 IMAGE_OBJECT_RE = re.compile(r"^[0-9a-f]{32}\.(jpg|png|webp)$")
 LEGACY_IMAGE_RE = re.compile(r"^/api/v1/files/([0-9a-f]{32}\.(jpg|png|webp))$")
-LEGACY_IMAGE_IN_TEXT = re.compile(r"/api/v1/files/[0-9a-f]{32}\.(?:jpg|png|webp)")
+MEDIA_IMAGE_RE = re.compile(r"^/media/([0-9a-f]{32}\.(jpg|png|webp))$")
+# 库内旧前缀（file 域证书未覆盖时浏览器打不开）一律改成当前 FILE_PUBLIC_BASE_URL
+IMAGE_URL_IN_TEXT = re.compile(
+    r"(?:https?://file\.guanyespace\.com|https?://localhost:8900/public|"
+    r"https?://127\.0\.0\.1:8900/public|/api/v1/files|/media)"
+    r"/([0-9a-f]{32}\.(?:jpg|png|webp))"
+)
 IMAGE_EXTS = {".jpg", ".png", ".webp"}
 
 
@@ -22,11 +28,11 @@ def public_object_url(filename: str) -> str:
 
 
 def is_stored_image_url(url: str) -> bool:
-    """系统上传图：旧相对路径或当前环境的公开绝对地址。"""
+    """系统上传图：相对路径 /media、旧 /api/v1/files/、或当前公开前缀。"""
     text = (url or "").strip()
     if not text:
         return False
-    if LEGACY_IMAGE_RE.match(text):
+    if LEGACY_IMAGE_RE.match(text) or MEDIA_IMAGE_RE.match(text):
         return True
     prefix = file_public_base() + "/"
     if text.startswith(prefix) and IMAGE_OBJECT_RE.match(text[len(prefix) :]):
@@ -39,10 +45,9 @@ def rewrite_legacy_image_text(text: str) -> str:
     base = file_public_base()
 
     def _repl(match: re.Match[str]) -> str:
-        name = match.group(0).rsplit("/", 1)[-1]
-        return f"{base}/{name}"
+        return f"{base}/{match.group(1)}"
 
-    return LEGACY_IMAGE_IN_TEXT.sub(_repl, text)
+    return IMAGE_URL_IN_TEXT.sub(_repl, text)
 
 
 def rewrite_stored_value(value: object) -> object:

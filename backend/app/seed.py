@@ -107,6 +107,8 @@ ROLE_DEFS = [
             "audit:read",
             "ai:read",
             "ai:manage",
+            "website:read",
+            "website:manage",
         ],
     },
     {

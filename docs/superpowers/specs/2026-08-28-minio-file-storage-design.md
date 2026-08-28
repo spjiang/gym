@@ -65,7 +65,7 @@
 生产 docker-compose.prod.yml
   minio :9000 → 主机 8900（建议 127.0.0.1:8900，不直接对公网）
   控制台 127.0.0.1:9001
-  主机 Nginx：file.guanyespace.com:443 → 127.0.0.1:8900/public/
+  主机 Nginx：file.guanyespace.com:443 → 127.0.0.1:8900/（file-gateway 已转到 public 桶，勿再拼 /public/）
   FILE_PUBLIC_BASE_URL=https://file.guanyespace.com
 ```
 
@@ -171,7 +171,7 @@ Compose `minio`：官方镜像；数据卷独立（本机 `minio_data` / 生产 
 `docs/域名与线上接入设计.md` 增补：
 
 - DNS：`file` A 记录 → `123.56.26.229`
-- Nginx：`file.guanyespace.com` → `http://127.0.0.1:8900/public/`（或运维实际可达的主机 IP:8900）；证书覆盖 `file`
+- Nginx：`file.guanyespace.com` → `http://127.0.0.1:8900/`（file-gateway 已转到 public 桶；或运维实际可达的主机 IP:8900）；证书覆盖 `file`
 - HTTP 80 跳转名单加上 `file.guanyespace.com`
 - 微信 downloadFile 合法域名增加 `https://file.guanyespace.com`（request 仍走 `api.`）
 

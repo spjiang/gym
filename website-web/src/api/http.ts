@@ -1,4 +1,14 @@
-import axios from 'axios'
+import axios, { AxiosError } from 'axios'
+
+export class ApiError extends Error {
+  status: number | null
+
+  constructor(message: string, status: number | null = null) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
 
 const http = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
@@ -7,9 +17,9 @@ const http = axios.create({
 
 http.interceptors.response.use(
   (resp) => resp,
-  (error) => {
+  (error: AxiosError<{ message?: string }>) => {
     const message = error.response?.data?.message || error.message || '请求失败'
-    return Promise.reject(new Error(message))
+    return Promise.reject(new ApiError(message, error.response?.status ?? null))
   },
 )
 

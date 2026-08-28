@@ -6,6 +6,7 @@ from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.config import get_settings
 from app.core import db as db_module
@@ -55,11 +56,13 @@ def _assign_if_changed(row: object, attr: str) -> bool:
     if rewritten == current:
         return False
     setattr(row, attr, rewritten)
+    if attr.endswith("_json"):
+        flag_modified(row, attr)
     return True
 
 
 def rewrite_database_urls(db: Session) -> int:
-    """把仍指向 /api/v1/files/ 的图片字段改成当前 FILE_PUBLIC_BASE_URL。"""
+    """把仍指向旧前缀的图片字段改成当前 FILE_PUBLIC_BASE_URL。"""
     changed = 0
     for row in db.scalars(select(Site)).all():
         for attr in ("cover_image_url", "banner_image_urls", "gallery_image_urls"):

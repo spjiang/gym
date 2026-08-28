@@ -148,3 +148,67 @@ def test_invalid_image_and_missing_channel(client: TestClient, admin_headers: di
     assert missing.status_code == 400
     invalid = client.get("/api/v1/public/website/articles?channel=blog")
     assert invalid.status_code == 400
+
+
+def test_javascript_cta_and_member_url_rejected(client: TestClient, admin_headers: dict):
+    bad_cta = client.put(
+        "/api/v1/website/settings",
+        headers=admin_headers,
+        json={"brands": {"fit": {"cta_label": "点我", "cta_url": "javascript:alert(1)"}}},
+    )
+    assert bad_cta.status_code == 400, bad_cta.text
+
+    bad_member = client.put(
+        "/api/v1/website/settings",
+        headers=admin_headers,
+        json={"site": {"member_web_url": "javascript:alert(1)"}},
+    )
+    assert bad_member.status_code == 400, bad_member.text
+
+
+def test_partial_settings_put_does_not_clear_other_fields(client: TestClient, admin_headers: dict):
+    uploaded = client.post(
+        "/api/v1/uploads",
+        headers=admin_headers,
+        files={"file": ("cover.png", _png_bytes(), "image/png")},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    url = uploaded.json()["url"]
+
+    primed = client.put(
+        "/api/v1/website/settings",
+        headers=admin_headers,
+        json={
+            "site": {"display_name": "观野SPACE", "logo_url": url},
+            "home": {"headline": "原标题", "hero_image_url": url},
+            "brands": {
+                "space": {"title": "观野SPACE", "cover_image_url": url},
+                "fit": {"title": "观野FIT", "cover_image_url": url},
+                "bar": {"title": "观野BAR", "cover_image_url": url},
+            },
+        },
+    )
+    assert primed.status_code == 200, primed.text
+
+    home_only = client.put(
+        "/api/v1/website/settings",
+        headers=admin_headers,
+        json={"home": {"headline": "只改标题"}},
+    )
+    assert home_only.status_code == 200, home_only.text
+    assert home_only.json()["home"]["headline"] == "只改标题"
+    assert home_only.json()["home"]["hero_image_url"] == url
+    assert home_only.json()["site"]["logo_url"] == url
+
+    fit_only = client.put(
+        "/api/v1/website/settings",
+        headers=admin_headers,
+        json={"brands": {"fit": {"title": "只改FIT"}}},
+    )
+    assert fit_only.status_code == 200, fit_only.text
+    brands = fit_only.json()["brands"]
+    assert brands["fit"]["title"] == "只改FIT"
+    assert brands["fit"]["cover_image_url"] == url
+    assert brands["space"]["title"] == "观野SPACE"
+    assert brands["space"]["cover_image_url"] == url
+    assert brands["bar"]["title"] == "观野BAR"

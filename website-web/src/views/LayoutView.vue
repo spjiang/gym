@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
-import { RouterLink, RouterView, useRoute } from 'vue-router'
+import { RouterLink, RouterView } from 'vue-router'
 import BrandMark from '../components/BrandMark.vue'
 import { copyrightLine } from '../copyright'
 import { useSiteStore } from '../stores/site'
 
 const site = useSiteStore()
-const route = useRoute()
 
 onMounted(() => {
   void site.load()
@@ -39,7 +38,7 @@ onMounted(() => {
       </a>
     </header>
 
-    <p v-if="site.error && route.name === 'home'" class="fail">暂时无法加载</p>
+    <p v-if="site.error" class="fail">暂时无法加载</p>
     <RouterView />
 
     <footer class="foot">

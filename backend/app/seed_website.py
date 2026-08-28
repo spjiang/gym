@@ -150,19 +150,20 @@ def _upsert_article(
             WebsiteArticle.title == title,
         )
     )
-    if row is None:
-        row = WebsiteArticle(
-            site_id=site_id,
-            channel=channel,
-            title=title,
-            status="draft",
-        )
-        db.add(row)
-    row.summary = summary
-    row.cover_image_url = cover
-    row.body = body
-    row.contact_hint = contact_hint
-    row.sort_order = sort_order
+    if row is not None:
+        return
+    row = WebsiteArticle(
+        site_id=site_id,
+        channel=channel,
+        title=title,
+        status="draft",
+        summary=summary,
+        cover_image_url=cover,
+        body=body,
+        contact_hint=contact_hint,
+        sort_order=sort_order,
+    )
+    db.add(row)
     mark_published(row)
 
 
@@ -227,79 +228,81 @@ BAR_BODY = """观野BAR 是训练之后的夜生活：简餐、特调、驻场�
 
 
 def seed_official_website(db: Session, *, site: Site) -> None:
-    """写入/刷新官网演示内容。MinIO 不可达时抛错，由调用方决定。"""
+    """补齐官网演示内容。已有配置或同标题文章不覆盖，避免重启冲掉运营修改。"""
     ensure_buckets()
     urls = {stem: upload_scene(stem) for stem in SCENES}
     member_url = (get_settings().member_web_public_url or "http://localhost:8081").rstrip("/")
     row = get_or_create_settings(db, site.id, staff_id=None)
-    row.site_json = {
-        "display_name": "观野SPACE",
-        "seo_title": "观野SPACE · 回龙观公园 · 健身 / 清吧 / 社区",
-        "seo_description": "回龙观公园综合场地：观野FIT 训练、观野BAR 夜生活、SPACE 社区客厅。办卡约课点餐请到会员中心。",
-        "logo_url": urls["logo"],
-        "member_web_url": member_url,
-        "miniprogram_hint": "微信搜索「观野SPACE」进入会员小程序",
-        "footer_note": f"回龙观公园综合经营场地 · 版权所有 {COPYRIGHT_OWNER}",
-        "icp_beian": None,
-    }
-    row.home_json = {
-        "hero_image_url": urls["hero"],
-        "headline": "在回龙观，遇见运动与夜色",
-        "subheadline": "SPORTS · EVENTS · COMMUNITY",
-        "show_space": True,
-        "show_fit": True,
-        "show_bar": True,
-    }
-    row.brands_json = {
-        "space": {
-            "title": "观野SPACE",
-            "cover_image_url": urls["space"],
-            "body": SPACE_BODY.strip(),
-            "gallery_image_urls": [
-                urls["space"],
-                urls["space_g1"],
-                urls["space_g2"],
-                urls["space_g3"],
-                urls["hero"],
-                urls["fit"],
-            ],
-            "cta_label": "进入会员中心",
-            "cta_url": member_url,
-        },
-        "fit": {
-            "title": "观野FIT",
-            "cover_image_url": urls["fit"],
-            "body": FIT_BODY.strip(),
-            "gallery_image_urls": [
-                urls["fit"],
-                urls["fit_g1"],
-                urls["fit_g2"],
-                urls["fit_g3"],
-                urls["space"],
-                urls["jobs"],
-            ],
-            "cta_label": "去办卡 / 约课",
-            "cta_url": member_url,
-        },
-        "bar": {
-            "title": "观野BAR",
-            "cover_image_url": urls["bar"],
-            "body": BAR_BODY.strip(),
-            "gallery_image_urls": [
-                urls["bar"],
-                urls["bar_g1"],
-                urls["bar_g2"],
-                urls["bar_g3"],
-                urls["hero"],
-                urls["partners"],
-            ],
-            "cta_label": "查看菜单",
-            "cta_url": member_url,
-        },
-    }
-    flag_modified(row, "site_json")
-    flag_modified(row, "home_json")
-    flag_modified(row, "brands_json")
+    already = bool(row.home_json or row.site_json or row.brands_json)
+    if not already:
+        row.site_json = {
+            "display_name": "观野SPACE",
+            "seo_title": "观野SPACE · 回龙观公园 · 健身 / 清吧 / 社区",
+            "seo_description": "回龙观公园综合场地：观野FIT 训练、观野BAR 夜生活、SPACE 社区客厅。办卡约课点餐请到会员中心。",
+            "logo_url": urls["logo"],
+            "member_web_url": member_url,
+            "miniprogram_hint": "微信搜索「观野SPACE」进入会员小程序",
+            "footer_note": f"回龙观公园综合经营场地 · 版权所有 {COPYRIGHT_OWNER}",
+            "icp_beian": None,
+        }
+        row.home_json = {
+            "hero_image_url": urls["hero"],
+            "headline": "在回龙观，遇见运动与夜色",
+            "subheadline": "SPORTS · EVENTS · COMMUNITY",
+            "show_space": True,
+            "show_fit": True,
+            "show_bar": True,
+        }
+        row.brands_json = {
+            "space": {
+                "title": "观野SPACE",
+                "cover_image_url": urls["space"],
+                "body": SPACE_BODY.strip(),
+                "gallery_image_urls": [
+                    urls["space"],
+                    urls["space_g1"],
+                    urls["space_g2"],
+                    urls["space_g3"],
+                    urls["hero"],
+                    urls["fit"],
+                ],
+                "cta_label": "进入会员中心",
+                "cta_url": member_url,
+            },
+            "fit": {
+                "title": "观野FIT",
+                "cover_image_url": urls["fit"],
+                "body": FIT_BODY.strip(),
+                "gallery_image_urls": [
+                    urls["fit"],
+                    urls["fit_g1"],
+                    urls["fit_g2"],
+                    urls["fit_g3"],
+                    urls["space"],
+                    urls["jobs"],
+                ],
+                "cta_label": "去办卡 / 约课",
+                "cta_url": member_url,
+            },
+            "bar": {
+                "title": "观野BAR",
+                "cover_image_url": urls["bar"],
+                "body": BAR_BODY.strip(),
+                "gallery_image_urls": [
+                    urls["bar"],
+                    urls["bar_g1"],
+                    urls["bar_g2"],
+                    urls["bar_g3"],
+                    urls["hero"],
+                    urls["partners"],
+                ],
+                "cta_label": "查看菜单",
+                "cta_url": member_url,
+            },
+        }
+        flag_modified(row, "site_json")
+        flag_modified(row, "home_json")
+        flag_modified(row, "brands_json")
 
     articles = [
         dict(

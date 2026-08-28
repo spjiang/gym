@@ -2,7 +2,7 @@
 import { onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import MarkdownView from '../components/MarkdownView.vue'
-import http from '../api/http'
+import http, { ApiError } from '../api/http'
 import type { ArticleChannel, ArticleDetail } from '../api/types'
 
 const props = defineProps<{ channel: ArticleChannel }>()
@@ -14,6 +14,7 @@ const BACK: Record<ArticleChannel, { to: string; label: string }> = {
 const route = useRoute()
 const article = ref<ArticleDetail | null>(null)
 const missing = ref(false)
+const fail = ref(false)
 
 function formatDay(iso: string | null) {
   if (!iso) return ''
@@ -24,6 +25,7 @@ function formatDay(iso: string | null) {
 
 async function load() {
   missing.value = false
+  fail.value = false
   article.value = null
   const id = Number(route.params.id)
   if (!Number.isFinite(id)) {
@@ -37,8 +39,12 @@ async function load() {
       return
     }
     article.value = data
-  } catch {
-    missing.value = true
+  } catch (e: unknown) {
+    if (e instanceof ApiError && e.status === 404) {
+      missing.value = true
+      return
+    }
+    fail.value = true
   }
 }
 
@@ -49,6 +55,7 @@ watch(() => [route.params.id, props.channel], load)
 <template>
   <article class="page">
     <p v-if="missing" class="muted">内容不存在或已下架</p>
+    <p v-else-if="fail" class="muted">暂时无法加载</p>
     <template v-else-if="article">
       <RouterLink class="back" :to="BACK[channel].to">{{ BACK[channel].label }}</RouterLink>
       <h1>{{ article.title }}</h1>

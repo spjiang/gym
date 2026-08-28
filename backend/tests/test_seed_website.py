@@ -41,3 +41,47 @@ def test_seed_official_website_fills_public_pages(client):
     detail = client.get(f"/api/v1/public/website/articles/{news.json()['items'][0]['id']}")
     assert detail.status_code == 200
     assert detail.json()["cover_image_url"]
+
+
+def test_second_seed_does_not_overwrite_staff_edits_or_republish(client, admin_headers):
+    from sqlalchemy import select
+
+    from app.core import db as db_module
+    from app.seed_website import seed_official_website
+    from app.systems.platform.models.org import Site
+    from app.systems.platform.models.website import WebsiteArticle
+
+    db = db_module.SessionLocal()
+    try:
+        site = db.scalars(select(Site)).first()
+        assert site is not None
+        seed_official_website(db, site=site)
+        db.commit()
+    finally:
+        db.close()
+
+    saved = client.put(
+        "/api/v1/website/settings",
+        headers=admin_headers,
+        json={"home": {"headline": "运营改过的标题"}},
+    )
+    assert saved.status_code == 200, saved.text
+
+    listed = client.get("/api/v1/website/articles?channel=jobs", headers=admin_headers)
+    art_id = listed.json()["items"][0]["id"]
+    archived = client.post(f"/api/v1/website/articles/{art_id}/archive", headers=admin_headers)
+    assert archived.status_code == 200, archived.text
+
+    db = db_module.SessionLocal()
+    try:
+        site = db.scalars(select(Site)).first()
+        seed_official_website(db, site=site)
+        db.commit()
+        row = db.get(WebsiteArticle, art_id)
+        assert row is not None
+        assert row.status == "archived"
+    finally:
+        db.close()
+
+    home = client.get("/api/v1/public/website")
+    assert home.json()["home"]["headline"] == "运营改过的标题"

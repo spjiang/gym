@@ -36,3 +36,12 @@ def test_rewrite_legacy_in_text_and_json_leaves_pdf():
         "files": [f"{base}/{img}"],
         "note": f"/api/v1/files/{pdf}",
     }
+
+
+def test_rewrite_file_domain_and_media_path_to_current_base():
+    get_settings.cache_clear()
+    name = f"{'a' * 32}.jpg"
+    base = get_settings().file_public_base_url.rstrip("/")
+    assert is_stored_image_url(f"/media/{name}")
+    assert rewrite_legacy_image_text(f"https://file.guanyespace.com/{name}") == f"{base}/{name}"
+    assert rewrite_legacy_image_text(f"/media/{name}") == f"{base}/{name}"
