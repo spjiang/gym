@@ -1,5 +1,6 @@
 """FastAPI 应用入口。"""
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -7,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.audit_middleware import AuditMiddleware
 from app.core.config import get_settings
+from app.core.member_web_url import is_local_member_web_url
 from app.core.errors import register_exception_handlers
 from app.systems.catering.api import catering, member_catering
 from app.systems.gym.api import (
@@ -43,19 +45,30 @@ from app.systems.platform.api import (
     promoters,
     promotion,
     reports,
+    public_website,
     site_profile,
     sms,
+    website,
     staff,
     uploads,
     visits,
 )
 from app.systems.platform.api import navigation as platform_navigation
 from app.systems.platform.api import rbac as platform_rbac
+from app.core.file_migrate import migrate_local_uploads
+from app.core.object_store import ensure_buckets
 from app.systems.platform.services.sync_queue import ensure_worker
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    settings = get_settings()
+    if settings.app_env == "production" and is_local_member_web_url():
+        logging.getLogger(__name__).warning(
+            "MEMBER_WEB_PUBLIC_URL 仍为本地地址，推广码/获客/桌码等外链将不可用于线上"
+        )
+    ensure_buckets()
+    migrate_local_uploads()
     ensure_worker()
     yield
 
@@ -111,6 +124,8 @@ def create_app() -> FastAPI:
     app.include_router(platform_navigation.router, prefix="/api/v1")
     app.include_router(payment_settings.router, prefix="/api/v1")
     app.include_router(site_profile.router, prefix="/api/v1")
+    app.include_router(website.router, prefix="/api/v1")
+    app.include_router(public_website.router, prefix="/api/v1")
     app.include_router(agreements.router, prefix="/api/v1")
     app.include_router(sms.router, prefix="/api/v1")
     app.include_router(uploads.router, prefix="/api/v1")

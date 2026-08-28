@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import http from '../api/http'
 import { pathForMerchant, useAuthStore, type MemberMerchant } from '../stores/auth'
+import { copyrightLine } from '../copyright'
 
 type AccessEvent = {
   id: number
@@ -187,6 +188,7 @@ onMounted(async () => {
     <button class="me__card me__link" type="button" @click="goStores">全部门店 / 切换业态</button>
 
     <button class="mw-btn mw-btn--ghost mw-btn--block me__logout" type="button" @click="logout">退出登录</button>
+    <p class="me__copy">{{ copyrightLine() }}</p>
   </section>
 </template>
 
@@ -431,5 +433,12 @@ onMounted(async () => {
 
 .me__logout {
   margin-top: var(--mw-space-6);
+}
+
+.me__copy {
+  margin-top: var(--mw-space-4);
+  text-align: center;
+  font-size: 12px;
+  color: var(--mw-text-tertiary);
 }
 </style>

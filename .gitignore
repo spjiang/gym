@@ -27,6 +27,8 @@ frontend/dist/
 frontend/.vite/
 member-web/dist/
 member-web/.vite/
+website-web/dist/
+website-web/.vite/
 *.log
 npm-debug.log*
 

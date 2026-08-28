@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import app.models  # noqa: F401 — 注册 Order 等表，满足 StockMovement.order_id 外键解析
+from app.core.copyright import COPYRIGHT_OWNER, copyright_notice
 from app.systems.platform.models.access import AccessDevice, AccessPoint
 from app.systems.gym.models.coupon import ApplicableTo, CouponTemplate, DiscountType, MemberCoupon, MemberCouponStatus
 from app.systems.gym.models.activity import Activity, ActivityStatus
@@ -1164,6 +1165,7 @@ def seed_demo_catalog(
                 db.flush()
 
     def _ensure_agreement(merchant: Merchant, scene: str, title: str, content: str) -> None:
+        body = f"{content.strip()}\n\n{copyright_notice()}"
         row = db.scalar(
             select(LegalAgreement).where(
                 LegalAgreement.merchant_id == merchant.id,
@@ -1177,10 +1179,14 @@ def seed_demo_catalog(
                     merchant_id=merchant.id,
                     scene=scene,
                     title=title,
-                    content=content,
+                    content=body,
                     is_enabled=True,
                 )
             )
+            db.flush()
+            return
+        if COPYRIGHT_OWNER not in (row.content or ""):
+            row.content = body
             db.flush()
 
     _ensure_agreement(
@@ -1241,3 +1247,8 @@ def seed_demo_catalog(
             )
         )
         db.flush()
+
+    from app.seed_website import seed_official_website
+
+    seed_official_website(db, site=site)
+    db.flush()

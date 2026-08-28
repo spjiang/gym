@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.deps import RequestContext, get_current_context
-from app.core.config import get_settings
+from app.core.member_web_url import member_h5_path_url
 from app.core.domain.subsystems import (
     DEFAULT_SYSTEMS_BY_MERCHANT_TYPE,
     SYSTEM_CATALOG,
@@ -17,6 +17,7 @@ from app.core.domain.subsystems import (
     replace_merchant_subsystems,
 )
 from app.core.errors import AppError
+from app.core.upload_urls import is_stored_image_url
 from app.systems.platform.models.org import Merchant, MerchantContact, MerchantStatus, MerchantType
 from app.core.schemas.common import (
     MerchantContactIn,
@@ -34,7 +35,6 @@ from app.systems.platform.services.merchant_lease import lease_metrics
 
 CONTACT_KINDS = {"primary", "emergency", "other"}
 CREDIT_CODE_RE = re.compile(r"^[0-9A-Z]{18}$")
-STORE_IMAGE_RE = re.compile(r"^/api/v1/files/[0-9a-f]{32}\.(jpg|png|webp)$")
 MAX_GALLERY_IMAGES = 9
 PROFILE_FIELDS = (
     "legal_name",
@@ -91,7 +91,7 @@ def _normalize_store_image(url: str | None, *, field: str) -> str | None:
     text = _opt(url)
     if text is None:
         return None
-    if not STORE_IMAGE_RE.match(text):
+    if not is_stored_image_url(text):
         raise AppError("invalid_image", f"{field}地址无效，请通过系统上传", status_code=400)
     return text
 
@@ -441,8 +441,7 @@ def merchant_acquisition_link(
     row = db.get(Merchant, mid)
     if row is None or row.site_id != ctx.site_id:
         raise AppError("not_found", "商户不存在", status_code=404)
-    base = get_settings().member_web_public_url.rstrip("/")
-    return {"merchant_id": mid, "url": f"{base}/login?merchant_id={mid}"}
+    return {"merchant_id": mid, "url": member_h5_path_url("/login", query={"merchant_id": mid})}
 
 
 @router.get("/merchants/{merchant_id}/order-types")

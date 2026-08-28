@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     member_web_public_url: str = Field(default="http://localhost:8081", alias="MEMBER_WEB_PUBLIC_URL")
     upload_dir: str = Field(default="uploads", alias="UPLOAD_DIR")
     upload_max_bytes: int = Field(default=8 * 1024 * 1024, alias="UPLOAD_MAX_BYTES")
+    minio_endpoint: str = Field(default="127.0.0.1:8900", alias="MINIO_ENDPOINT")
+    minio_access_key: str = Field(default="gymminio", alias="MINIO_ACCESS_KEY")
+    minio_secret_key: str = Field(default="change-me-minio-secret", alias="MINIO_SECRET_KEY")
+    minio_use_ssl: bool = Field(default=False, alias="MINIO_USE_SSL")
+    file_public_base_url: str = Field(default="http://localhost:8900/public", alias="FILE_PUBLIC_BASE_URL")
 
     seed_admin_username: str = Field(default="admin", alias="SEED_ADMIN_USERNAME")
     seed_admin_password: str = Field(default="Admin@123456", alias="SEED_ADMIN_PASSWORD")

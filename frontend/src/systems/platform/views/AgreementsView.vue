@@ -163,7 +163,7 @@ onMounted(refresh)
     <div class="toolbar">
       <div>
         <h3>协议管理</h3>
-        <p class="hint">按商户和场景各维护一份。会员购买会籍、私教、报名活动或点餐前必须勾选已启用的协议。</p>
+        <p class="hint">按商户和场景各维护一份。会员购买前必须勾选。协议正文需写明运营与版权主体为北京晨曦坤泽科技有限公司。</p>
       </div>
       <el-button type="primary" @click="openCreate">新建协议</el-button>
     </div>
@@ -236,7 +236,12 @@ onMounted(refresh)
           <el-input v-model="form.title" maxlength="128" show-word-limit />
         </el-form-item>
         <el-form-item label="正文" prop="content">
-          <el-input v-model="form.content" type="textarea" :rows="12" placeholder="会员购买时将展示全文，可粘贴简单 HTML" />
+          <el-input
+            v-model="form.content"
+            type="textarea"
+            :rows="12"
+            placeholder="会员购买时将展示全文。请写明运营与版权主体为北京晨曦坤泽科技有限公司。"
+          />
         </el-form-item>
         <el-form-item label="启用">
           <el-switch v-model="form.is_enabled" />

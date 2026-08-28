@@ -18,6 +18,10 @@ import RolesView from '../systems/platform/views/RolesView.vue'
 import PaymentSettingsView from '../systems/platform/views/PaymentSettingsView.vue'
 import SiteProfileView from '../systems/platform/views/SiteProfileView.vue'
 import SmsSettingsView from '../systems/platform/views/SmsSettingsView.vue'
+import WebsiteSettingsView from '../systems/platform/views/WebsiteSettingsView.vue'
+import WebsiteHomeView from '../systems/platform/views/WebsiteHomeView.vue'
+import WebsiteBrandsView from '../systems/platform/views/WebsiteBrandsView.vue'
+import WebsiteArticlesView from '../systems/platform/views/WebsiteArticlesView.vue'
 import AgreementsView from '../systems/platform/views/AgreementsView.vue'
 import OpsWorkbenchView from '../systems/platform/views/OpsWorkbenchView.vue'
 import PaymentReconcileView from '../systems/platform/views/PaymentReconcileView.vue'
@@ -99,6 +103,42 @@ const children: RouteRecordRaw[] = [
     name: 'platform-agreements',
     component: AgreementsView,
     meta: { system: 'platform', anyOf: ['org:read', 'org:write', '*'] },
+  },
+  {
+    path: 'platform/website/settings',
+    name: 'platform-website-settings',
+    component: WebsiteSettingsView,
+    meta: { system: 'platform', anyOf: ['website:read', 'website:manage', '*'] },
+  },
+  {
+    path: 'platform/website/home',
+    name: 'platform-website-home',
+    component: WebsiteHomeView,
+    meta: { system: 'platform', anyOf: ['website:read', 'website:manage', '*'] },
+  },
+  {
+    path: 'platform/website/brands',
+    name: 'platform-website-brands',
+    component: WebsiteBrandsView,
+    meta: { system: 'platform', anyOf: ['website:read', 'website:manage', '*'] },
+  },
+  {
+    path: 'platform/website/news',
+    name: 'platform-website-news',
+    component: WebsiteArticlesView,
+    meta: { system: 'platform', anyOf: ['website:read', 'website:manage', '*'], channel: 'news' },
+  },
+  {
+    path: 'platform/website/jobs',
+    name: 'platform-website-jobs',
+    component: WebsiteArticlesView,
+    meta: { system: 'platform', anyOf: ['website:read', 'website:manage', '*'], channel: 'jobs' },
+  },
+  {
+    path: 'platform/website/partners',
+    name: 'platform-website-partners',
+    component: WebsiteArticlesView,
+    meta: { system: 'platform', anyOf: ['website:read', 'website:manage', '*'], channel: 'partners' },
   },
   {
     path: 'platform/commission-settings',

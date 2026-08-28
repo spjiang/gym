@@ -65,6 +65,18 @@ export const PLATFORM_MENU_GROUPS: { key: string; label: string; paths: string[]
     label: '基础配置',
     paths: ['/platform/site-profile', '/platform/subsystems', '/platform/payment-settings', '/platform/sms-settings', '/platform/agreements', '/platform/commission-settings'],
   },
+  {
+    key: 'website',
+    label: '官网管理',
+    paths: [
+      '/platform/website/settings',
+      '/platform/website/home',
+      '/platform/website/brands',
+      '/platform/website/news',
+      '/platform/website/jobs',
+      '/platform/website/partners',
+    ],
+  },
 ]
 
 export type MenuItem = {

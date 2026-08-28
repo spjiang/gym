@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from fastapi.testclient import TestClient
 
 from app.systems.platform.services.merchant_lease import lease_metrics
+from tests.conftest import fetch_public_url
 
 
 def _png_bytes() -> bytes:
@@ -187,25 +188,20 @@ def test_site_admin_saves_lease_period(client: TestClient, admin_headers: dict):
     assert row["lease_days_remaining"] == 265
 
 
-def test_upload_license_image(client: TestClient, admin_headers: dict, tmp_path, monkeypatch):
+def test_upload_license_image(client: TestClient, admin_headers: dict):
     from app.core.config import get_settings
 
-    monkeypatch.setenv("UPLOAD_DIR", str(tmp_path))
-    get_settings.cache_clear()
-    try:
-        resp = client.post(
-            "/api/v1/uploads",
-            headers=admin_headers,
-            files={"file": ("license.png", _png_bytes(), "image/png")},
-        )
-        assert resp.status_code == 200, resp.text
-        url = resp.json()["url"]
-        assert url.startswith("/api/v1/files/")
-        fetched = client.get(url)
-        assert fetched.status_code == 200
-        assert fetched.content.startswith(b"\x89PNG")
-    finally:
-        get_settings.cache_clear()
+    resp = client.post(
+        "/api/v1/uploads",
+        headers=admin_headers,
+        files={"file": ("license.png", _png_bytes(), "image/png")},
+    )
+    assert resp.status_code == 200, resp.text
+    url = resp.json()["url"]
+    assert url.startswith(get_settings().file_public_base_url.rstrip("/") + "/")
+    fetched = fetch_public_url(url)
+    assert fetched.status_code == 200
+    assert fetched.content.startswith(b"\x89PNG")
 
 
 def test_merchant_showcase_images(client: TestClient, admin_headers: dict, tmp_path, monkeypatch):

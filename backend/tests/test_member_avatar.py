@@ -3,6 +3,7 @@
 from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
+from tests.conftest import fetch_public_url
 
 
 def _png_bytes() -> bytes:
@@ -47,8 +48,8 @@ def test_member_uploads_and_clears_avatar(client: TestClient, admin_headers: dic
         )
         assert uploaded.status_code == 200, uploaded.text
         url = uploaded.json()["avatar_url"]
-        assert url.startswith("/api/v1/files/")
-        fetched = client.get(url)
+        assert url.startswith(get_settings().file_public_base_url.rstrip("/") + "/")
+        fetched = fetch_public_url(url)
         assert fetched.status_code == 200
         assert fetched.content.startswith(b"\x89PNG")
 

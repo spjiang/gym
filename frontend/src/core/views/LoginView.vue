@@ -4,6 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../stores/auth'
 import BrandMark from '../components/BrandMark.vue'
+import { copyrightLine, COPYRIGHT_OWNER } from '../copyright'
 
 type DemoAccount = {
   role: string
@@ -164,7 +165,7 @@ async function onSubmit() {
         <BrandMark variant="space" show-tagline />
         <h1 class="system-name">综合管理平台</h1>
         <p class="lead">观野SPACE · 观野FIT · 观野BAR<br />会籍与门禁、课程与酒吧，同归一处。</p>
-        <p class="hero-foot">以秩序承载运营，以权限守护边界</p>
+        <p class="hero-foot">{{ COPYRIGHT_OWNER }} · 版权所有</p>
       </section>
 
       <section class="form-panel">
@@ -257,6 +258,7 @@ async function onSubmit() {
         </el-form>
       </section>
     </div>
+    <p class="page-copy">{{ copyrightLine() }}</p>
   </div>
 </template>
 
@@ -265,8 +267,10 @@ async function onSubmit() {
 
 .login-page {
   min-height: 100vh;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   padding: 28px 16px;
   position: relative;
   overflow: hidden;
@@ -314,6 +318,15 @@ async function onSubmit() {
   background-size: 56px 56px;
   mask-image: radial-gradient(ellipse at 50% 40%, black 20%, transparent 72%);
   opacity: 0.7;
+}
+
+.page-copy {
+  position: relative;
+  z-index: 1;
+  margin: 18px 0 0;
+  text-align: center;
+  font-size: 0.75rem;
+  color: rgba(197, 203, 198, 0.55);
 }
 
 .login-shell {

@@ -1,16 +1,17 @@
-"""商户证照等附件上传。"""
+"""商户证照等附件上传。写入 MinIO，图片返回公开 URL。"""
 
-from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import RedirectResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.core.config import get_settings
 from app.core.deps import RequestContext, bearer_scheme, get_current_context
 from app.core.errors import AppError
+from app.core.object_store import PRIVATE_BUCKET, PUBLIC_BUCKET, get_bytes, object_exists, put_bytes
 from app.core.security import decode_access_token
+from app.core.upload_urls import IMAGE_EXTS, OBJECT_NAME_RE, public_object_url
 
 router = APIRouter(tags=["uploads"])
 
@@ -26,13 +27,12 @@ _MAGIC = {
     ".webp": (b"RIFF",),
     ".pdf": (b"%PDF",),
 }
-_IMAGE_EXTS = {".jpg", ".png", ".webp"}
-
-
-def upload_root() -> Path:
-    root = Path(get_settings().upload_dir)
-    root.mkdir(parents=True, exist_ok=True)
-    return root.resolve()
+_MIME = {
+    ".jpg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".pdf": "application/pdf",
+}
 
 
 def _ext_from_magic(data: bytes) -> str | None:
@@ -55,7 +55,7 @@ def _matches_magic(ext: str, data: bytes) -> bool:
 
 
 def persist_upload(data: bytes, content_type: str | None, *, images_only: bool = False) -> dict:
-    """校验并落盘上传文件，返回可访问 URL。"""
+    """校验并写入 MinIO，返回可访问 URL。"""
     settings = get_settings()
     if not data:
         raise AppError("invalid_file", "文件为空", status_code=400)
@@ -65,7 +65,7 @@ def persist_upload(data: bytes, content_type: str | None, *, images_only: bool =
     mime = (content_type or "").split(";")[0].strip().lower()
     ext = _ALLOWED.get(mime) or _ext_from_magic(data)
     if images_only:
-        if ext not in _IMAGE_EXTS:
+        if ext not in IMAGE_EXTS:
             raise AppError("invalid_file", "头像仅支持 JPG / PNG / WEBP", status_code=400)
     elif ext is None:
         raise AppError("invalid_file", "仅支持 JPG / PNG / WEBP / PDF", status_code=400)
@@ -76,9 +76,11 @@ def persist_upload(data: bytes, content_type: str | None, *, images_only: bool =
         raise AppError("invalid_file", "文件内容与类型不符", status_code=400)
 
     name = f"{uuid4().hex}{ext}"
-    dest = upload_root() / name
-    dest.write_bytes(data)
-    return {"url": f"/api/v1/files/{name}", "filename": name, "content_type": mime or f"image/{ext[1:]}"}
+    bucket = PUBLIC_BUCKET if ext in IMAGE_EXTS else PRIVATE_BUCKET
+    stored_type = mime if mime in _ALLOWED else _MIME[ext]
+    put_bytes(bucket, name, data, stored_type)
+    url = public_object_url(name) if ext in IMAGE_EXTS else f"/api/v1/files/{name}"
+    return {"url": url, "filename": name, "content_type": stored_type}
 
 
 async def save_upload_file(file: UploadFile, *, images_only: bool = False) -> dict:
@@ -96,6 +98,7 @@ def _assert_can_upload(ctx: RequestContext) -> None:
             "coach:manage",
             "activity:manage",
             "catering:manage",
+            "website:manage",
         )
     ):
         return
@@ -117,17 +120,20 @@ def get_uploaded_file(
     filename: str,
     creds: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ):
-    """读取已上传附件。图片可公开（H5/小程序 <img>），PDF 需登录。"""
-    if "/" in filename or "\\" in filename or filename.startswith("."):
+    """读取已上传附件。图片 302 到公开域；PDF 需登录后从私有桶读取。"""
+    if not OBJECT_NAME_RE.fullmatch(filename):
         raise AppError("not_found", "文件不存在", status_code=404)
-    path = upload_root() / filename
-    if not path.is_file():
+    ext = f".{filename.rsplit('.', 1)[-1].lower()}"
+    if ext in IMAGE_EXTS:
+        if not object_exists(PUBLIC_BUCKET, filename):
+            raise AppError("not_found", "文件不存在", status_code=404)
+        return RedirectResponse(public_object_url(filename), status_code=302)
+    if creds is None or not creds.credentials:
+        raise AppError("unauthorized", "证照文件需登录后查看", status_code=401)
+    try:
+        decode_access_token(creds.credentials)
+    except ValueError as exc:
+        raise AppError("unauthorized", "令牌无效", status_code=401) from exc
+    if not object_exists(PRIVATE_BUCKET, filename):
         raise AppError("not_found", "文件不存在", status_code=404)
-    if path.suffix.lower() not in _IMAGE_EXTS:
-        if creds is None or not creds.credentials:
-            raise AppError("unauthorized", "证照文件需登录后查看", status_code=401)
-        try:
-            decode_access_token(creds.credentials)
-        except ValueError as exc:
-            raise AppError("unauthorized", "令牌无效", status_code=401) from exc
-    return FileResponse(path)
+    return Response(content=get_bytes(PRIVATE_BUCKET, filename), media_type="application/pdf")

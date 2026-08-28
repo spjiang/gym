@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
+from app.core.member_web_url import build_promoter_link
 from app.core.db import get_db
 from app.core.deps import RequestContext, get_current_context
 from app.core.errors import AppError
@@ -138,15 +138,11 @@ _member_in_scope = assert_member_in_scope
 def _promoter_link(promoter: PromoterCode | None) -> str | None:
     if promoter is None:
         return None
-    base = get_settings().member_web_public_url.rstrip("/")
-    path = (promoter.landing_path or "/login").strip()
-    if not path.startswith("/"):
-        path = f"/{path}"
-    sep = "&" if "?" in path else "?"
-    url = f"{base}{path}{sep}promoter={promoter.code}"
-    if promoter.merchant_id is not None:
-        url = f"{url}&merchant_id={promoter.merchant_id}"
-    return url
+    return build_promoter_link(
+        code=promoter.code,
+        landing_path=promoter.landing_path,
+        merchant_id=promoter.merchant_id,
+    )
 
 
 def _day_bounds(date_from: date, date_to: date) -> tuple[datetime, datetime]:

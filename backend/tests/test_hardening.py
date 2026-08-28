@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.systems.catering.api.member_catering import assign_pickup_code
 from tests.test_agreements import enable_agreement
+from tests.conftest import fetch_public_url
 
 
 def _gym_id(client: TestClient, headers: dict) -> int:
@@ -270,7 +271,10 @@ def test_pdf_requires_login_image_is_public(client: TestClient, admin_headers: d
             files={"file": ("a.png", png, "image/png")},
         )
         assert img.status_code == 200, img.text
-        assert client.get(img.json()["url"]).status_code == 200
+        img_url = img.json()["url"]
+        filename = img.json()["filename"]
+        assert client.get(f"/api/v1/files/{filename}", follow_redirects=False).status_code == 302
+        assert fetch_public_url(img_url).status_code == 200
 
         doc = client.post(
             "/api/v1/uploads",

@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import http from '../api/http'
 import { pathForMerchant, useAuthStore } from '../stores/auth'
 import BrandMark from '../components/BrandMark.vue'
+import { copyrightLine, COPYRIGHT_OWNER } from '../copyright'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -124,6 +125,7 @@ async function login() {
         <template v-if="merchantId">扫码加入门店 · 登录后自动关联本店</template>
         <template v-else>验证码可自动开通；已设密码的会员也可直接登录</template>
       </p>
+      <p class="login__owner">由{{ COPYRIGHT_OWNER }}运营</p>
       <p v-if="promoterName" class="login__promoter">
         来自「{{ promoterName }}」推荐 · 验证码注册后自动绑定
       </p>
@@ -201,6 +203,7 @@ async function login() {
         {{ logging ? '登录中…' : '登录' }}
       </button>
     </form>
+    <p class="login__copy">{{ copyrightLine() }}</p>
   </div>
 </template>
 
@@ -230,6 +233,18 @@ async function login() {
   font-size: 14px;
   color: var(--mw-text-secondary);
   max-width: 28em;
+}
+
+.login__owner,
+.login__copy {
+  margin: var(--mw-space-2) 0 0;
+  font-size: 12px;
+  color: var(--mw-text-tertiary);
+}
+
+.login__copy {
+  margin-top: var(--mw-space-6);
+  text-align: center;
 }
 
 .login__promoter {

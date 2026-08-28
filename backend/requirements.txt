@@ -11,5 +11,6 @@ httpx>=0.28.0
 email-validator>=2.2.0
 python-multipart>=0.0.12
 openpyxl>=3.1.5
+minio>=7.2.0
 pytest>=8.3.0
 cryptography>=43.0.0

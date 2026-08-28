@@ -7,7 +7,7 @@ import secrets
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
+from app.core.member_web_url import member_h5_path_url
 from app.core.errors import AppError
 from app.systems.catering.models.catering import CateringTable
 
@@ -25,8 +25,7 @@ def generate_table_code(db: Session) -> str:
 
 def dining_order_url(*, merchant_id: int, code: str) -> str:
     """会员 H5 点餐落地页：未登录会带 merchant_id 走登录并回跳。"""
-    base = get_settings().member_web_public_url.rstrip("/")
-    return f"{base}/m/{merchant_id}/catering?table={code}"
+    return member_h5_path_url(f"/m/{merchant_id}/catering", query={"table": code})
 
 
 def get_active_table(db: Session, *, merchant_id: int, code: str) -> CateringTable:

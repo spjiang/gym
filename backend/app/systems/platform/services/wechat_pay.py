@@ -13,6 +13,7 @@ import httpx
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
+from app.core.config import get_settings
 from app.core.errors import AppError
 from app.systems.platform.services.payment_settings import (
     EffectivePaymentSettings,
@@ -100,7 +101,7 @@ def create_wechat_prepay(
                 provider_ref=f"wx-dryrun-{out_trade_no}",
                 prepay_id=None,
                 jsapi_params=None,
-                mweb_url=f"{(return_url or cfg.h5_return_url or 'http://localhost:8081').rstrip('/')}/pay/dry-run?out_trade_no={out_trade_no}",
+                mweb_url=f"{(return_url or cfg.h5_return_url or get_settings().member_web_public_url).rstrip('/')}/pay/dry-run?out_trade_no={out_trade_no}",
                 dry_run=True,
             )
         # dry_run JSAPI：不要求真实私钥也可联调

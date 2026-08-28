@@ -15,6 +15,28 @@ os.environ["ONLINE_PAYMENT_MODE"] = "unconfigured"
 os.environ["SEED_ADMIN_USERNAME"] = "admin"
 os.environ["SEED_ADMIN_PASSWORD"] = "Admin@123456"
 os.environ["SEED_DEMO"] = "false"
+os.environ["MINIO_ENDPOINT"] = "127.0.0.1:8900"
+os.environ["MINIO_ACCESS_KEY"] = "gymminio"
+os.environ["MINIO_SECRET_KEY"] = "change-me-minio-secret"
+os.environ["MINIO_USE_SSL"] = "false"
+os.environ["FILE_PUBLIC_BASE_URL"] = "http://localhost:8900/public"
+
+
+def _require_minio() -> None:
+    import socket
+
+    try:
+        with socket.create_connection(("127.0.0.1", 8900), timeout=2):
+            return
+    except OSError as exc:
+        raise RuntimeError(
+            "pytest 需要本机 MinIO：在仓库根目录执行 docker compose up -d minio"
+        ) from exc
+
+
+_require_minio()
+
+import httpx
 
 import app.models  # noqa: F401
 from app.core import db as db_module
@@ -24,6 +46,11 @@ from app.main import create_app
 from app.seed import run_seed
 
 get_settings.cache_clear()
+
+
+def fetch_public_url(url: str):
+    """读公开桶对象，不走系统代理（本机 Clash 等会把 localhost:8900 打成 502）。"""
+    return httpx.get(url, timeout=5, trust_env=False)
 
 
 @pytest.fixture()

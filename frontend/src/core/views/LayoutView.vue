@@ -40,6 +40,7 @@ import {
 import { useOpsStore } from '../stores/ops'
 import { brandLabelForSystem, brandVariantForSystem } from '../brand'
 import BrandMark from '../components/BrandMark.vue'
+import { copyrightLine } from '../copyright'
 import http from '../api/http'
 
 const auth = useAuthStore()
@@ -163,6 +164,12 @@ function menuIcon(path: string): Component {
     '/platform/ai/llm-accounts': Setting,
     '/platform/ai/analysis': DataAnalysis,
     '/platform/ai/analysis-logs': List,
+    '/platform/website/settings': Monitor,
+    '/platform/website/home': Monitor,
+    '/platform/website/brands': Monitor,
+    '/platform/website/news': Document,
+    '/platform/website/jobs': Document,
+    '/platform/website/partners': Document,
     '/catering/categories': Collection,
     '/catering/menu': Food,
     '/catering/tables': Grid,
@@ -183,6 +190,7 @@ function menuIcon(path: string): Component {
   if (path.includes('commission')) return TrendCharts
   if (path.startsWith('/retail')) return Goods
   if (path.startsWith('/equipment')) return Setting
+  if (path.startsWith('/platform/website')) return Monitor
   if (path.startsWith('/platform/promotion') || path.startsWith('/rebate') || path.startsWith('/payout')) return Share
   return Collection
 }
@@ -201,6 +209,7 @@ function groupIcon(key: string): Component {
     rbac: Lock,
     devops: Tools,
     base: Setting,
+    website: Monitor,
     membership: CreditCard,
     group: Calendar,
     pt: User,
@@ -380,6 +389,7 @@ function logout() {
           </el-menu-item>
         </el-menu>
       </template>
+      <p v-show="!asideCollapsed" class="aside-copy">{{ copyrightLine() }}</p>
     </el-aside>
 
     <el-container class="workspace">
@@ -427,6 +437,7 @@ function logout() {
         <div class="main-panel" :class="{ 'main-panel--portal': isPortal }">
           <router-view />
         </div>
+        <p class="page-copy">{{ copyrightLine() }}</p>
       </el-main>
     </el-container>
   </el-container>
@@ -446,6 +457,8 @@ function logout() {
   overflow-x: hidden;
   overflow-y: auto;
   transition: width 0.22s ease;
+  display: flex;
+  flex-direction: column;
 }
 
 .aside--collapsed :deep(.brand-mark .word),
@@ -833,6 +846,21 @@ function logout() {
   background: transparent;
   border: none;
   box-shadow: none;
+}
+
+.aside-copy {
+  margin: auto 16px 20px;
+  padding-top: 16px;
+  font-size: 0.68rem;
+  line-height: 1.5;
+  color: rgba(197, 203, 198, 0.45);
+}
+
+.page-copy {
+  margin: 16px 4px 0;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--admin-ink-muted);
 }
 
 @keyframes panel-in {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import http from '../api/http'
+import { copyrightNotice } from '../copyright'
 
 type MemberAgreement = { id: number; title: string; content: string }
 
@@ -88,6 +89,7 @@ watch(
             <button type="button" class="link" @click.prevent="fullOpen = true">《{{ agreement.title }}》</button>
           </span>
         </label>
+        <p class="copy">{{ copyrightNotice() }}</p>
         <button class="mw-btn mw-btn--block" type="button" :disabled="!agreed" @click="submit">
           {{ confirmLabel || '确认支付' }}
         </button>
@@ -101,6 +103,7 @@ watch(
           <button type="button" class="sheet__close" @click="fullOpen = false">关闭</button>
         </div>
         <div class="body" v-html="agreement.content" />
+        <p class="copy">{{ copyrightNotice() }}</p>
       </div>
     </div>
   </div>
@@ -197,5 +200,11 @@ watch(
 }
 .body :deep(p) {
   margin: 0 0 10px;
+}
+.copy {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--mw-text-tertiary);
 }
 </style>

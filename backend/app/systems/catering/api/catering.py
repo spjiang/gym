@@ -1,6 +1,5 @@
 """餐饮管理：菜单维护 + 点单收款闭环。"""
 
-import re
 from collections import defaultdict
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
@@ -15,6 +14,7 @@ from app.core.db import get_db
 from app.core.deps import RequestContext, get_current_context
 from app.core.domain.subsystems import assert_merchant_has_system
 from app.core.errors import AppError
+from app.core.upload_urls import is_stored_image_url
 from app.core.schemas.paging import PageOut, paginate
 from app.systems.catering.models.catering import CateringMenuCategory, CateringMenuItem, CateringOrderItem, CateringTable
 from app.systems.catering.services.kitchen import DiningStatus
@@ -28,8 +28,6 @@ from app.systems.platform.services.order_pricing import price_order
 
 router = APIRouter(prefix="/catering", tags=["catering"])
 
-_MENU_IMAGE_RE = re.compile(r"^/api/v1/files/[0-9a-f]{32}\.(jpg|png|webp)$")
-
 
 def _blank(value: str | None) -> str | None:
     text = (value or "").strip()
@@ -40,7 +38,7 @@ def _normalize_menu_image(url: str | None) -> str | None:
     text = _blank(url)
     if text is None:
         return None
-    if not _MENU_IMAGE_RE.match(text):
+    if not is_stored_image_url(text):
         raise AppError("invalid_image", "菜品图片地址无效，请通过系统上传", status_code=400)
     return text
 

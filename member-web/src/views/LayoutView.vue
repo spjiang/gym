@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
+import { copyrightLine } from '../copyright'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
@@ -76,6 +77,7 @@ function isTabOn(to: string) {
 
     <main class="content">
       <RouterView />
+      <p class="shell__copy">{{ copyrightLine() }}</p>
     </main>
 
     <nav class="tabbar" aria-label="底部导航">
@@ -171,6 +173,13 @@ function isTabOn(to: string) {
 
 .content {
   padding: var(--mw-space-4);
+}
+
+.shell__copy {
+  margin: 24px 0 8px;
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--mw-text-tertiary);
 }
 
 .tabbar {

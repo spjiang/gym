@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -13,10 +12,11 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.deps import RequestContext, get_current_context
-from app.core.config import get_settings
+from app.core.member_web_url import member_h5_path_url
 from app.core.domain.member_brief import load_member_briefs
 from app.core.domain.subsystems import assert_merchant_has_system
 from app.core.errors import AppError
+from app.core.upload_urls import is_stored_image_url
 from app.core.schemas.common import MemberBrief, OrderOut
 from app.core.schemas.paging import PageOut, paginate
 from app.systems.gym.models.activity import (
@@ -40,14 +40,12 @@ from app.systems.platform.services.notifications import write_notification
 
 router = APIRouter(tags=["activity"])
 
-_COVER_URL_RE = re.compile(r"^/api/v1/files/[0-9a-f]{32}\.(jpg|png|webp)$")
-
 
 def _normalize_cover_url(url: str | None) -> str | None:
     text = (url or "").strip() or None
     if text is None:
         return None
-    if not _COVER_URL_RE.match(text):
+    if not is_stored_image_url(text):
         raise AppError("invalid_image", "活动海报地址无效，请通过系统上传", status_code=400)
     return text
 
@@ -266,10 +264,9 @@ def activity_share_link(
     if activity is None:
         raise AppError("not_found", "活动不存在", status_code=404)
     ctx.resolve_merchant_id(activity.merchant_id)
-    base = get_settings().member_web_public_url.rstrip("/")
     return {
         "activity_id": activity.id,
-        "url": f"{base}/m/{activity.merchant_id}/gym/activities/{activity.id}",
+        "url": member_h5_path_url(f"/m/{activity.merchant_id}/gym/activities/{activity.id}"),
     }
 
 

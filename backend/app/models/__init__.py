@@ -25,6 +25,7 @@ from app.systems.platform.models.rebate import (
 from app.systems.platform.models.rbac_catalog import MenuDef, PermissionDef, RoleMenu, RolePermission, Subsystem
 from app.systems.platform.models.sms import SiteSmsSettings, SmsTemplate
 from app.systems.platform.models.visit import VisitPass
+from app.systems.platform.models.website import WebsiteArticle, WebsiteSettings
 from app.systems.gym.models.activity import Activity, ActivityRegistration
 from app.systems.gym.models.appointment import PtAppointment
 from app.systems.gym.models.commission import (
@@ -135,6 +136,8 @@ __all__ = [
     "EquipmentRepairTicket",
     "SalesRep",
     "VisitPass",
+    "WebsiteSettings",
+    "WebsiteArticle",
     "SiteSmsSettings",
     "SmsTemplate",
     "Notification",

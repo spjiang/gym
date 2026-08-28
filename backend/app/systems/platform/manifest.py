@@ -29,6 +29,8 @@ SYSTEM = {
         {"code": "audit:read", "name": "查看操作日志"},
         {"code": "ai:read", "name": "AI 分析"},
         {"code": "ai:manage", "name": "AI 配置管理"},
+        {"code": "website:read", "name": "查看官网"},
+        {"code": "website:manage", "name": "官网管理"},
     ],
     "menus": [
         {
@@ -226,6 +228,48 @@ SYSTEM = {
             "name": "分析日志",
             "required_any": ["ai:read", "ai:manage", "*"],
             "sort_order": 65,
+        },
+        {
+            "code": "platform.website_settings",
+            "path": "/platform/website/settings",
+            "name": "站点设置",
+            "required_any": ["website:read", "website:manage", "*"],
+            "sort_order": 110,
+        },
+        {
+            "code": "platform.website_home",
+            "path": "/platform/website/home",
+            "name": "首页配置",
+            "required_any": ["website:read", "website:manage", "*"],
+            "sort_order": 111,
+        },
+        {
+            "code": "platform.website_brands",
+            "path": "/platform/website/brands",
+            "name": "品牌页面",
+            "required_any": ["website:read", "website:manage", "*"],
+            "sort_order": 112,
+        },
+        {
+            "code": "platform.website_news",
+            "path": "/platform/website/news",
+            "name": "新闻动态",
+            "required_any": ["website:read", "website:manage", "*"],
+            "sort_order": 113,
+        },
+        {
+            "code": "platform.website_jobs",
+            "path": "/platform/website/jobs",
+            "name": "招聘信息",
+            "required_any": ["website:read", "website:manage", "*"],
+            "sort_order": 114,
+        },
+        {
+            "code": "platform.website_partners",
+            "path": "/platform/website/partners",
+            "name": "招商入驻",
+            "required_any": ["website:read", "website:manage", "*"],
+            "sort_order": 115,
         },
     ],
 }

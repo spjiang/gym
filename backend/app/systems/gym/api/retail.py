@@ -1,6 +1,5 @@
 """零售分类、SKU、库存与收银 API。"""
 
-import re
 from datetime import datetime
 from decimal import Decimal
 
@@ -13,6 +12,7 @@ from app.core.db import get_db
 from app.core.deps import RequestContext, get_current_context
 from app.core.domain.subsystems import assert_merchant_has_system
 from app.core.errors import AppError
+from app.core.upload_urls import is_stored_image_url
 from app.core.schemas.common import OrderOut
 from app.core.schemas.paging import PageOut, paginate
 from app.systems.platform.models.commerce import Order, OrderStatus
@@ -189,7 +189,6 @@ def update_category(
     return cat
 
 
-_SKU_IMAGE_URL_RE = re.compile(r"^/api/v1/files/[0-9a-f]{32}\.(jpg|png|webp)$")
 _MAX_SKU_IMAGES = 9
 
 
@@ -205,7 +204,7 @@ def _normalize_image_urls(urls: list[str] | None) -> list[str]:
         url = (raw or "").strip()
         if not url:
             continue
-        if not _SKU_IMAGE_URL_RE.match(url):
+        if not is_stored_image_url(url):
             raise AppError("invalid_image", "图片地址无效，请通过系统上传", status_code=400)
         if url not in out:
             out.append(url)

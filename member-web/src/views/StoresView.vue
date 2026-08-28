@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import http from '../api/http'
 import { pathForMerchant, useAuthStore, type MemberMerchant } from '../stores/auth'
 import BrandMark from '../components/BrandMark.vue'
+import { copyrightLine } from '../copyright'
 
 type SiteProfile = {
   id: number
@@ -190,6 +191,7 @@ onUnmounted(() => {
       </section>
 
       <p class="tip">进入后可随时点顶栏「切换」回到本页</p>
+      <p class="tip">{{ copyrightLine() }}</p>
     </div>
   </section>
 </template>

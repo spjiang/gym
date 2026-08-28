@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import re
-
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -11,12 +9,12 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.core.deps import RequestContext, get_current_context
 from app.core.errors import AppError
+from app.core.upload_urls import is_stored_image_url
 from app.systems.platform.models.org import Site
 from app.systems.platform.services.audit import write_audit
 
 router = APIRouter(prefix="/site/profile", tags=["site-profile"])
 
-_IMAGE_RE = re.compile(r"^/api/v1/files/[0-9a-f]{32}\.(jpg|png|webp)$")
 MAX_BANNERS = 6
 MAX_GALLERY = 9
 
@@ -55,7 +53,7 @@ def _normalize_image(url: str | None, *, field: str) -> str | None:
     text = _blank(url)
     if text is None:
         return None
-    if not _IMAGE_RE.match(text):
+    if not is_stored_image_url(text):
         raise AppError("invalid_image", f"{field}地址无效，请通过系统上传", status_code=400)
     return text
 

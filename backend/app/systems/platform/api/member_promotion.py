@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
+from app.core.member_web_url import build_promoter_link, member_h5_path_url
 from app.core.db import get_db
 from app.core.deps import MemberContext, get_current_member
 from app.core.errors import AppError
@@ -125,12 +125,11 @@ def my_promotion(
 
     link = None
     if promoter is not None:
-        base = get_settings().member_web_public_url.rstrip("/")
-        path = (promoter.landing_path or "/login").strip()
-        if not path.startswith("/"):
-            path = f"/{path}"
-        sep = "&" if "?" in path else "?"
-        link = f"{base}{path}{sep}promoter={promoter.code}"
+        link = build_promoter_link(
+            code=promoter.code,
+            landing_path=promoter.landing_path,
+            merchant_id=promoter.merchant_id,
+        )
 
     return MyPromotionOut(
         code=promoter.code if promoter else None,

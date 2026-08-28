@@ -17,6 +17,7 @@ from app.core.deps import ROLE_COACH, ROLE_COACH_LEGACY, RequestContext, get_cur
 from app.core.domain.member_brief import load_member_briefs
 from app.core.domain.subsystems import assert_merchant_has_system
 from app.core.errors import AppError
+from app.core.upload_urls import is_stored_image_url
 from app.core.schemas.common import MemberBrief, OrderOut
 from app.core.schemas.paging import PageOut, paginate
 from app.systems.platform.models.commerce import Order, OrderStatus
@@ -52,7 +53,6 @@ from app.systems.gym.services.pricing import effective_price
 
 router = APIRouter(tags=["course"])
 
-_COACH_IMAGE_URL_RE = re.compile(r"^/api/v1/files/[0-9a-f]{32}\.(jpg|png|webp)$")
 _MAX_COACH_INTRO_IMAGES = 9
 _COACH_GENDERS = {"male", "female", "other"}
 
@@ -66,7 +66,7 @@ def _normalize_coach_image_url(url: str | None, *, field: str) -> str | None:
     text = _blank(url)
     if text is None:
         return None
-    if not _COACH_IMAGE_URL_RE.match(text):
+    if not is_stored_image_url(text):
         raise AppError("invalid_image", f"{field}地址无效，请通过系统上传", status_code=400)
     return text
 

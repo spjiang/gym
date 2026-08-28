@@ -10,6 +10,7 @@
 | 前端 | Vue 3 + Vite + Pinia + Vue Router + Element Plus |
 | 后端 | FastAPI + SQLAlchemy 2 + Alembic |
 | 数据库 | PostgreSQL 16 |
+| 对象存储 | MinIO（本机 8900 / 线上 `file.guanyespace.com`） |
 | 部署 | Docker Compose（RabbitMQ 可选 profile `mq`） |
 
 ## 目录
@@ -17,6 +18,7 @@
 ```
 frontend/     # 管理后台
 member-web/   # 会员 H5
+website-web/  # 品牌官网
 backend/      # API 服务
 openspec/     # 规格与变更
 docs/         # PRD 与协作文档
@@ -33,6 +35,9 @@ docker compose up --build -d
 
 - 管理后台：http://localhost:8080  
 - 会员 H5：http://localhost:8081  
+- 品牌官网：http://localhost:8082  
+- 公开图片（MinIO）：http://localhost:8900/public/  
+- MinIO 控制台：http://localhost:9001  
 - API 文档：http://localhost:18000/docs  
 - 健康检查：http://localhost:18000/health  
 
@@ -116,6 +121,16 @@ npm install
 npm run dev
 ```
 
+### 品牌官网
+
+```bash
+cd website-web
+npm install
+npm run dev
+```
+
+Vite 开发端口 **5175**，`/api` 代理到 `http://127.0.0.1:18000`。
+
 ### 会员 H5
 
 ```bash
@@ -141,6 +156,7 @@ pytest -q
 1. `curl -sf http://localhost:18000/health` 返回 `ok`  
 2. 打开 http://localhost:8080 使用超管登录  
 3. 打开 http://localhost:8081 使用已建档手机号 + `123456` 登录  
+4. 打开 http://localhost:8082 查看品牌官网  
 3. **会籍办卡**：门禁点 → 会籍卡种（绑定门禁）→ 会员办卡并线下收款 → 设备校验放行 → 停卡后拒绝  
 4. 在「订单收款」可查看 `membership` 订单  
 
