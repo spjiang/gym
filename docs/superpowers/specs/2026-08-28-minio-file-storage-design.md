@@ -14,7 +14,7 @@
 成功标准：
 
 - 新上传只进 MinIO，不再落盘作为主存储
-- 本机浏览器能用 `http://localhost:8900/public/...` 出图；线上用 `https://file.guanyespace.com/{文件名}`
+- 本机浏览器能用 `http://localhost:8900/public/...` 出图；线上用 `https://file.guanyespace.com/public/{文件名}`
 - 本机与线上各跑一套 MinIO，数据、密钥互不共用
 - 启动后 `UPLOAD_DIR` 里已有文件出现在本环境的桶里；库里图片字段改为公开 URL
 - 旧 `/api/v1/files/{name}` 仍可用（图 302，PDF 鉴权后从私有桶读）
@@ -63,9 +63,9 @@
   FILE_PUBLIC_BASE_URL=http://localhost:8900/public
 
 生产 docker-compose.prod.yml
-  minio :9000 → 主机 8900（建议 127.0.0.1:8900，不直接对公网）
+  minio :9000 → 主机 8900（运维将 file.guanyespace.com 指到此端口）
   控制台 127.0.0.1:9001
-  主机 Nginx：file.guanyespace.com:443 → 127.0.0.1:8900/（file-gateway 已转到 public 桶，勿再拼 /public/）
+  展示地址走 MinIO path-style：https://file.guanyespace.com/public/{文件名}
   FILE_PUBLIC_BASE_URL=https://file.guanyespace.com/public
 ```
 
@@ -98,9 +98,9 @@ HTTPS :443
 | 环境 | 图片（新） | PDF |
 |------|-----------|-----|
 | 本地 | `http://localhost:8900/public/{文件名}` | `/api/v1/files/{文件名}` |
-| 线上 | `https://file.guanyespace.com/{文件名}` | 同上 |
+| 线上 | `https://file.guanyespace.com/public/{文件名}` | 同上 |
 
-线上 Nginx 把 `https://file.guanyespace.com/{文件名}` 转到 MinIO ` /public/{文件名}`，地址里不出现桶名。
+线上 `file.guanyespace.com` 直连 MinIO `8900:9000`，须带桶名 path-style：`/public/{文件名}`。
 
 `POST /uploads`：图返回上述公开 URL；PDF 仍返回 `/api/v1/files/{文件名}`。
 
@@ -171,7 +171,7 @@ Compose `minio`：官方镜像；数据卷独立（本机 `minio_data` / 生产 
 `docs/域名与线上接入设计.md` 增补：
 
 - DNS：`file` A 记录 → `123.56.26.229`
-- Nginx：`file.guanyespace.com` → `http://127.0.0.1:8900/`（file-gateway 已转到 public 桶；或运维实际可达的主机 IP:8900）；证书覆盖 `file`
+- Nginx / ALB：`file.guanyespace.com` → 主机 `8900`（MinIO S3）；对象路径 `/public/{文件名}`；证书 SAN 须含 `file.guanyespace.com`
 - HTTP 80 跳转名单加上 `file.guanyespace.com`
 - 微信 downloadFile 合法域名增加 `https://file.guanyespace.com`（request 仍走 `api.`）
 

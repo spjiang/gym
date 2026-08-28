@@ -10,7 +10,7 @@ OBJECT_NAME_RE = re.compile(r"^[0-9a-f]{32}\.(jpg|png|webp|pdf)$")
 IMAGE_OBJECT_RE = re.compile(r"^[0-9a-f]{32}\.(jpg|png|webp)$")
 LEGACY_IMAGE_RE = re.compile(r"^/api/v1/files/([0-9a-f]{32}\.(jpg|png|webp))$")
 MEDIA_IMAGE_RE = re.compile(r"^/media/([0-9a-f]{32}\.(jpg|png|webp))$")
-# 库内旧前缀（file 域证书未覆盖时浏览器打不开）一律改成当前 FILE_PUBLIC_BASE_URL
+# 库内旧前缀（/media、旧 files、无桶名的 file 域）一律改成当前 FILE_PUBLIC_BASE_URL
 IMAGE_URL_IN_TEXT = re.compile(
     r"(?:https?://file\.guanyespace\.com(?:/public)?|https?://localhost:8900/public|"
     r"https?://127\.0\.0\.1:8900/public|/api/v1/files|/media)"
