@@ -5,7 +5,8 @@
 #
 # 应用监听（域名由运维 ALB/Nginx 另配，本仓库只保证主机端口）：
 #   8080 frontend / 8081 member-web / 8082 website-web / 18000 backend
-#   8900 file-gateway → MinIO public；控制台仅 127.0.0.1:9001
+#   8900:9000 MinIO S3（file.guanyespace.com 指向此端口；对象路径 /public/{文件名}）
+#   控制台仅 127.0.0.1:9001
 
 services:
   postgres:
@@ -58,6 +59,7 @@ services:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-gymminio}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-change-me-minio-secret}
     ports:
+      - "8900:9000"
       - "127.0.0.1:9001:9001"
     volumes:
       - minio_data:/data
@@ -67,17 +69,6 @@ services:
       timeout: 5s
       retries: 20
       start_period: 10s
-
-  file-gateway:
-    image: nginx:1.27-alpine
-    restart: unless-stopped
-    ports:
-      - "8900:80"
-    volumes:
-      - ./deploy/file-gateway.conf:/etc/nginx/conf.d/default.conf:ro
-    depends_on:
-      minio:
-        condition: service_healthy
 
   frontend:
     build:
