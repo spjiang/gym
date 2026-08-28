@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage, type FormInstance, type FormRules, type UploadRequestOptions, type UploadUserFile } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules, type UploadFile, type UploadRequestOptions, type UploadUserFile } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import http from '../../../core/api/http'
+import { previewUploadFile } from '../../../core/imagePreview'
 import { BUSINESS_SYSTEM_OPTIONS, defaultSubsystemsForTypeCode } from '../../../core/nav/systems'
 import { merchantStatusLabel } from '../../../core/labels'
 import { useAuthStore } from '../../../core/stores/auth'
@@ -743,6 +744,7 @@ onMounted(load)
                 :limit="1"
                 :file-list="coverList"
                 :http-request="uploadCover"
+                :on-preview="previewUploadFile"
                 :on-remove="removeCover"
                 :disabled="uploading"
                 :class="{ 'hide-uploader': !!merchantForm.cover_image_url }"
@@ -758,6 +760,7 @@ onMounted(load)
                 :limit="GALLERY_LIMIT"
                 :file-list="galleryList"
                 :http-request="uploadGallery"
+                :on-preview="(file: UploadFile) => previewUploadFile(file, galleryList)"
                 :on-remove="removeGallery"
                 :on-exceed="onGalleryExceed"
                 :disabled="uploading"

@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, type UploadRequestOptions, type UploadUserFile } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import http from '../../../core/api/http'
+import { previewUploadFile } from '../../../core/imagePreview'
 
 type Settings = {
   home: {
@@ -105,6 +106,7 @@ onMounted(load)
           :limit="1"
           :file-list="heroList"
           :http-request="uploadHero"
+          :on-preview="previewUploadFile"
           :on-remove="() => (form.hero_image_url = '')"
           :disabled="uploading"
           :class="{ 'hide-uploader': !!form.hero_image_url }"

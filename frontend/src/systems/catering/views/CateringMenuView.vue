@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules, type UploadRequestOptions, type UploadUserFile } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import http from '../../../core/api/http'
+import { previewUploadFile } from '../../../core/imagePreview'
 import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
 
 type Merchant = { id: number; name: string; subsystem_codes: string[] }
@@ -378,6 +379,7 @@ onMounted(refresh)
             :limit="1"
             :file-list="imageList"
             :http-request="uploadImage"
+            :on-preview="previewUploadFile"
             :on-remove="removeImage"
             :disabled="uploading"
             :class="{ 'hide-uploader': !!form.image_url }"

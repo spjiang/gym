@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type UploadFile, type UploadRequestOptions, type UploadUserFile } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import http from '../../../core/api/http'
+import { previewUploadFile } from '../../../core/imagePreview'
 import { merchantsWithSystem } from '../../../core/nav/systems'
 import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
 import {
@@ -663,6 +664,7 @@ onMounted(refresh)
             :limit="SKU_IMAGE_LIMIT"
             :file-list="imageFileList"
             :http-request="uploadSkuImage"
+            :on-preview="(file: UploadFile) => previewUploadFile(file, imageFileList)"
             :on-remove="removeSkuImage"
             :on-exceed="onImageExceed"
             :disabled="uploading"

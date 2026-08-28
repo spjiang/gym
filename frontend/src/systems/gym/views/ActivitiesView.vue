@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type UploadRequestOptions, type UploadUserFile } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import http from '../../../core/api/http'
+import { previewUploadFile } from '../../../core/imagePreview'
 import { activityStatusLabel } from '../../../core/labels'
 import { merchantsWithSystem } from '../../../core/nav/systems'
 import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
@@ -565,6 +566,7 @@ onMounted(refresh)
             :limit="1"
             :file-list="coverList"
             :http-request="uploadCover"
+            :on-preview="previewUploadFile"
             :on-remove="removeCover"
             :disabled="uploading"
             :class="{ 'hide-uploader': !!form.cover_url }"

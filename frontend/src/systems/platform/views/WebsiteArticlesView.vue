@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, type UploadRequestOptions, type UploadUserFile } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import http from '../../../core/api/http'
+import { previewUploadFile } from '../../../core/imagePreview'
 
 type Channel = 'news' | 'jobs' | 'partners'
 type Article = {
@@ -257,6 +258,7 @@ onMounted(loadList)
             :limit="1"
             :file-list="coverList"
             :http-request="uploadCover"
+            :on-preview="previewUploadFile"
             :on-remove="() => (form.cover_image_url = '')"
             :disabled="uploading"
             :class="{ 'hide-uploader': !!form.cover_image_url }"

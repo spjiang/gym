@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, type UploadFile, type UploadRequestOptions, type UploadUserFile } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import http from '../../../core/api/http'
+import { previewUploadFile } from '../../../core/imagePreview'
 
 type Profile = {
   id: number
@@ -209,6 +210,7 @@ onMounted(load)
           :limit="1"
           :file-list="coverList"
           :http-request="uploadCover"
+          :on-preview="previewUploadFile"
           :on-remove="removeCover"
           :disabled="uploading"
           :class="{ 'hide-uploader': !!form.cover_image_url }"
@@ -224,6 +226,7 @@ onMounted(load)
           :limit="BANNER_LIMIT"
           :file-list="bannerList"
           :http-request="uploadBanner"
+          :on-preview="(file: UploadFile) => previewUploadFile(file, bannerList)"
           :on-remove="removeBanner"
           :disabled="uploading"
           :class="{ 'hide-uploader': form.banner_image_urls.length >= BANNER_LIMIT }"
@@ -239,6 +242,7 @@ onMounted(load)
           :limit="GALLERY_LIMIT"
           :file-list="galleryList"
           :http-request="uploadGallery"
+          :on-preview="(file: UploadFile) => previewUploadFile(file, galleryList)"
           :on-remove="removeGallery"
           :disabled="uploading"
           :class="{ 'hide-uploader': form.gallery_image_urls.length >= GALLERY_LIMIT }"

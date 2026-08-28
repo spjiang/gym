@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, type UploadFile, type UploadRequestOptions, type UploadUserFile } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import http from '../../../core/api/http'
+import { previewUploadFile } from '../../../core/imagePreview'
 
 type BrandKey = 'space' | 'fit' | 'bar'
 type Brand = {
@@ -161,6 +162,7 @@ onMounted(load)
           :limit="1"
           :file-list="coverList"
           :http-request="uploadCover"
+          :on-preview="previewUploadFile"
           :on-remove="() => (current.cover_image_url = '')"
           :disabled="uploading"
           :class="{ 'hide-uploader': !!current.cover_image_url }"
@@ -178,6 +180,7 @@ onMounted(load)
           :limit="GALLERY_LIMIT"
           :file-list="galleryList"
           :http-request="uploadGallery"
+          :on-preview="(file: UploadFile) => previewUploadFile(file, galleryList)"
           :on-remove="removeGallery"
           :disabled="uploading"
           :class="{ 'hide-uploader': (current.gallery_image_urls || []).length >= GALLERY_LIMIT }"

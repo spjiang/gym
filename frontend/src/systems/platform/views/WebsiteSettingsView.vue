@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, type UploadRequestOptions, type UploadUserFile } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import http from '../../../core/api/http'
+import { previewUploadFile } from '../../../core/imagePreview'
 
 type Settings = {
   site: {
@@ -130,6 +131,7 @@ onMounted(load)
           :limit="1"
           :file-list="logoList"
           :http-request="uploadLogo"
+          :on-preview="previewUploadFile"
           :on-remove="() => (form.logo_url = '')"
           :disabled="uploading"
           :class="{ 'hide-uploader': !!form.logo_url }"

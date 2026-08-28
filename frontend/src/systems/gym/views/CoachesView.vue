@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, type FormInstance, type FormRules, type UploadRequestOptions, type UploadUserFile } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules, type UploadFile, type UploadRequestOptions, type UploadUserFile } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import http from '../../../core/api/http'
 import { percentLabel, commissionScopeLabel } from '../../../core/labels'
 import { merchantsWithSystem } from '../../../core/nav/systems'
 import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
+import { previewUploadFile } from '../../../core/imagePreview'
 
 type Merchant = { id: number; name: string; subsystem_codes?: string[] }
 type StaffOption = { id: number; display_name: string; username: string }
@@ -585,6 +586,7 @@ onMounted(refresh)
             :limit="1"
             :file-list="avatarList"
             :http-request="uploadAvatar"
+            :on-preview="previewUploadFile"
             :on-remove="removeAvatar"
             :disabled="uploading"
             :class="{ 'hide-uploader': !!form.avatar_url }"
@@ -600,6 +602,7 @@ onMounted(refresh)
             :limit="INTRO_IMAGE_LIMIT"
             :file-list="introList"
             :http-request="uploadIntro"
+            :on-preview="(file: UploadFile) => previewUploadFile(file, introList)"
             :on-remove="removeIntro"
             :on-exceed="onIntroExceed"
             :disabled="uploading"
