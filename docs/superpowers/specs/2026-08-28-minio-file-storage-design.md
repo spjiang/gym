@@ -66,7 +66,7 @@
   minio :9000 → 主机 8900（建议 127.0.0.1:8900，不直接对公网）
   控制台 127.0.0.1:9001
   主机 Nginx：file.guanyespace.com:443 → 127.0.0.1:8900/（file-gateway 已转到 public 桶，勿再拼 /public/）
-  FILE_PUBLIC_BASE_URL=https://file.guanyespace.com
+  FILE_PUBLIC_BASE_URL=https://file.guanyespace.com/public
 ```
 
 流量（生产）：
@@ -160,7 +160,7 @@ MINIO_USE_SSL=false
 FILE_PUBLIC_BASE_URL=http://localhost:8900/public
 ```
 
-生产 `.env`：`FILE_PUBLIC_BASE_URL=https://file.guanyespace.com`；密钥与本机不同。`UPLOAD_DIR` 仍指向现有卷，供启动扫描。
+生产 `.env`：`FILE_PUBLIC_BASE_URL=https://file.guanyespace.com/public`（与 MinIO `8900:9000` path-style 一致）；密钥与本机不同。`UPLOAD_DIR` 仍指向现有卷，供启动扫描。
 
 Compose `minio`：官方镜像；数据卷独立（本机 `minio_data` / 生产 `minio_data` 各环境一份）。健康检查用 MinIO live 探针。
 
