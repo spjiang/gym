@@ -20,6 +20,33 @@ type Settings = {
   mch_private_key: SecretFlag
 }
 
+/** 已配置密钥的占位星号，提交时忽略，避免覆盖真实值 */
+const SECRET_MASK = '********'
+const PEM_MASK = '************************\n************************'
+
+type SecretField = 'mp_app_secret' | 'oa_app_secret' | 'api_v3_key' | 'mch_private_key'
+
+function maskOf(field: SecretField) {
+  return field === 'mch_private_key' ? PEM_MASK : SECRET_MASK
+}
+
+function isUnchangedSecret(field: SecretField) {
+  const value = form[field].trim()
+  return !value || value === maskOf(field)
+}
+
+function showSecretMask(field: SecretField) {
+  form[field] = meta[field] ? maskOf(field) : ''
+}
+
+function onSecretFocus(field: SecretField) {
+  if (form[field] === maskOf(field)) form[field] = ''
+}
+
+function onSecretBlur(field: SecretField) {
+  if (!form[field].trim() && meta[field]) form[field] = maskOf(field)
+}
+
 const loading = ref(false)
 const saving = ref(false)
 const form = reactive({
@@ -56,15 +83,15 @@ async function load() {
     form.mch_serial_no = data.mch_serial_no || ''
     form.notify_url = data.notify_url || ''
     form.h5_return_url = data.h5_return_url || ''
-    form.mp_app_secret = ''
-    form.oa_app_secret = ''
-    form.api_v3_key = ''
-    form.mch_private_key = ''
     meta.source = data.source
     meta.mp_app_secret = !!data.mp_app_secret?.configured
     meta.oa_app_secret = !!data.oa_app_secret?.configured
     meta.api_v3_key = !!data.api_v3_key?.configured
     meta.mch_private_key = !!data.mch_private_key?.configured
+    showSecretMask('mp_app_secret')
+    showSecretMask('oa_app_secret')
+    showSecretMask('api_v3_key')
+    showSecretMask('mch_private_key')
   } catch (e: unknown) {
     ElMessage.error(e instanceof Error ? e.message : '加载失败')
   } finally {
@@ -85,10 +112,10 @@ async function save() {
       notify_url: form.notify_url,
       h5_return_url: form.h5_return_url,
     }
-    if (form.mp_app_secret) payload.mp_app_secret = form.mp_app_secret
-    if (form.oa_app_secret) payload.oa_app_secret = form.oa_app_secret
-    if (form.api_v3_key) payload.api_v3_key = form.api_v3_key
-    if (form.mch_private_key) payload.mch_private_key = form.mch_private_key
+    if (!isUnchangedSecret('mp_app_secret')) payload.mp_app_secret = form.mp_app_secret.trim()
+    if (!isUnchangedSecret('oa_app_secret')) payload.oa_app_secret = form.oa_app_secret.trim()
+    if (!isUnchangedSecret('api_v3_key')) payload.api_v3_key = form.api_v3_key.trim()
+    if (!isUnchangedSecret('mch_private_key')) payload.mch_private_key = form.mch_private_key.trim()
     await http.put('/site/payment-settings', payload)
     ElMessage.success('已保存')
     await load()
@@ -176,7 +203,15 @@ onMounted(load)
                 </el-tag>
               </span>
             </template>
-            <el-input v-model="form.mp_app_secret" type="password" show-password placeholder="留空不修改" />
+            <el-input
+              v-model="form.mp_app_secret"
+              :type="form.mp_app_secret === SECRET_MASK ? 'text' : 'password'"
+              :show-password="form.mp_app_secret !== SECRET_MASK"
+              autocomplete="new-password"
+              :placeholder="meta.mp_app_secret ? '点击后可更换' : '未配置'"
+              @focus="onSecretFocus('mp_app_secret')"
+              @blur="onSecretBlur('mp_app_secret')"
+            />
           </el-form-item>
         </div>
       </el-card>
@@ -201,7 +236,15 @@ onMounted(load)
                 </el-tag>
               </span>
             </template>
-            <el-input v-model="form.api_v3_key" type="password" show-password placeholder="32 位，留空不修改" />
+            <el-input
+              v-model="form.api_v3_key"
+              :type="form.api_v3_key === SECRET_MASK ? 'text' : 'password'"
+              :show-password="form.api_v3_key !== SECRET_MASK"
+              autocomplete="new-password"
+              :placeholder="meta.api_v3_key ? '点击后可更换' : '32 位，未配置'"
+              @focus="onSecretFocus('api_v3_key')"
+              @blur="onSecretBlur('api_v3_key')"
+            />
           </el-form-item>
           <el-form-item label="证书序列号">
             <el-input v-model="form.mch_serial_no" placeholder="API 证书页复制" />
@@ -220,7 +263,9 @@ onMounted(load)
               type="textarea"
               :rows="4"
               class="pem-input"
-              placeholder="粘贴 apiclient_key.pem 全文（含 BEGIN/END），已配置则留空"
+              :placeholder="meta.mch_private_key ? '点击后粘贴新的 apiclient_key.pem' : '粘贴 apiclient_key.pem 全文（含 BEGIN/END）'"
+              @focus="onSecretFocus('mch_private_key')"
+              @blur="onSecretBlur('mch_private_key')"
             />
           </el-form-item>
         </div>
@@ -263,7 +308,15 @@ onMounted(load)
                 </el-tag>
               </span>
             </template>
-            <el-input v-model="form.oa_app_secret" type="password" show-password placeholder="留空不修改" />
+            <el-input
+              v-model="form.oa_app_secret"
+              :type="form.oa_app_secret === SECRET_MASK ? 'text' : 'password'"
+              :show-password="form.oa_app_secret !== SECRET_MASK"
+              autocomplete="new-password"
+              :placeholder="meta.oa_app_secret ? '点击后可更换' : '未配置'"
+              @focus="onSecretFocus('oa_app_secret')"
+              @blur="onSecretBlur('oa_app_secret')"
+            />
           </el-form-item>
         </div>
       </el-card>
