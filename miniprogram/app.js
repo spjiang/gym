@@ -1,7 +1,7 @@
 App({
   globalData: {
-    // 本地 Docker：18000；线上示例：http://123.56.26.229:18000/api/v1（须 HTTPS + 小程序后台配置合法域名）
-    apiBase: 'http://127.0.0.1:18000/api/v1',
+    // 生产联调。本机改回：http://127.0.0.1:18000/api/v1
+    apiBase: 'https://api.guanyespace.com/api/v1',
     token: '',
     merchantId: null,
     systemMode: 'gym',

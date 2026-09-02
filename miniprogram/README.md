@@ -1,6 +1,6 @@
 # 会员原生小程序
 
-用微信开发者工具打开本目录。将 `app.js` 中 `apiBase` 指向后端 `/api/v1`（本地 Compose 默认 `http://127.0.0.1:18000/api/v1`），并在开发者工具开启不校验合法域名以便联调。
+用微信开发者工具打开本目录。生产 AppID：`wx90749dbadeb4227a`。`app.js` 的 `apiBase` 当前指向 `https://api.guanyespace.com/api/v1`；本机联调改为 `http://127.0.0.1:18000/api/v1` 并勾选不校验合法域名。
 
 ## 与 H5 会员端一致的结构
 

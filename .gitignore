@@ -3,6 +3,7 @@
 .env.local
 .env.*.local
 !.env.example
+docs/证书/
 
 # Python
 __pycache__/

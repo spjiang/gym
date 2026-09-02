@@ -198,16 +198,16 @@ p {
   color: var(--admin-accent-strong);
 }
 
-/* —— 表单 / 选择器占位符 —— */
+/* —— 表单 / 选择器：选中值为黑色；仅未选时的占位符用灰色 —— */
 .el-input__inner,
 .el-textarea__inner,
 .el-select__placeholder,
 .el-select__selected-item {
-  color: var(--el-text-color-regular);
+  color: #1c1917;
+  -webkit-text-fill-color: #1c1917;
 }
 
 .el-select__placeholder.is-transparent,
-.el-select__placeholder,
 .el-input__inner::placeholder,
 .el-textarea__inner::placeholder {
   color: #78716c !important;
