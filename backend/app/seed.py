@@ -105,6 +105,7 @@ ROLE_DEFS = [
             "payout:read",
             "payout:manage",
             "audit:read",
+            "devops:read",
             "ai:read",
             "ai:manage",
             "website:read",
@@ -497,6 +498,11 @@ def run_seed() -> None:
                     sync_role_permissions_from_json(db, role)
             role_map[defn["code"]] = role
 
+        db.flush()
+        ops_role = role_map.get("site_ops")
+        if ops_role is not None and "devops:read" not in (ops_role.permissions or []):
+            ops_role.permissions = list(ops_role.permissions or []) + ["devops:read"]
+            sync_role_permissions_from_json(db, ops_role)
         db.flush()
         sync_manifests(db, ensure_role_menus=True)
 

@@ -79,6 +79,7 @@ SUBSYSTEM_LABELS: dict[str, str] = {
 
 SKIP_AUDIT_PREFIXES: tuple[str, ...] = (
     "/health",
+    "/ready",
     "/docs",
     "/openapi.json",
     "/redoc",

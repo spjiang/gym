@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 import httpx
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
@@ -237,6 +238,34 @@ def exchange_oa_openid(cfg: EffectivePaymentSettings, code: str) -> str:
     return openid
 
 
+NOTIFY_TIMESTAMP_SKEW_SEC = 300
+
+
+def verify_wechat_notify_signature(cfg: EffectivePaymentSettings, headers, body: bytes) -> None:
+    """真实模式下校验 Wechatpay-Signature；dry_run 跳过。"""
+    if cfg.dry_run:
+        return
+    ts = (headers.get("Wechatpay-Timestamp") or "").strip()
+    nonce = (headers.get("Wechatpay-Nonce") or "").strip()
+    signature_b64 = (headers.get("Wechatpay-Signature") or "").strip()
+    if not ts or not nonce or not signature_b64:
+        raise AppError("wechat_notify_rejected", "缺少微信平台签名头", status_code=400)
+    try:
+        ts_int = int(ts)
+    except ValueError as exc:
+        raise AppError("wechat_notify_rejected", "微信平台签名时间戳无效", status_code=400) from exc
+    if abs(int(time.time()) - ts_int) > NOTIFY_TIMESTAMP_SKEW_SEC:
+        raise AppError("wechat_notify_rejected", "微信平台签名时间戳过期", status_code=400)
+    if not cfg.platform_public_key:
+        raise AppError("wechat_notify_rejected", "未配置微信平台公钥，无法校验回调签名", status_code=400)
+    try:
+        pub = serialization.load_pem_public_key(cfg.platform_public_key.encode("utf-8"))
+        message = f"{ts}\n{nonce}\n{body.decode('utf-8')}\n".encode("utf-8")
+        pub.verify(base64.b64decode(signature_b64), message, padding.PKCS1v15(), hashes.SHA256())
+    except (InvalidSignature, ValueError, TypeError) as exc:
+        raise AppError("wechat_notify_rejected", "微信平台签名校验失败", status_code=400) from exc
+
+
 def decrypt_notify_resource(cfg: EffectivePaymentSettings, resource: dict) -> dict:
     """APIv3 通知 resource AEAD 解密。"""
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -339,6 +368,35 @@ def query_wechat_order(cfg: EffectivePaymentSettings, *, out_trade_no: str) -> W
         amount_fen=((data.get("amount") or {}).get("total")),
         dry_run=False,
     )
+
+
+def close_wechat_order(cfg: EffectivePaymentSettings, *, out_trade_no: str) -> bool:
+    """关闭微信未支付订单。返回 True 表示微信侧已支付，调用方应入账。"""
+    if cfg.dry_run or not is_wechat_payment_mode(cfg.mode):
+        return False
+    if not cfg.mch_id or not cfg.mch_private_key or not cfg.mch_serial_no:
+        return False
+    path = f"/v3/pay/transactions/out-trade-no/{out_trade_no}/close"
+    body = json.dumps({"mchid": cfg.mch_id}, ensure_ascii=False, separators=(",", ":"))
+    auth = _authorization(cfg, "POST", path, body)
+    with httpx.Client(timeout=20.0) as client:
+        resp = client.post(
+            f"https://api.mch.weixin.qq.com{path}",
+            content=body.encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "Authorization": auth,
+            },
+        )
+    if resp.status_code < 300:
+        return False
+    text = resp.text or ""
+    if "ORDERPAID" in text:
+        return True
+    if any(code in text for code in ("ORDER_CLOSED", "ORDERNOTEXIST", "RESOURCE_NOT_EXISTS")):
+        return False
+    raise AppError("wechat_api_error", f"微信关单失败: {text[:300]}", status_code=502)
 
 
 @dataclass

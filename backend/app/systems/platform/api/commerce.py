@@ -217,7 +217,10 @@ def pay_online(
     ctx: RequestContext = Depends(get_current_context),
 ):
     ctx.require_permission("order:write")
+    from app.systems.platform.models.payment_settings import PaymentIntent
     from app.systems.platform.services.order_lock import lock_order
+    from app.systems.platform.services.order_fulfill import fulfill_paid_order, mark_intent_succeeded
+    from app.systems.platform.services.payment_capture import new_out_trade_no
 
     order = lock_order(db, order_id, site_id=ctx.site_id)
     ctx.assert_merchant_access(order.merchant_id)
@@ -226,21 +229,32 @@ def pay_online(
     if order.seller_staff_id is None:
         order.seller_staff_id = ctx.staff.id
 
+    out_trade_no = new_out_trade_no(order.id)
     result = get_online_provider(db, ctx.site_id).create_payment(
         order_id=order.id,
         amount=str(order.amount),
         title=order.title,
-        out_trade_no=f"staff-{order.id}-{int(__import__('time').time())}",
+        out_trade_no=out_trade_no,
         pay_scene=getattr(body, "pay_scene", None) or "miniprogram",
         staff_capture=True,
     )
     if not result.ok:
         raise AppError("online_pay_failed", result.message, status_code=400)
 
-    from app.systems.platform.services.order_fulfill import fulfill_paid_order
+    intent = PaymentIntent(
+        site_id=order.site_id,
+        order_id=order.id,
+        out_trade_no=out_trade_no,
+        scene=getattr(body, "pay_scene", None) or "miniprogram",
+        status="created",
+        amount=order.amount,
+        provider_ref=result.provider_ref,
+    )
+    db.add(intent)
 
     if result.immediate_capture:
         fulfill_paid_order(db, order, provider_ref=result.provider_ref, actor_staff_id=ctx.staff.id)
+        mark_intent_succeeded(db, intent, provider_ref=result.provider_ref)
     write_audit(
         db,
         action="order.pay_online",

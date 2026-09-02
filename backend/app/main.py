@@ -8,8 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.audit_middleware import AuditMiddleware
 from app.core.config import get_settings
+from app.core.health import collect_readiness
 from app.core.member_web_url import is_local_member_web_url
 from app.core.errors import register_exception_handlers
+from app.core.request_id_middleware import RequestIdMiddleware
 from app.systems.catering.api import catering, member_catering
 from app.systems.gym.api import (
     activity,
@@ -38,6 +40,7 @@ from app.systems.platform.api import (
     members,
     notifications,
     org,
+    ops,
     payment_notify,
     payment_reconcile,
     payment_settings,
@@ -83,12 +86,25 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["X-Request-ID"],
     )
     app.add_middleware(AuditMiddleware)
+    app.add_middleware(RequestIdMiddleware)
 
     @app.get("/health")
     def health():
         return {"status": "ok"}
+
+    @app.get("/ready")
+    def ready():
+        from fastapi.responses import JSONResponse
+
+        data = collect_readiness()
+        status_code = 200 if data["status"] != "fail" else 503
+        return JSONResponse(
+            status_code=status_code,
+            content={"status": data["status"], "checks": data["checks"]},
+        )
 
     app.include_router(auth.router, prefix="/api/v1")
     app.include_router(member_auth.router, prefix="/api/v1")
@@ -132,6 +148,7 @@ def create_app() -> FastAPI:
     app.include_router(payment_notify.router, prefix="/api/v1")
     app.include_router(payment_reconcile.router, prefix="/api/v1")
     app.include_router(audit_logs.router, prefix="/api/v1")
+    app.include_router(ops.router, prefix="/api/v1")
     app.include_router(ai_analysis.router, prefix="/api/v1")
     return app
 

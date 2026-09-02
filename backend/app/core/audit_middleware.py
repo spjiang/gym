@@ -13,6 +13,7 @@ from starlette.responses import Response
 
 from app.core import db as db_module
 from app.core.audit_context import AuditEnvelope, set_audit_envelope
+from app.core.request_id import get_request_id
 from app.core.security import decode_access_token
 from app.systems.platform.models.identity import StaffUser
 from app.systems.platform.models.member import Member
@@ -155,6 +156,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
         body = b"" if is_multipart else await request.body()
         started = time.perf_counter()
         env = _build_envelope(request, body if body else None)
+        env.request_id = get_request_id()
         set_audit_envelope(env)
 
         if is_multipart:
@@ -200,6 +202,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
                 status=env.status,
                 status_code=env.status_code,
                 duration_ms=env.duration_ms,
+                request_id=env.request_id,
                 detail_json=env.detail or None,
             )
             db.commit()

@@ -31,6 +31,7 @@ class AuditLog(Base):
     status: Mapped[str | None] = mapped_column(String(16), index=True)
     status_code: Mapped[int | None] = mapped_column(Integer)
     duration_ms: Mapped[int | None] = mapped_column(Integer)
+    request_id: Mapped[str | None] = mapped_column(String(64), index=True)
     action: Mapped[str] = mapped_column(String(128), nullable=False)
     target_type: Mapped[str] = mapped_column(String(64), nullable=False)
     target_id: Mapped[str] = mapped_column(String(64), nullable=False)

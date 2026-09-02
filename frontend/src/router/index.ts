@@ -30,6 +30,8 @@ import PromotionSettingsView from '../systems/platform/views/PromotionSettingsVi
 import RebatesView from '../systems/platform/views/RebatesView.vue'
 import PayoutsView from '../systems/platform/views/PayoutsView.vue'
 import AuditLogsView from '../systems/platform/views/AuditLogsView.vue'
+import ErrorLogsView from '../systems/platform/views/ErrorLogsView.vue'
+import ServiceHealthView from '../systems/platform/views/ServiceHealthView.vue'
 import AiPromptTemplatesView from '../systems/platform/views/AiPromptTemplatesView.vue'
 import AiLlmAccountsView from '../systems/platform/views/AiLlmAccountsView.vue'
 import AiAnalysisView from '../systems/platform/views/AiAnalysisView.vue'
@@ -211,6 +213,18 @@ const children: RouteRecordRaw[] = [
     name: 'platform-audit-logs',
     component: AuditLogsView,
     meta: { system: 'platform', anyOf: ['audit:read', '*'] },
+  },
+  {
+    path: 'platform/error-logs',
+    name: 'platform-error-logs',
+    component: ErrorLogsView,
+    meta: { system: 'platform', anyOf: ['devops:read', '*'] },
+  },
+  {
+    path: 'platform/service-health',
+    name: 'platform-service-health',
+    component: ServiceHealthView,
+    meta: { system: 'platform', anyOf: ['devops:read', '*'] },
   },
   {
     path: 'platform/ai/prompt-templates',

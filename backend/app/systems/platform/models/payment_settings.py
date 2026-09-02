@@ -23,6 +23,8 @@ class SitePaymentSettings(Base):
     api_v3_key_enc: Mapped[str | None] = mapped_column(Text)
     mch_serial_no: Mapped[str | None] = mapped_column(String(128))
     mch_private_key_enc: Mapped[str | None] = mapped_column(Text)
+    platform_serial_no: Mapped[str | None] = mapped_column(String(128))
+    platform_public_key_enc: Mapped[str | None] = mapped_column(Text)
     notify_url: Mapped[str | None] = mapped_column(String(512))
     h5_return_url: Mapped[str | None] = mapped_column(String(512))
     updated_at: Mapped[datetime] = mapped_column(

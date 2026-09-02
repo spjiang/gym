@@ -40,6 +40,8 @@ class EffectivePaymentSettings:
     api_v3_key: str
     mch_serial_no: str
     mch_private_key: str
+    platform_serial_no: str
+    platform_public_key: str
     notify_url: str
     h5_return_url: str
     source: str  # db | env
@@ -60,6 +62,8 @@ def resolve_payment_settings(db: Session, site_id: int) -> EffectivePaymentSetti
             api_v3_key=decrypt_secret(row.api_v3_key_enc) or env.wechat_api_key or "",
             mch_serial_no=row.mch_serial_no or "",
             mch_private_key=decrypt_secret(row.mch_private_key_enc) or "",
+            platform_serial_no=row.platform_serial_no or "",
+            platform_public_key=decrypt_secret(row.platform_public_key_enc) or "",
             notify_url=row.notify_url or env.wechat_notify_url or "",
             h5_return_url=row.h5_return_url or env.member_web_public_url or "",
             source="db",
@@ -75,6 +79,8 @@ def resolve_payment_settings(db: Session, site_id: int) -> EffectivePaymentSetti
         api_v3_key=env.wechat_api_key or "",
         mch_serial_no="",
         mch_private_key="",
+        platform_serial_no="",
+        platform_public_key="",
         notify_url=env.wechat_notify_url or "",
         h5_return_url=env.member_web_public_url or "",
         source="env",
@@ -94,12 +100,16 @@ def settings_public_dict(row: SitePaymentSettings | None, effective: EffectivePa
         "oa_app_id": effective.oa_app_id,
         "mch_id": effective.mch_id,
         "mch_serial_no": effective.mch_serial_no,
+        "platform_serial_no": effective.platform_serial_no,
         "notify_url": effective.notify_url,
         "h5_return_url": effective.h5_return_url,
         "mp_app_secret": mask_secret(bool(row and row.mp_app_secret_enc) or bool(effective.mp_app_secret)),
         "oa_app_secret": mask_secret(bool(row and row.oa_app_secret_enc) or bool(effective.oa_app_secret)),
         "api_v3_key": mask_secret(bool(row and row.api_v3_key_enc) or bool(effective.api_v3_key)),
         "mch_private_key": mask_secret(bool(row and row.mch_private_key_enc) or bool(effective.mch_private_key)),
+        "platform_public_key": mask_secret(
+            bool(row and row.platform_public_key_enc) or bool(effective.platform_public_key)
+        ),
     }
 
 
@@ -114,7 +124,15 @@ def apply_settings_update(
         row.mode = normalize_payment_mode(data["mode"])
     if "dry_run" in data and data["dry_run"] is not None:
         row.dry_run = bool(data["dry_run"])
-    for plain_key in ("mp_app_id", "oa_app_id", "mch_id", "mch_serial_no", "notify_url", "h5_return_url"):
+    for plain_key in (
+        "mp_app_id",
+        "oa_app_id",
+        "mch_id",
+        "mch_serial_no",
+        "platform_serial_no",
+        "notify_url",
+        "h5_return_url",
+    ):
         if plain_key in data and data[plain_key] is not None:
             setattr(row, plain_key, data[plain_key] or None)
     secret_map = {
@@ -122,6 +140,7 @@ def apply_settings_update(
         "oa_app_secret": "oa_app_secret_enc",
         "api_v3_key": "api_v3_key_enc",
         "mch_private_key": "mch_private_key_enc",
+        "platform_public_key": "platform_public_key_enc",
     }
     for src, dest in secret_map.items():
         if src in data and data[src]:

@@ -36,8 +36,16 @@ def _local_worker() -> None:
         msg = _local_queue.get()
         try:
             _process_message(msg)
-        except Exception:
+        except Exception as exc:
             logger.exception("处理授权同步消息失败")
+            from app.systems.platform.services.error_events import record_error
+
+            record_error(
+                error_code="grant_sync_failed",
+                message=str(exc) or "授权同步失败",
+                source="worker",
+                exc=exc,
+            )
         finally:
             _local_queue.task_done()
 

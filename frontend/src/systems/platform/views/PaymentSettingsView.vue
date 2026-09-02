@@ -12,22 +12,24 @@ type Settings = {
   oa_app_id: string
   mch_id: string
   mch_serial_no: string
+  platform_serial_no: string
   notify_url: string
   h5_return_url: string
   mp_app_secret: SecretFlag
   oa_app_secret: SecretFlag
   api_v3_key: SecretFlag
   mch_private_key: SecretFlag
+  platform_public_key: SecretFlag
 }
 
 /** 已配置密钥的占位星号，提交时忽略，避免覆盖真实值 */
 const SECRET_MASK = '********'
 const PEM_MASK = '************************\n************************'
 
-type SecretField = 'mp_app_secret' | 'oa_app_secret' | 'api_v3_key' | 'mch_private_key'
+type SecretField = 'mp_app_secret' | 'oa_app_secret' | 'api_v3_key' | 'mch_private_key' | 'platform_public_key'
 
 function maskOf(field: SecretField) {
-  return field === 'mch_private_key' ? PEM_MASK : SECRET_MASK
+  return field === 'mch_private_key' || field === 'platform_public_key' ? PEM_MASK : SECRET_MASK
 }
 
 function isUnchangedSecret(field: SecretField) {
@@ -55,13 +57,15 @@ const form = reactive({
   mp_app_id: '',
   oa_app_id: '',
   mch_id: '',
-  mch_serial_no: '',
-  notify_url: '',
-  h5_return_url: '',
-  mp_app_secret: '',
-  oa_app_secret: '',
-  api_v3_key: '',
-  mch_private_key: '',
+    mch_serial_no: '',
+    platform_serial_no: '',
+    notify_url: '',
+    h5_return_url: '',
+    mp_app_secret: '',
+    oa_app_secret: '',
+    api_v3_key: '',
+    mch_private_key: '',
+    platform_public_key: '',
 })
 const meta = reactive({
   source: 'env',
@@ -69,6 +73,7 @@ const meta = reactive({
   oa_app_secret: false,
   api_v3_key: false,
   mch_private_key: false,
+  platform_public_key: false,
 })
 
 async function load() {
@@ -81,6 +86,7 @@ async function load() {
     form.oa_app_id = data.oa_app_id || ''
     form.mch_id = data.mch_id || ''
     form.mch_serial_no = data.mch_serial_no || ''
+    form.platform_serial_no = data.platform_serial_no || ''
     form.notify_url = data.notify_url || ''
     form.h5_return_url = data.h5_return_url || ''
     meta.source = data.source
@@ -88,10 +94,12 @@ async function load() {
     meta.oa_app_secret = !!data.oa_app_secret?.configured
     meta.api_v3_key = !!data.api_v3_key?.configured
     meta.mch_private_key = !!data.mch_private_key?.configured
+    meta.platform_public_key = !!data.platform_public_key?.configured
     showSecretMask('mp_app_secret')
     showSecretMask('oa_app_secret')
     showSecretMask('api_v3_key')
     showSecretMask('mch_private_key')
+    showSecretMask('platform_public_key')
   } catch (e: unknown) {
     ElMessage.error(e instanceof Error ? e.message : '加载失败')
   } finally {
@@ -109,6 +117,7 @@ async function save() {
       oa_app_id: form.oa_app_id,
       mch_id: form.mch_id,
       mch_serial_no: form.mch_serial_no,
+      platform_serial_no: form.platform_serial_no,
       notify_url: form.notify_url,
       h5_return_url: form.h5_return_url,
     }
@@ -116,6 +125,7 @@ async function save() {
     if (!isUnchangedSecret('oa_app_secret')) payload.oa_app_secret = form.oa_app_secret.trim()
     if (!isUnchangedSecret('api_v3_key')) payload.api_v3_key = form.api_v3_key.trim()
     if (!isUnchangedSecret('mch_private_key')) payload.mch_private_key = form.mch_private_key.trim()
+    if (!isUnchangedSecret('platform_public_key')) payload.platform_public_key = form.platform_public_key.trim()
     await http.put('/site/payment-settings', payload)
     ElMessage.success('已保存')
     await load()
@@ -267,6 +277,29 @@ onMounted(load)
               @focus="onSecretFocus('mch_private_key')"
               @blur="onSecretBlur('mch_private_key')"
             />
+          </el-form-item>
+          <el-form-item label="平台证书序列号">
+            <el-input v-model="form.platform_serial_no" placeholder="微信支付平台证书序列号" />
+          </el-form-item>
+          <el-form-item class="field-span">
+            <template #label>
+              <span class="label-with-tag">
+                平台公钥
+                <el-tag :type="meta.platform_public_key ? 'success' : 'info'" effect="plain" size="small">
+                  {{ meta.platform_public_key ? '已配置' : '未配置' }}
+                </el-tag>
+              </span>
+            </template>
+            <el-input
+              v-model="form.platform_public_key"
+              type="textarea"
+              :rows="4"
+              class="pem-input"
+              :placeholder="meta.platform_public_key ? '点击后粘贴新的平台公钥 PEM' : '真实回调必填，粘贴微信平台公钥 PEM'"
+              @focus="onSecretFocus('platform_public_key')"
+              @blur="onSecretBlur('platform_public_key')"
+            />
+            <p class="field-hint">真实下单时用此公钥校验 Wechatpay-Signature；干跑不验签。</p>
           </el-form-item>
         </div>
       </el-card>

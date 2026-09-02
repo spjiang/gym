@@ -32,7 +32,7 @@ export const PLATFORM_MENU_GROUPS: { key: string; label: string; paths: string[]
   {
     key: 'devops',
     label: '运维管理',
-    paths: ['/platform/audit-logs'],
+    paths: ['/platform/audit-logs', '/platform/error-logs', '/platform/service-health'],
   },
   {
     key: 'ai',

@@ -27,12 +27,14 @@ class PaymentSettingsUpdateIn(BaseModel):
     oa_app_id: str | None = None
     mch_id: str | None = None
     mch_serial_no: str | None = None
+    platform_serial_no: str | None = None
     notify_url: str | None = None
     h5_return_url: str | None = None
     mp_app_secret: str | None = Field(default=None, description="空表示不修改")
     oa_app_secret: str | None = None
     api_v3_key: str | None = None
     mch_private_key: str | None = None
+    platform_public_key: str | None = None
 
 
 @router.get("")

@@ -26,6 +26,7 @@ import {
   Tools,
   TrendCharts,
   User,
+  WarningFilled,
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 import {
@@ -160,6 +161,8 @@ function menuIcon(path: string): Component {
     '/platform/agreements': Document,
     '/platform/commission-settings': TrendCharts,
     '/platform/audit-logs': List,
+    '/platform/error-logs': WarningFilled,
+    '/platform/service-health': Monitor,
     '/platform/ai/prompt-templates': Document,
     '/platform/ai/llm-accounts': Setting,
     '/platform/ai/analysis': DataAnalysis,

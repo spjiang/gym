@@ -132,23 +132,30 @@ def cancel_pending_dining_order(
     actor_staff_id: int | None = None,
 ) -> Order:
     """待支付餐饮单取消：关支付意图、退回优惠券、订单作废。"""
+    from app.systems.platform.services.order_lock import lock_order
+    from app.systems.platform.services.payment_capture import (
+        capture_wechat_success,
+        close_open_intents_for_order,
+    )
+
+    order = lock_order(db, order.id, site_id=order.site_id)
     if order.order_type != "dining":
         raise AppError("not_found", "餐饮订单不存在", status_code=404)
     if order.status != OrderStatus.PENDING.value:
         raise AppError("invalid_state", "仅待支付订单可取消", status_code=400)
 
-    from sqlalchemy import select
-
     from app.systems.gym.services.coupon import detach_coupon_link_for_order
-    from app.systems.platform.models.payment_settings import PaymentIntent
 
-    for intent in db.scalars(
-        select(PaymentIntent).where(
-            PaymentIntent.order_id == order.id,
-            PaymentIntent.status == "created",
+    paid_stale = close_open_intents_for_order(db, order)
+    if paid_stale is not None:
+        capture_wechat_success(
+            db,
+            order=order,
+            intent=paid_stale,
+            amount_fen=None,
+            require_amount=False,
         )
-    ).all():
-        intent.status = "closed"
+        raise AppError("invalid_state", "订单已支付，无法取消", status_code=400)
 
     detach_coupon_link_for_order(db, order)
     order.status = OrderStatus.CANCELLED.value

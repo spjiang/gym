@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-import time
 from datetime import datetime, timezone
 from decimal import ROUND_DOWN, Decimal
 from typing import Any
@@ -23,12 +22,14 @@ from app.systems.gym.models.membership import (
 from app.systems.gym.models.activity import ActivityRegistration, RegistrationStatus
 from app.systems.gym.services.commission import scale_records_for_partial_refund, void_records_for_order
 from app.systems.gym.services.coupon import restore_coupon_for_order
-from app.systems.gym.services.fulfillment import void_membership
+from app.systems.gym.services.fulfillment import product_access_point_ids, void_membership
 from app.systems.gym.services.retail_fulfillment import restock_retail_order
 from app.systems.platform.models.access import AccessEvent
 from app.systems.platform.models.commerce import Order, OrderStatus, Payment, PaymentChannel, PaymentKind
 from app.systems.platform.models.payment_settings import PaymentIntent, RefundIntent
 from app.systems.platform.services.audit import write_audit
+from app.systems.platform.services.order_lock import lock_order
+from app.systems.platform.services.payment_capture import new_out_refund_no
 from app.systems.platform.services.payment_settings import resolve_payment_settings
 from app.systems.platform.services.payouts import sync_open_commission_payouts
 from app.systems.platform.services.rebate import reverse_order_rebate
@@ -56,10 +57,20 @@ def _ensure_aware(dt: datetime | None) -> datetime | None:
     return dt
 
 
-def _has_access_after(db: Session, *, member_id: int, since: datetime | None) -> bool:
+def _has_access_after(
+    db: Session,
+    *,
+    member_id: int,
+    access_point_ids: list[int],
+    since: datetime | None,
+) -> bool:
+    """仅统计本卡种门禁点的成功放行，避免其它卡/公共区域误判已使用。"""
+    if not access_point_ids:
+        return False
     q = select(AccessEvent.id).where(
         AccessEvent.member_id == member_id,
         AccessEvent.allowed.is_(True),
+        AccessEvent.access_point_id.in_(access_point_ids),
     )
     if since is not None:
         q = q.where(AccessEvent.created_at >= since)
@@ -125,7 +136,12 @@ def _preview_membership(db: Session, order: Order, balance: Decimal) -> dict[str
         remaining_days = 0
         if ends and ends > now:
             remaining_days = min(total_days, max(0, math.ceil((ends - now).total_seconds() / 86400)))
-        unused = not _has_access_after(db, member_id=m.member_id, since=_ensure_aware(m.starts_at))
+        unused = not _has_access_after(
+            db,
+            member_id=m.member_id,
+            access_point_ids=product_access_point_ids(db, m.product_id),
+            since=_ensure_aware(m.starts_at),
+        )
         suggested = order_amt if unused else _money(order_amt * Decimal(remaining_days) / Decimal(total_days))
         basis = "term_remaining_days"
         detail.update({"total_days": total_days, "remaining_days": remaining_days})
@@ -308,7 +324,7 @@ def create_refund(
             if not can_force:
                 raise AppError("forbidden", "仅场地超管或财务对账可强制退款", status_code=403)
 
-    out_refund_no = f"r{order.id}t{int(time.time())}{out_trade_no[-4:] if out_trade_no else 'xx'}"
+    out_refund_no = new_out_refund_no(order.id)
     intent = RefundIntent(
         site_id=order.site_id,
         order_id=order.id,
@@ -367,12 +383,18 @@ def apply_refund_success(
         assert order is not None
         return order
 
-    order = db.get(Order, intent.order_id)
-    if order is None:
-        raise AppError("not_found", "订单不存在", status_code=404)
+    order = lock_order(db, intent.order_id, site_id=intent.site_id)
+    intent = db.get(RefundIntent, intent.id)
+    if intent is None:
+        raise AppError("not_found", "退款意图不存在", status_code=404)
+    if intent.status == "succeeded":
+        return order
 
     this_amount = _money(intent.amount)
-    suggested = _money(preview_refund(db, order)["suggested_amount"])
+    if intent.suggested_amount is not None:
+        suggested = _money(intent.suggested_amount)
+    else:
+        suggested = _money(preview_refund(db, order)["suggested_amount"])
 
     intent.status = "succeeded"
     intent.succeeded_at = _now()

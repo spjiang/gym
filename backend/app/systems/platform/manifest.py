@@ -27,6 +27,7 @@ SYSTEM = {
         {"code": "payout:read", "name": "查看提现单"},
         {"code": "payout:manage", "name": "提现审核与打款登记"},
         {"code": "audit:read", "name": "查看操作日志"},
+        {"code": "devops:read", "name": "查看运维状态与错误日志"},
         {"code": "ai:read", "name": "AI 分析"},
         {"code": "ai:manage", "name": "AI 配置管理"},
         {"code": "website:read", "name": "查看官网"},
@@ -192,6 +193,20 @@ SYSTEM = {
             "path": "/notifications",
             "name": "站内通知",
             "required_any": ["order:read", "member:read", "access:read", "*"],
+            "sort_order": 60,
+        },
+        {
+            "code": "platform.service_health",
+            "path": "/platform/service-health",
+            "name": "服务状态",
+            "required_any": ["devops:read", "*"],
+            "sort_order": 59,
+        },
+        {
+            "code": "platform.error_logs",
+            "path": "/platform/error-logs",
+            "name": "错误日志",
+            "required_any": ["devops:read", "*"],
             "sort_order": 60,
         },
         {

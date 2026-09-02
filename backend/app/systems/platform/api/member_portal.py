@@ -1031,10 +1031,16 @@ def pay_my_order_online(
     """会员线上支付：mock 可立即入账；微信返回预下单参数，待回调/dry-run 确认。"""
     from app.systems.platform.models.payment_settings import MemberWechatBinding, PaymentIntent
     from app.systems.platform.services.order_fulfill import fulfill_paid_order
+    from app.systems.platform.services.order_lock import lock_order
+    from app.systems.platform.services.payment_capture import (
+        capture_wechat_success,
+        close_open_intents_for_order,
+        new_out_trade_no,
+    )
 
     body = body or OnlinePayIn()
-    order = db.get(Order, order_id)
-    if order is None or order.member_id != mctx.member.id:
+    order = lock_order(db, order_id, site_id=mctx.site_id)
+    if order.member_id != mctx.member.id:
         raise AppError("not_found", "订单不存在", status_code=404)
     if order.status != OrderStatus.PENDING.value:
         raise AppError("invalid_state", "仅待支付订单可发起线上支付", status_code=400)
@@ -1047,15 +1053,34 @@ def pay_my_order_online(
         )
         openid = (binding.mp_openid if pay_scene == "miniprogram" else binding.oa_openid) if binding else None
 
-    out_trade_no = f"o{order.id}t{int(__import__('time').time())}"
-    # 关闭同订单未完成的旧支付意图
-    for old in db.scalars(
-        select(PaymentIntent).where(
-            PaymentIntent.order_id == order.id,
-            PaymentIntent.status == "created",
+    paid_stale = close_open_intents_for_order(db, order)
+    if paid_stale is not None:
+        capture_wechat_success(
+            db,
+            order=order,
+            intent=paid_stale,
+            amount_fen=None,
+            require_amount=False,
         )
-    ).all():
-        old.status = "closed"
+        db.commit()
+        db.refresh(order)
+        return {
+            "id": order.id,
+            "order_id": order.id,
+            "status": order.status,
+            "amount": str(order.amount),
+            "pay_scene": pay_scene,
+            "dry_run": False,
+            "immediate_capture": True,
+            "jsapi_params": None,
+            "mweb_url": None,
+            "provider_ref": paid_stale.provider_ref,
+            "out_trade_no": paid_stale.out_trade_no,
+            "pickup_code": order.pickup_code,
+            "dining_status": order.dining_status,
+        }
+
+    out_trade_no = new_out_trade_no(order.id)
 
     provider = get_online_provider(db, mctx.site_id)
     result = provider.create_payment(

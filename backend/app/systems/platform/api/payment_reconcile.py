@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -92,6 +92,20 @@ def list_reconcile_items(
             )
             if has_charge is None:
                 items.append({"kind": "pay_mismatch", "order_id": order.id, "status": order.status, "note": "missing_charge"})
+            succeeded_n = db.scalar(
+                select(func.count())
+                .select_from(PaymentIntent)
+                .where(PaymentIntent.order_id == order.id, PaymentIntent.status == "succeeded")
+            ) or 0
+            if int(succeeded_n) > 1:
+                items.append(
+                    {
+                        "kind": "pay_mismatch",
+                        "order_id": order.id,
+                        "status": order.status,
+                        "note": "duplicate_succeeded_intents",
+                    }
+                )
     elif kind == "refund_abnormal":
         rows = db.scalars(
             select(RefundIntent).where(
@@ -166,9 +180,11 @@ def action_force_fulfill(
 ):
     if not ctx.can_force_payment_reconcile:
         raise AppError("forbidden", "仅超管或财务对账可强制补履约", status_code=403)
-    order = db.get(Order, body.order_id)
-    if order is None or order.site_id != ctx.site_id:
-        raise AppError("not_found", "订单不存在", status_code=404)
+    if body.order_id is None:
+        raise AppError("validation_error", "缺少 order_id", status_code=422)
+    from app.systems.platform.services.order_lock import lock_order
+
+    order = lock_order(db, body.order_id, site_id=ctx.site_id)
     intent = db.scalar(
         select(PaymentIntent).where(PaymentIntent.order_id == order.id).order_by(PaymentIntent.id.desc())
     )

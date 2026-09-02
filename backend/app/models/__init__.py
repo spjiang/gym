@@ -3,6 +3,7 @@
 from app.systems.platform.models.access import AccessDevice, AccessEvent, AccessGrant, AccessPoint
 from app.systems.platform.models.agreement import LegalAgreement
 from app.systems.platform.models.audit import AuditLog
+from app.systems.platform.models.error_event import ErrorEvent
 from app.systems.platform.models.ai_analysis import AiAnalysisRecord, AiLlmAccount, AiPromptTemplate
 from app.systems.platform.models.commerce import Order, Payment
 from app.systems.platform.models.identity import Role, StaffRole, StaffUser
@@ -96,6 +97,7 @@ __all__ = [
     "Order",
     "Payment",
     "AuditLog",
+    "ErrorEvent",
     "AiPromptTemplate",
     "AiLlmAccount",
     "AiAnalysisRecord",

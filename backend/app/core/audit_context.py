@@ -30,6 +30,7 @@ class AuditEnvelope:
     status: str | None = None
     status_code: int | None = None
     duration_ms: int | None = None
+    request_id: str | None = None
     detail: dict[str, Any] = field(default_factory=dict)
     skip_auto: bool = False
 
@@ -52,6 +53,7 @@ class AuditEnvelope:
             "status": self.status,
             "status_code": self.status_code,
             "duration_ms": self.duration_ms,
+            "request_id": self.request_id,
             "detail_json": dict(self.detail) if self.detail else None,
         }
 

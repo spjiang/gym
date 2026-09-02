@@ -34,6 +34,7 @@ def write_audit(
     status: str | None = "success",
     status_code: int | None = None,
     duration_ms: int | None = None,
+    request_id: str | None = None,
     detail_json: dict[str, Any] | None = None,
 ) -> AuditLog:
     env_kwargs = get_audit_envelope().as_write_kwargs() if get_audit_envelope() else {}
@@ -55,6 +56,7 @@ def write_audit(
         "status": status,
         "status_code": status_code,
         "duration_ms": duration_ms,
+        "request_id": request_id,
         "detail_json": detail_json,
     }
     merged = {**env_kwargs, **{k: v for k, v in explicit.items() if v is not None}}
@@ -88,6 +90,7 @@ def write_audit(
         status=merged.get("status"),
         status_code=merged.get("status_code"),
         duration_ms=merged.get("duration_ms"),
+        request_id=merged.get("request_id"),
         detail_json=merged.get("detail_json"),
     )
     db.add(log)

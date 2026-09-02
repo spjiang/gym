@@ -42,6 +42,7 @@ class AuditLogOut(BaseModel):
     status: str | None
     status_code: int | None
     duration_ms: int | None
+    request_id: str | None = None
     action: str
     target_type: str
     target_id: str
@@ -155,6 +156,7 @@ def list_audit_logs(
             status=row.status,
             status_code=row.status_code,
             duration_ms=row.duration_ms,
+            request_id=row.request_id,
             action=row.action,
             target_type=row.target_type,
             target_id=row.target_id,

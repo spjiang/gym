@@ -166,6 +166,8 @@ def _env_wechat_cfg() -> EffectivePaymentSettings:
         api_v3_key=env.wechat_api_key or "",
         mch_serial_no="",
         mch_private_key="",
+        platform_serial_no="",
+        platform_public_key="",
         notify_url=env.wechat_notify_url or "",
         h5_return_url=env.member_web_public_url or "",
         source="env",
