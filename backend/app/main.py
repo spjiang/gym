@@ -95,6 +95,21 @@ def create_app() -> FastAPI:
     def health():
         return {"status": "ok"}
 
+    @app.get("/.well-known/acme-challenge/{token}")
+    def acme_challenge(token: str):
+        """供 Let's Encrypt HTTP-01 校验；申请 api 源站证书时使用。"""
+        import re
+        from pathlib import Path
+
+        from fastapi.responses import PlainTextResponse
+
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", token):
+            return PlainTextResponse("bad token", status_code=400)
+        path = Path(settings.upload_dir) / ".well-known" / "acme-challenge" / token
+        if not path.is_file():
+            return PlainTextResponse("not found", status_code=404)
+        return PlainTextResponse(path.read_text(encoding="utf-8").strip())
+
     @app.get("/ready")
     def ready():
         from fastapi.responses import JSONResponse
