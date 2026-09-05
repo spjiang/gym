@@ -123,7 +123,7 @@ const pageTitle = computed(() => {
 })
 
 const eyebrow = computed(() => {
-  if (isPortal.value) return '观野SPACE 综合管理平台'
+  if (isPortal.value) return '晨曦观野SPACE 综合管理平台'
   return systemMeta.value?.name || brandLabelForSystem(String(currentSystem.value))
 })
 

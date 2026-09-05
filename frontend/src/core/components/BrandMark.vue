@@ -18,7 +18,7 @@ const tagline = computed(() => BRAND.tagline[props.variant])
 <template>
   <div class="brand-mark" :class="[`is-${variant}`, { 'is-compact': compact }]">
     <div class="word">
-      <span class="cn">{{ BRAND.cn }}</span>
+      <span class="cn">{{ variant === 'space' ? BRAND.spaceCn : BRAND.cn }}</span>
       <span class="en">{{ en }}</span>
     </div>
     <p v-if="showTagline" class="tag">{{ tagline }}</p>

@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import { RouterLink, RouterView } from 'vue-router'
+import { computed, onMounted } from 'vue'
+import { RouterLink, RouterView, useRoute } from 'vue-router'
 import BrandMark from '../components/BrandMark.vue'
 import { copyrightLine } from '../copyright'
 import { useSiteStore } from '../stores/site'
 
 const site = useSiteStore()
+const route = useRoute()
+const overHero = computed(() => route.name === 'home')
 
 onMounted(() => {
   void site.load()
@@ -14,7 +16,7 @@ onMounted(() => {
 
 <template>
   <div class="shell">
-    <header class="nav">
+    <header class="nav" :class="{ over: overHero }">
       <RouterLink to="/" class="logo" aria-label="首页">
         <BrandMark compact />
       </RouterLink>
@@ -42,32 +44,27 @@ onMounted(() => {
     <RouterView />
 
     <footer class="foot">
-      <div class="cols">
-        <div>
-          <p class="name">{{ site.data?.site.display_name || '观野SPACE' }}</p>
-          <p v-if="site.data?.contact.address">{{ site.data.contact.address }}</p>
-          <p>
-            <span v-if="site.data?.contact.service_phone">{{ site.data.contact.service_phone }}</span>
-            <span v-if="site.data?.contact.business_hours"> · {{ site.data.contact.business_hours }}</span>
-          </p>
-        </div>
-        <div>
-          <p>品牌</p>
-          <RouterLink to="/space">观野SPACE</RouterLink>
-          <RouterLink to="/fit">观野FIT</RouterLink>
-          <RouterLink to="/bar">观野BAR</RouterLink>
-        </div>
-        <div>
-          <p>资讯</p>
-          <RouterLink to="/news">新闻动态</RouterLink>
-          <RouterLink to="/jobs">招聘信息</RouterLink>
-          <RouterLink to="/partners">招商入驻</RouterLink>
-        </div>
-      </div>
-      <p v-if="site.data?.site.miniprogram_hint" class="hint">{{ site.data.site.miniprogram_hint }}</p>
-      <p v-if="site.data?.site.footer_note" class="hint">{{ site.data.site.footer_note }}</p>
-      <p class="copy">{{ copyrightLine() }} 版权所有</p>
-      <p v-if="site.data?.site.icp_beian" class="hint">{{ site.data.site.icp_beian }}</p>
+      <BrandMark compact />
+      <nav class="foot-links">
+        <RouterLink to="/space">SPACE</RouterLink>
+        <RouterLink to="/fit">FIT</RouterLink>
+        <RouterLink to="/bar">BAR</RouterLink>
+        <RouterLink to="/news">新闻</RouterLink>
+        <RouterLink to="/jobs">招聘</RouterLink>
+        <RouterLink to="/partners">招商</RouterLink>
+      </nav>
+      <p class="place">{{ site.data?.contact.address || '回龙观公园' }}</p>
+      <p class="meta">
+        <a v-if="site.data?.contact.service_phone" :href="`tel:${site.data.contact.service_phone}`">
+          {{ site.data.contact.service_phone }}
+        </a>
+        <span v-if="site.data?.contact.service_phone && site.data?.contact.business_hours">·</span>
+        <span v-if="site.data?.contact.business_hours">{{ site.data.contact.business_hours }}</span>
+      </p>
+      <p class="legal">
+        {{ copyrightLine() }}
+        <template v-if="site.data?.site.icp_beian"> · {{ site.data.site.icp_beian }}</template>
+      </p>
     </footer>
   </div>
 </template>
@@ -81,19 +78,27 @@ onMounted(() => {
 .nav {
   display: flex;
   align-items: center;
-  gap: 24px;
-  padding: 16px 28px;
-  border-bottom: 1px solid var(--line);
+  gap: 28px;
+  padding: 16px 32px;
+  border-bottom: 1px solid rgba(242, 230, 210, 0.08);
   position: sticky;
   top: 0;
   z-index: 10;
-  background: rgba(18, 21, 26, 0.92);
-  backdrop-filter: blur(10px);
+  background: rgba(8, 9, 11, 0.92);
+  backdrop-filter: blur(16px);
+}
+.nav.over {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: linear-gradient(180deg, rgba(8, 9, 11, 0.72), transparent);
+  border-bottom: none;
+  backdrop-filter: none;
 }
 .nav nav {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 18px;
   flex: 1;
   font-size: 14px;
   letter-spacing: 0.04em;
@@ -120,48 +125,59 @@ onMounted(() => {
 }
 .foot {
   margin-top: auto;
-  padding: 40px 28px 48px;
-  border-top: 1px solid var(--line);
-  color: var(--muted);
+  padding: 56px 24px 40px;
+  background: #08090b;
+  border-top: 1px solid rgba(242, 230, 210, 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.foot-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 22px;
+  margin: 28px 0 0;
   font-size: 13px;
+  letter-spacing: 0.12em;
 }
-.cols {
-  display: grid;
-  grid-template-columns: 2fr 1fr 1fr;
-  gap: 24px;
-  margin-bottom: 20px;
-}
-.cols p {
-  margin: 0 0 8px;
-}
-.name {
-  color: var(--text);
-  font-size: 16px;
-}
-.cols a {
-  display: block;
-  margin: 0 0 6px;
+.foot-links a {
   color: var(--muted);
 }
-.hint {
-  opacity: 0.8;
-  margin: 0 0 6px;
-}
-.copy {
-  margin: 12px 0 4px;
+.foot-links a.router-link-active {
   color: var(--text);
+}
+.place {
+  margin: 28px 0 0;
+  color: var(--text);
+  font-size: 15px;
+  letter-spacing: 0.06em;
+}
+.meta {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+.meta a {
+  color: inherit;
+}
+.legal {
+  margin: 28px 0 0;
+  color: rgba(138, 145, 152, 0.75);
+  font-size: 12px;
 }
 @media (max-width: 800px) {
   .nav {
     flex-wrap: wrap;
     padding: 12px 16px;
+    gap: 12px;
   }
   .cta {
-    width: 100%;
-    text-align: center;
+    margin-left: auto;
   }
-  .cols {
-    grid-template-columns: 1fr;
+  .foot {
+    padding: 40px 20px 32px;
   }
 }
 </style>

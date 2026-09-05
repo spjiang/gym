@@ -1,6 +1,6 @@
 <view class="wrap me tab-page">
   <view class="back-stores" bindtap="goStores">← 选店</view>
-  <view class="site">观野SPACE · 会员中心</view>
+  <view class="site">晨曦观野SPACE · 会员中心</view>
 
   <view class="card profile">
     <view class="avatar" bindtap="pickAvatar">

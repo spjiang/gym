@@ -10,10 +10,10 @@ from app.core.db import get_db
 from app.core.deps import MemberContext, get_current_member
 from app.core.errors import AppError
 from app.core.schemas.common import TokenOut
-from app.core.security import create_access_token, verify_password
+from app.core.security import create_access_token, decode_access_token, verify_password
 from app.systems.platform.models.member import AcquisitionSource, FaceStatus, Member, MerchantMember
 from app.systems.platform.models.org import Merchant, MerchantStatus, Site
-from app.systems.platform.models.payment_settings import MemberWechatBinding
+from app.systems.platform.models.payment_settings import MemberWechatBinding, SitePaymentSettings
 from app.systems.platform.models.promoter import PromoterCode
 from app.systems.platform.services.audit import write_audit
 from app.systems.platform.services.otp import send_member_otp, verify_member_otp
@@ -35,6 +35,7 @@ class OtpVerifyIn(BaseModel):
     merchant_id: int | None = None
     # 推广码：仅首次注册时落库，老会员不覆盖既有推荐关系
     referral_code: str | None = Field(default=None, max_length=32)
+    wechat_ticket: str | None = Field(default=None, max_length=512)
 
 
 class OtpSendOut(BaseModel):
@@ -77,6 +78,81 @@ def _resolve_promoter(db: Session, code: str | None, *, site_id: int) -> Promote
     if promoter is None or promoter.site_id != site_id or not promoter.is_active:
         return None
     return promoter
+
+
+def _first_site(db: Session) -> Site:
+    site = db.scalar(select(Site).order_by(Site.id.asc()))
+    if site is None:
+        raise AppError("misconfigured", "场地未初始化", status_code=500)
+    return site
+
+
+def _openid_from_wechat_ticket(ticket: str | None) -> str | None:
+    raw = (ticket or "").strip()
+    if not raw:
+        return None
+    try:
+        payload = decode_access_token(raw)
+    except ValueError as exc:
+        raise AppError("invalid_ticket", "微信登录已过期，请重新点微信登录", status_code=400) from exc
+    if payload.get("typ") != "wechat_oa_pending":
+        raise AppError("invalid_ticket", "微信登录已过期，请重新点微信登录", status_code=400)
+    openid = str(payload.get("sub") or "").strip()
+    if not openid:
+        raise AppError("invalid_ticket", "微信登录已过期，请重新点微信登录", status_code=400)
+    return openid
+
+
+def _bind_oa_openid(db: Session, *, member_id: int, openid: str) -> None:
+    taken = db.scalar(select(MemberWechatBinding).where(MemberWechatBinding.oa_openid == openid))
+    if taken is not None and taken.member_id != member_id:
+        raise AppError("wechat_bound", "该微信已绑定其他会员", status_code=409)
+    row = db.scalar(select(MemberWechatBinding).where(MemberWechatBinding.member_id == member_id))
+    if row is None:
+        row = MemberWechatBinding(member_id=member_id)
+        db.add(row)
+    row.oa_openid = openid
+
+
+def _issue_member_login(
+    db: Session,
+    member: Member,
+    *,
+    merchant_id: int | None,
+    summary: str,
+    wechat_ticket: str | None = None,
+) -> TokenOut:
+    merchant = _resolve_merchant(db, merchant_id, site_id=member.site_id)
+    if merchant is not None:
+        linked = _ensure_link(db, member_id=member.id, merchant_id=merchant.id)
+        if linked:
+            write_audit(
+                db,
+                action="member.link_merchant",
+                target_type="member",
+                target_id=member.id,
+                summary=f"登录挂靠商户 merchant_id={merchant.id}",
+                site_id=member.site_id,
+                merchant_id=merchant.id,
+            )
+    openid = _openid_from_wechat_ticket(wechat_ticket)
+    if openid:
+        _bind_oa_openid(db, member_id=member.id, openid=openid)
+    token = create_access_token(
+        subject=str(member.id),
+        extra={"site_id": member.site_id, "typ": "member"},
+    )
+    write_audit(
+        db,
+        action="member.login",
+        target_type="member",
+        target_id=member.id,
+        summary=summary,
+        site_id=member.site_id,
+        merchant_id=merchant_id,
+    )
+    db.commit()
+    return TokenOut(access_token=token)
 
 
 @router.post("/otp/send", response_model=OtpSendOut)
@@ -168,27 +244,20 @@ def verify_otp(body: OtpVerifyIn, db: Session = Depends(get_db)):
                     merchant_id=merchant.id,
                 )
 
-    token = create_access_token(
-        subject=str(member.id),
-        extra={"site_id": member.site_id, "typ": "member"},
-    )
-    write_audit(
+    return _issue_member_login(
         db,
-        action="member.login",
-        target_type="member",
-        target_id=member.id,
-        summary="会员验证码登录成功",
-        site_id=member.site_id,
+        member,
         merchant_id=body.merchant_id,
+        summary="会员验证码登录成功",
+        wechat_ticket=body.wechat_ticket,
     )
-    db.commit()
-    return TokenOut(access_token=token)
 
 
 class PasswordLoginIn(BaseModel):
     phone: str = Field(min_length=5, max_length=32)
     password: str = Field(min_length=1, max_length=64)
     merchant_id: int | None = None
+    wechat_ticket: str | None = Field(default=None, max_length=512)
 
 
 @router.post("/password", response_model=TokenOut)
@@ -198,35 +267,13 @@ def login_with_password(body: PasswordLoginIn, db: Session = Depends(get_db)):
     if member is None or not member.password_hash or not verify_password(body.password, member.password_hash):
         raise AppError("invalid_credentials", "手机号或密码错误", status_code=401)
 
-    merchant = _resolve_merchant(db, body.merchant_id, site_id=member.site_id)
-    if merchant is not None:
-        linked = _ensure_link(db, member_id=member.id, merchant_id=merchant.id)
-        if linked:
-            write_audit(
-                db,
-                action="member.link_merchant",
-                target_type="member",
-                target_id=member.id,
-                summary=f"密码登录挂靠商户 merchant_id={merchant.id}",
-                site_id=member.site_id,
-                merchant_id=merchant.id,
-            )
-
-    token = create_access_token(
-        subject=str(member.id),
-        extra={"site_id": member.site_id, "typ": "member"},
-    )
-    write_audit(
+    return _issue_member_login(
         db,
-        action="member.login",
-        target_type="member",
-        target_id=member.id,
-        summary="会员密码登录成功",
-        site_id=member.site_id,
+        member,
         merchant_id=body.merchant_id,
+        summary="会员密码登录成功",
+        wechat_ticket=body.wechat_ticket,
     )
-    db.commit()
-    return TokenOut(access_token=token)
 
 
 class WechatBindIn(BaseModel):
@@ -267,3 +314,59 @@ def bind_oa_openid(
     row.oa_openid = openid
     db.commit()
     return {"oa_openid": openid, "bound": True}
+
+
+class WechatOaConfigOut(BaseModel):
+    oa_app_id: str
+    ready: bool
+
+
+class WechatOaLoginIn(BaseModel):
+    code: str = Field(min_length=1, max_length=128)
+    merchant_id: int | None = None
+
+
+class WechatOaLoginOut(BaseModel):
+    access_token: str | None = None
+    token_type: str = "bearer"
+    need_bind: bool = False
+    ticket: str | None = None
+    message: str | None = None
+
+
+@router.get("/wechat/oa/config", response_model=WechatOaConfigOut)
+def wechat_oa_config(db: Session = Depends(get_db)):
+    """会员 H5 拼微信网页授权用，不含密钥。须单独填公众号 AppID，不能用小程序号。"""
+    site = _first_site(db)
+    row = db.get(SitePaymentSettings, site.id)
+    app_id = ((row.oa_app_id if row else None) or "").strip()
+    return WechatOaConfigOut(oa_app_id=app_id, ready=bool(app_id))
+
+
+@router.post("/wechat/oa", response_model=WechatOaLoginOut)
+def login_with_wechat_oa(body: WechatOaLoginIn, db: Session = Depends(get_db)):
+    """微信内网页授权：已绑定则发 token，未绑定则发待绑票据。"""
+    site = _first_site(db)
+    cfg = resolve_payment_settings(db, site.id)
+    openid = exchange_oa_openid(cfg, body.code)
+    row = db.scalar(select(MemberWechatBinding).where(MemberWechatBinding.oa_openid == openid))
+    if row is None:
+        ticket = create_access_token(
+            subject=openid,
+            extra={"typ": "wechat_oa_pending", "site_id": site.id},
+        )
+        return WechatOaLoginOut(
+            need_bind=True,
+            ticket=ticket,
+            message="该微信尚未绑定会员，请用手机号验证一次，验证后自动绑定",
+        )
+    member = db.get(Member, row.member_id)
+    if member is None:
+        raise AppError("not_found", "会员不存在", status_code=404)
+    issued = _issue_member_login(
+        db,
+        member,
+        merchant_id=body.merchant_id,
+        summary="会员微信快捷登录成功",
+    )
+    return WechatOaLoginOut(access_token=issued.access_token)

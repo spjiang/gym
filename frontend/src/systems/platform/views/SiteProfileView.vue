@@ -25,7 +25,7 @@ const loading = ref(false)
 const saving = ref(false)
 const uploading = ref(false)
 const form = reactive({
-  name: '观野SPACE',
+  name: '晨曦观野SPACE',
   tagline: '',
   description: '',
   address: '',
@@ -50,7 +50,7 @@ async function load() {
   loading.value = true
   try {
     const { data } = await http.get<Profile>('/site/profile')
-    form.name = data.name || '观野SPACE'
+    form.name = data.name || '晨曦观野SPACE'
     form.tagline = data.tagline || ''
     form.description = data.description || ''
     form.address = data.address || ''
@@ -144,7 +144,7 @@ async function save() {
       banner_image_urls: form.banner_image_urls,
       gallery_image_urls: form.gallery_image_urls,
     })
-    ElMessage.success('观野SPACE 介绍已保存，会员门户将同步展示')
+    ElMessage.success('晨曦观野SPACE 介绍已保存，会员门户将同步展示')
     await load()
   } catch (e: unknown) {
     ElMessage.error(e instanceof Error ? e.message : '保存失败')
@@ -160,7 +160,7 @@ onMounted(load)
   <div v-loading="loading">
     <div class="toolbar">
       <div>
-        <h3>观野SPACE 介绍</h3>
+        <h3>晨曦观野SPACE 介绍</h3>
         <p class="hint">配置会员端商场门户：广告位、整体介绍、客服电话与地址。</p>
       </div>
       <el-button type="primary" :loading="saving" @click="save">保存</el-button>

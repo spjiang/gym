@@ -51,9 +51,9 @@
 }
 
 .hero-brand {
-  font-size: 34rpx;
+  font-size: 30rpx;
   font-weight: 700;
-  letter-spacing: 4rpx;
+  letter-spacing: 2rpx;
 }
 
 .hero-brand-en {

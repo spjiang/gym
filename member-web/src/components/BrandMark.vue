@@ -19,7 +19,7 @@ const TAG: Record<string, string> = {
 <template>
   <div class="brand-mark" :class="[`is-${variant}`, { 'is-compact': compact }]">
     <div class="word">
-      <span class="cn">观野</span>
+      <span class="cn">{{ variant === 'space' ? '晨曦观野' : '观野' }}</span>
       <span class="en">{{ EN[variant] }}</span>
     </div>
     <p v-if="showTagline" class="tag">{{ TAG[variant] }}</p>

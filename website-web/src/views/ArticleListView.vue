@@ -3,6 +3,7 @@ import { onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import http from '../api/http'
 import type { ArticleChannel, NewsBrief, Page } from '../api/types'
+import { mediaSrc } from '../lib/media'
 
 const props = defineProps<{ channel: ArticleChannel }>()
 const TITLES: Record<ArticleChannel, string> = { news: '新闻动态', jobs: '招聘信息', partners: '招商入驻' }
@@ -54,7 +55,7 @@ watch(() => props.channel, load)
     <p v-else-if="!items.length" class="muted">暂无内容</p>
     <div v-else class="grid">
       <RouterLink v-for="n in items" :key="n.id" class="card" :to="`/${channel}/${n.id}`">
-        <img v-if="n.cover_image_url" :src="n.cover_image_url" alt="" />
+        <img v-if="n.cover_image_url" :src="mediaSrc(n.cover_image_url)" alt="" />
         <div>
           <small>{{ formatDay(n.published_at) }}</small>
           <strong>{{ n.title }}</strong>
@@ -97,10 +98,11 @@ h1 {
   min-height: 140px;
 }
 .card img {
-  height: 100%;
-  min-height: 140px;
   width: 180px;
-  object-fit: cover;
+  height: auto;
+  max-height: 220px;
+  object-fit: contain;
+  background: #050607;
 }
 .card:not(:has(img)) {
   grid-template-columns: 1fr;
@@ -127,7 +129,8 @@ h1 {
   }
   .card img {
     width: 100%;
-    height: 160px;
+    height: auto;
+    max-height: none;
   }
 }
 </style>

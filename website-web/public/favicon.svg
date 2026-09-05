@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <rect width="48" height="48" fill="#171B1F"/>
+  <text x="24" y="28" text-anchor="middle" fill="#F2E6D2" font-family="Arial, sans-serif" font-size="16" font-weight="800">观</text>
+  <rect x="0" y="40" width="30" height="8" fill="#F36B21"/>
+  <rect x="30" y="43" width="18" height="5" fill="#14B8D4"/>
+</svg>

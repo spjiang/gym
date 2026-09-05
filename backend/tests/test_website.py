@@ -21,7 +21,7 @@ def test_public_website_readable_without_token(client: TestClient):
     r = client.get("/api/v1/public/website")
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["site"]["display_name"] == "观野SPACE"
+    assert body["site"]["display_name"] == "晨曦观野SPACE"
     assert "contact" in body
     assert body["latest_news"] == []
 
@@ -105,7 +105,7 @@ def test_contact_from_site_profile_hero_does_not_change_cover(
             "/api/v1/site/profile",
             headers=admin_headers,
             json={
-                "name": "观野SPACE",
+                "name": "晨曦观野SPACE",
                 "service_phone": "010-88881001",
                 "address": "北京市昌平区回龙观公园",
                 "business_hours": "06:00–24:00",
@@ -179,10 +179,10 @@ def test_partial_settings_put_does_not_clear_other_fields(client: TestClient, ad
         "/api/v1/website/settings",
         headers=admin_headers,
         json={
-            "site": {"display_name": "观野SPACE", "logo_url": url},
+            "site": {"display_name": "晨曦观野SPACE", "logo_url": url},
             "home": {"headline": "原标题", "hero_image_url": url},
             "brands": {
-                "space": {"title": "观野SPACE", "cover_image_url": url},
+                "space": {"title": "晨曦观野SPACE", "cover_image_url": url},
                 "fit": {"title": "观野FIT", "cover_image_url": url},
                 "bar": {"title": "观野BAR", "cover_image_url": url},
             },
@@ -209,6 +209,6 @@ def test_partial_settings_put_does_not_clear_other_fields(client: TestClient, ad
     brands = fit_only.json()["brands"]
     assert brands["fit"]["title"] == "只改FIT"
     assert brands["fit"]["cover_image_url"] == url
-    assert brands["space"]["title"] == "观野SPACE"
+    assert brands["space"]["title"] == "晨曦观野SPACE"
     assert brands["space"]["cover_image_url"] == url
     assert brands["bar"]["title"] == "观野BAR"

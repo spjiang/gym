@@ -4,7 +4,9 @@ import { useRoute, useRouter } from 'vue-router'
 import http from '../api/http'
 import { pathForMerchant, useAuthStore } from '../stores/auth'
 import BrandMark from '../components/BrandMark.vue'
-import { copyrightLine, COPYRIGHT_OWNER } from '../copyright'
+import LegalSheet from '../components/LegalSheet.vue'
+import { copyrightLine } from '../copyright'
+import type { LegalDoc } from '../legal'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -17,7 +19,16 @@ const tip = ref('')
 const err = ref('')
 const sending = ref(false)
 const logging = ref(false)
+const wechatBusy = ref(false)
 const promoterName = ref('')
+const oaAppId = ref('')
+const qrSrc = ref('')
+const legalDoc = ref<LegalDoc | null>(null)
+const wechatTicket = ref(sessionStorage.getItem('gym_wechat_oa_ticket') || '')
+
+function inWechat() {
+  return /MicroMessenger/i.test(navigator.userAgent)
+}
 
 const merchantId = computed(() => {
   const raw = route.query.merchant_id
@@ -25,14 +36,136 @@ const merchantId = computed(() => {
   return n && !Number.isNaN(n) ? n : undefined
 })
 
-/** 推广码来自扫码链接，仅首次注册时绑定推荐关系 */
 const referralCode = computed(() => {
   const raw = route.query.promoter ?? route.query.referral_code
   const value = Array.isArray(raw) ? raw[0] : raw
   return typeof value === 'string' && value.trim() ? value.trim().toUpperCase() : undefined
 })
 
+function rememberTicket(ticket: string) {
+  wechatTicket.value = ticket
+  sessionStorage.setItem('gym_wechat_oa_ticket', ticket)
+}
+
+function clearTicket() {
+  wechatTicket.value = ''
+  sessionStorage.removeItem('gym_wechat_oa_ticket')
+}
+
+function goAfterLogin(me: Awaited<ReturnType<typeof auth.fetchMe>>) {
+  const redirect = (route.query.redirect as string) || ''
+  if (redirect.startsWith('/m/') || redirect === '/stores' || redirect === '/me') {
+    router.replace(redirect)
+    return
+  }
+  if (merchantId.value) {
+    const m = me.merchants.find((x) => x.id === merchantId.value)
+    if (m) {
+      auth.setMerchantId(m.id)
+      router.replace(pathForMerchant(m))
+      return
+    }
+  }
+  router.replace('/stores')
+}
+
+async function finishWithToken(token: string) {
+  clearTicket()
+  auth.setToken(token)
+  const me = await auth.fetchMe()
+  goAfterLogin(me)
+}
+
+function stripWechatQuery() {
+  const next: Record<string, string> = {}
+  for (const [key, value] of Object.entries(route.query)) {
+    if (key === 'code' || key === 'state' || key === 'wechat') continue
+    const raw = Array.isArray(value) ? value[0] : value
+    if (typeof raw === 'string' && raw) next[key] = raw
+  }
+  void router.replace({ path: '/login', query: next })
+}
+
+function loginPageUrl(extra: Record<string, string> = {}) {
+  const url = new URL(`${window.location.origin}/login`)
+  if (merchantId.value) url.searchParams.set('merchant_id', String(merchantId.value))
+  if (referralCode.value) url.searchParams.set('promoter', referralCode.value)
+  const redirect = (route.query.redirect as string) || ''
+  if (redirect) url.searchParams.set('redirect', redirect)
+  for (const [key, value] of Object.entries(extra)) url.searchParams.set(key, value)
+  return url
+}
+
+async function loginByWechatCode(wxCode: string) {
+  wechatBusy.value = true
+  err.value = ''
+  try {
+    const { data } = await http.post('/member/auth/wechat/oa', {
+      code: wxCode,
+      merchant_id: merchantId.value ?? null,
+    })
+    if (data.access_token) {
+      await finishWithToken(data.access_token)
+      return
+    }
+    if (data.need_bind && data.ticket) {
+      rememberTicket(data.ticket)
+      tip.value = data.message || '请用手机号验证一次，验证后自动绑定微信'
+    }
+  } catch (e: unknown) {
+    err.value = e instanceof Error ? e.message : '微信登录失败'
+  } finally {
+    wechatBusy.value = false
+    stripWechatQuery()
+  }
+}
+
+function startWechat() {
+  err.value = ''
+  if (!inWechat()) {
+    err.value = '请用微信扫右侧二维码，或在微信中打开本页'
+    return
+  }
+  if (!oaAppId.value) {
+    err.value = '尚未开通微信网页授权，请先用手机号登录'
+    return
+  }
+  const authorize = new URL('https://open.weixin.qq.com/connect/oauth2/authorize')
+  authorize.searchParams.set('appid', oaAppId.value)
+  authorize.searchParams.set('redirect_uri', loginPageUrl().toString())
+  authorize.searchParams.set('response_type', 'code')
+  authorize.searchParams.set('scope', 'snsapi_base')
+  authorize.searchParams.set('state', 'login')
+  window.location.href = `${authorize.toString()}#wechat_redirect`
+}
+
+async function paintQr() {
+  const QRCode = (await import('qrcode')).default
+  qrSrc.value = await QRCode.toDataURL(loginPageUrl({ wechat: '1' }).toString(), {
+    width: 220,
+    margin: 1,
+    color: { dark: '#111111', light: '#ffffff' },
+  })
+}
+
 onMounted(async () => {
+  try {
+    const { data } = await http.get('/member/auth/wechat/oa/config')
+    oaAppId.value = data.oa_app_id || ''
+  } catch {
+    oaAppId.value = ''
+  }
+  try {
+    await paintQr()
+  } catch {
+    qrSrc.value = ''
+  }
+  const wxCode = route.query.code
+  if (typeof wxCode === 'string' && wxCode) {
+    await loginByWechatCode(wxCode)
+  } else if (inWechat() && route.query.wechat === '1' && oaAppId.value) {
+    startWechat()
+  }
   if (!referralCode.value) return
   try {
     const { data } = await http.get(`/promotions/${referralCode.value}`)
@@ -85,29 +218,16 @@ async function login() {
             phone: phone.value.trim(),
             password: password.value,
             merchant_id: merchantId.value ?? null,
+            wechat_ticket: wechatTicket.value || null,
           })
         : await http.post('/member/auth/otp/verify', {
             phone: phone.value.trim(),
             code: code.value.trim(),
             merchant_id: merchantId.value ?? null,
             referral_code: referralCode.value ?? null,
+            wechat_ticket: wechatTicket.value || null,
           })
-    auth.setToken(data.access_token)
-    const me = await auth.fetchMe()
-    const redirect = (route.query.redirect as string) || ''
-    if (redirect.startsWith('/m/') || redirect === '/stores' || redirect === '/me') {
-      router.replace(redirect)
-      return
-    }
-    if (merchantId.value) {
-      const m = me.merchants.find((x) => x.id === merchantId.value)
-      if (m) {
-        auth.setMerchantId(m.id)
-        router.replace(pathForMerchant(m))
-        return
-      }
-    }
-    router.replace('/stores')
+    await finishWithToken(data.access_token)
   } catch (e: unknown) {
     err.value = e instanceof Error ? e.message : '登录失败'
   } finally {
@@ -119,173 +239,406 @@ async function login() {
 <template>
   <div class="login">
     <header class="login__brand">
-      <BrandMark variant="space" show-tagline />
-      <h1 class="login__title">会员中心</h1>
-      <p class="login__desc">
-        <template v-if="merchantId">扫码加入门店 · 登录后自动关联本店</template>
-        <template v-else>验证码可自动开通；已设密码的会员也可直接登录</template>
-      </p>
-      <p class="login__owner">由{{ COPYRIGHT_OWNER }}运营</p>
-      <p v-if="promoterName" class="login__promoter">
-        来自「{{ promoterName }}」推荐 · 验证码注册后自动绑定
-      </p>
+      <BrandMark variant="space" compact />
+      <span class="login__badge">会员中心</span>
     </header>
 
-    <form class="login__form" @submit.prevent="login">
-      <div class="login__modes" role="tablist">
-        <button
-          type="button"
-          class="login__mode"
-          :class="{ 'is-active': mode === 'otp' }"
-          @click="mode = 'otp'"
-        >
-          验证码登录
-        </button>
-        <button
-          type="button"
-          class="login__mode"
-          :class="{ 'is-active': mode === 'password' }"
-          @click="mode = 'password'"
-        >
-          密码登录
-        </button>
-      </div>
-      <div class="mw-field">
-        <label class="mw-field__label" for="phone">手机号</label>
-        <input
-          id="phone"
-          v-model="phone"
-          class="mw-input"
-          type="tel"
-          inputmode="numeric"
-          autocomplete="tel"
-          maxlength="20"
-          placeholder="请输入手机号"
-        />
-      </div>
+    <p v-if="promoterName" class="login__promoter">来自「{{ promoterName }}」推荐</p>
 
-      <div v-if="mode === 'otp'" class="mw-field">
-        <label class="mw-field__label" for="code">验证码</label>
-        <div class="login__code-row">
+    <div class="login__board">
+      <form class="login__form" @submit.prevent="login">
+        <div v-if="mode === 'otp'" class="pill">
+          <span class="pill__prefix">+86</span>
+          <input
+            id="phone"
+            v-model="phone"
+            type="tel"
+            inputmode="numeric"
+            autocomplete="tel"
+            maxlength="20"
+            placeholder="请输入手机号"
+          />
+        </div>
+        <div v-else class="pill">
+          <input
+            id="phone-pw"
+            v-model="phone"
+            type="tel"
+            inputmode="numeric"
+            autocomplete="tel"
+            maxlength="20"
+            placeholder="请输入手机号"
+          />
+        </div>
+
+        <div v-if="mode === 'otp'" class="pill">
           <input
             id="code"
             v-model="code"
-            class="mw-input"
             type="text"
             inputmode="numeric"
             autocomplete="one-time-code"
             maxlength="8"
             placeholder="请输入验证码"
           />
-          <button class="mw-btn mw-btn--ghost" type="button" :disabled="sending" @click="send">
-            {{ sending ? '发送中' : '获取验证码' }}
+          <button class="pill__action" type="button" :disabled="sending" @click="send">
+            {{ sending ? '发送中' : '发送验证码' }}
           </button>
         </div>
-      </div>
+        <div v-else class="pill">
+          <input
+            id="password"
+            v-model="password"
+            type="password"
+            autocomplete="current-password"
+            maxlength="64"
+            placeholder="请输入登录密码"
+          />
+        </div>
 
-      <div v-else class="mw-field">
-        <label class="mw-field__label" for="password">登录密码</label>
-        <input
-          id="password"
-          v-model="password"
-          class="mw-input"
-          type="password"
-          autocomplete="current-password"
-          maxlength="64"
-          placeholder="由门店或平台超管设置"
-        />
-      </div>
+        <p class="login__legal">
+          注册登录即代表已阅读并同意我们的
+          <button class="login__legal-link" type="button" @click="legalDoc = 'terms'">平台协议</button>
+          与
+          <button class="login__legal-link" type="button" @click="legalDoc = 'privacy'">隐私政策</button>
+          ，未注册的手机号将自动注册。
+          <template v-if="merchantId">扫码进入后会自动关联本店。</template>
+        </p>
 
-      <p v-if="tip" class="mw-msg mw-msg--ok">{{ tip }}</p>
-      <p v-if="err" class="mw-msg mw-msg--error">{{ err }}</p>
+        <p v-if="tip" class="login__msg is-ok">{{ tip }}</p>
+        <p v-if="err" class="login__msg is-err">{{ err }}</p>
 
-      <button class="mw-btn mw-btn--block" type="submit" :disabled="logging">
-        {{ logging ? '登录中…' : '登录' }}
-      </button>
-    </form>
+        <button class="login__submit" type="submit" :disabled="logging">
+          {{ logging ? '登录中…' : '登录' }}
+        </button>
+        <button class="login__alt" type="button" @click="mode = mode === 'otp' ? 'password' : 'otp'">
+          {{ mode === 'otp' ? '密码登录' : '验证码登录' }}
+        </button>
+      </form>
+
+      <aside class="login__qr">
+        <div class="login__qr-card">
+          <img v-if="qrSrc" :src="qrSrc" alt="微信扫码登录" />
+          <p v-else class="login__qr-wait">二维码生成中</p>
+        </div>
+        <p class="login__qr-label">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="#07c160"
+              d="M9.5 4C5.9 4 3 6.5 3 9.6c0 1.8 1 3.4 2.6 4.5L5 16.2l2.3-1.2c.7.2 1.4.3 2.2.3.3 0 .5 0 .8-.1-.2-.5-.3-1-.3-1.6 0-2.8 2.6-5.1 5.8-5.1.2 0 .5 0 .7.1C15.8 5.8 12.9 4 9.5 4m-2 2.4c.5 0 .9.4.9.9s-.4.9-.9.9-.9-.4-.9-.9.4-.9.9-.9m4.1 0c.5 0 .9.4.9.9s-.4.9-.9.9-.9-.4-.9-.9.4-.9.9-.9M14.7 9.6c-2.7 0-4.9 1.9-4.9 4.3s2.2 4.3 4.9 4.3c.5 0 1.1-.1 1.6-.2l1.8.9-.5-1.6c1.2-.8 2-2 2-3.4 0-2.4-2.2-4.3-4.9-4.3m-1.6 3.1c.3 0 .6.3.6.6s-.3.6-.6.6-.6-.3-.6-.6.3-.6.6-.6m3.2 0c.3 0 .6.3.6.6s-.3.6-.6.6-.6-.3-.6-.6.3-.6.6-.6"
+            />
+          </svg>
+          微信扫码登录
+        </p>
+        <button class="login__wechat" type="button" :disabled="wechatBusy" @click="startWechat">
+          {{ wechatBusy ? '正在打开微信…' : '微信内一键登录' }}
+        </button>
+      </aside>
+    </div>
+
     <p class="login__copy">{{ copyrightLine() }}</p>
+    <LegalSheet :doc="legalDoc" @close="legalDoc = null" />
   </div>
 </template>
 
 <style scoped>
 .login {
-  max-width: var(--mw-shell-max);
-  margin: 0 auto;
   min-height: 100vh;
-  padding: 48px var(--mw-space-4) var(--mw-space-6);
+  background: var(--mw-bg);
+  color: var(--mw-text);
+  padding: 56px 24px 40px;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  align-items: center;
+}
+
+.login :deep(.brand-mark) {
+  padding: 0;
 }
 
 .login__brand {
-  margin-bottom: var(--mw-space-8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 56px;
 }
 
-.login__title {
-  font-size: 22px;
-  line-height: 1.2;
-  margin: var(--mw-space-5) 0 var(--mw-space-3);
-}
-
-.login__desc {
-  margin: 0;
-  font-size: 14px;
-  color: var(--mw-text-secondary);
-  max-width: 28em;
-}
-
-.login__owner,
-.login__copy {
-  margin: var(--mw-space-2) 0 0;
+.login__badge {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: var(--mw-brand);
+  color: var(--mw-brand-ink);
   font-size: 12px;
-  color: var(--mw-text-tertiary);
-}
-
-.login__copy {
-  margin-top: var(--mw-space-6);
-  text-align: center;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 .login__promoter {
-  margin: var(--mw-space-2) 0 0;
+  margin: -28px 0 28px;
   font-size: 13px;
   color: var(--mw-brand);
 }
 
-.login__form {
-  padding: var(--mw-space-5);
-  background: var(--mw-surface);
-  border: 1px solid var(--mw-border);
-  border-radius: var(--mw-radius-lg);
-}
-
-.login__modes {
+.login__board {
+  width: min(760px, 100%);
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-bottom: var(--mw-space-4);
+  grid-template-columns: 1fr 280px;
+  gap: 40px;
+  align-items: start;
 }
 
-.login__mode {
-  height: 36px;
-  border: 1px solid var(--mw-border);
-  border-radius: var(--mw-radius-sm);
+.login__form {
+  min-width: 0;
+}
+
+.login button {
   background: transparent;
-  color: var(--mw-text-secondary);
+  color: inherit;
+  border: 0;
+  border-radius: 0;
+  min-height: 0;
+  padding: 0;
+  font-weight: inherit;
+}
+
+.login input {
+  width: auto;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--mw-text);
+}
+
+.pill {
+  display: flex;
+  align-items: center;
+  height: 48px;
+  margin-bottom: 14px;
+  border: 1px solid var(--mw-border);
+  border-radius: 999px;
+  background: var(--mw-bg-elevated);
+  overflow: hidden;
+}
+
+.pill:focus-within {
+  border-color: var(--mw-border-strong);
+}
+
+.pill input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  padding: 0 18px;
   font: inherit;
+  color: var(--mw-text);
+}
+
+.pill input::placeholder {
+  color: var(--mw-text-tertiary);
+}
+
+.pill__prefix {
+  flex-shrink: 0;
+  padding: 0 0 0 18px;
+  color: var(--mw-text);
+  font-weight: 500;
+}
+
+.pill__prefix::after {
+  content: '';
+  display: inline-block;
+  width: 1px;
+  height: 16px;
+  margin-left: 12px;
+  background: var(--mw-border);
+  vertical-align: middle;
+}
+
+.login button.pill__action {
+  flex-shrink: 0;
+  height: 100%;
+  padding: 0 16px;
+  border: 0;
+  border-left: 1px solid var(--mw-border);
+  background: transparent;
+  color: var(--mw-text);
+  font: inherit;
+  font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
 }
 
-.login__mode.is-active {
-  border-color: var(--mw-brand);
-  color: var(--mw-text);
-  background: var(--mw-brand-muted);
+.pill__action:disabled {
+  color: var(--mw-text-secondary);
 }
 
-.login__code-row {
+.login__legal {
+  margin: 8px 2px 20px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--mw-text-secondary);
+}
+
+.login button.login__legal-link {
+  display: inline;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--mw-text);
+  font: inherit;
+  font-weight: 400;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  vertical-align: baseline;
+}
+
+.login__msg {
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+
+.login__msg.is-ok {
+  color: var(--mw-success);
+}
+
+.login__msg.is-err {
+  color: var(--mw-danger);
+}
+
+.login button.login__submit {
+  width: 100%;
+  height: 48px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--mw-brand);
+  color: var(--mw-brand-ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.login button.login__submit:disabled {
+  opacity: 0.45;
+}
+
+.login button.login__alt {
+  display: block;
+  width: auto;
+  margin: 16px auto 0;
+  border: 0;
+  background: none;
+  color: var(--mw-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.login__qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 28px 20px 24px;
+  border: 1px solid var(--mw-border);
+  border-radius: 16px;
+  background: var(--mw-surface);
+}
+
+.login__qr-card {
+  width: 196px;
+  height: 196px;
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: var(--mw-space-2);
+  place-items: center;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: var(--mw-shadow);
+}
+
+.login__qr-card img {
+  width: 176px;
+  height: 176px;
+}
+
+.login__qr-wait {
+  margin: 0;
+  color: var(--mw-text-secondary);
+  font-size: 13px;
+}
+
+.login__qr-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 16px 0 0;
+  color: #07c160;
+  font-size: 14px;
+}
+
+.login__qr-label svg {
+  width: 18px;
+  height: 18px;
+}
+
+.login button.login__wechat {
+  display: none;
+  margin-top: 14px;
+  width: 100%;
+  height: 40px;
+  border: 0;
+  border-radius: 999px;
+  background: #07c160;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.login__copy {
+  margin-top: auto;
+  padding-top: 48px;
+  font-size: 12px;
+  color: var(--mw-text-tertiary);
+}
+
+@media (max-width: 800px) {
+  .login {
+    padding: 36px 20px 28px;
+  }
+
+  .login__board {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .login__qr {
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .login__qr-card,
+  .login__qr-label {
+    display: none;
+  }
+
+  .login button.login__wechat {
+    display: flex;
+    margin-top: 0;
+  }
 }
 </style>

@@ -335,11 +335,11 @@ def run_seed() -> None:
         site = db.scalar(select(Site).order_by(Site.id))
         if site is None:
             site = Site(
-                name="观野SPACE",
+                name="晨曦观野SPACE",
                 address="北京市昌平区回龙观公园",
                 tagline="运动 · 夜生活 · 社区",
                 description=(
-                    "观野SPACE 位于回龙观公园，汇聚观野FIT 与观野BAR。"
+                    "晨曦观野SPACE 位于回龙观公园，汇聚观野FIT 与观野BAR。"
                     "白天训练恢复，夜晚社交相聚，一站式综合经营场地。"
                 ),
                 service_phone="010-88881001",
@@ -348,14 +348,14 @@ def run_seed() -> None:
             db.add(site)
             db.flush()
         else:
-            site.name = "观野SPACE"
+            site.name = "晨曦观野SPACE"
         if not site.address:
             site.address = "北京市昌平区回龙观公园"
         if not site.tagline:
             site.tagline = "运动 · 夜生活 · 社区"
         if not site.description:
             site.description = (
-                "观野SPACE 位于回龙观公园，汇聚观野FIT 与观野BAR。"
+                "晨曦观野SPACE 位于回龙观公园，汇聚观野FIT 与观野BAR。"
                 "白天训练恢复，夜晚社交相聚，一站式综合经营场地。"
             )
         if not site.service_phone:

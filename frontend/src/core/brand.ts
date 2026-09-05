@@ -4,11 +4,12 @@ export type BrandVariant = 'space' | 'fit' | 'bar'
 
 export const BRAND = {
   cn: '观野',
+  spaceCn: '晨曦观野',
   space: 'SPACE',
   fit: 'FIT',
   bar: 'BAR',
-  platformName: '观野SPACE 综合管理平台',
-  logo: '观野SPACE',
+  platformName: '晨曦观野SPACE 综合管理平台',
+  logo: '晨曦观野SPACE',
   gym: '观野FIT',
   barName: '观野BAR',
   tagline: {

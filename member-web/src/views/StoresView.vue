@@ -110,7 +110,7 @@ onUnmounted(() => {
         <button class="mw-btn mw-btn--ghost mw-btn--sm" type="button" @click="goMe">我的</button>
       </div>
       <div class="hero__copy">
-        <p class="hero__kicker">{{ site?.name || '观野SPACE' }}</p>
+        <p class="hero__kicker">{{ site?.name || '晨曦观野SPACE' }}</p>
         <h1>你好，{{ auth.me?.name }}</h1>
         <p class="hero__tag">{{ site?.tagline || '选择门店，进入对应业态' }}</p>
       </div>

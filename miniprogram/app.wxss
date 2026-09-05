@@ -7,13 +7,6 @@ page {
   line-height: 1.5;
 }
 
-/* Tab 页底部留白，避免被自定义 tabBar 遮挡 */
-.tab-page {
-  padding-bottom: calc(120rpx + env(safe-area-inset-bottom));
-  box-sizing: border-box;
-  min-height: 100vh;
-}
-
 .brand {
   padding: 24rpx 0 32rpx;
 }
@@ -22,9 +15,9 @@ page {
   align-items: flex-end;
 }
 .brand-word .cn {
-  font-size: 48rpx;
+  font-size: 40rpx;
   font-weight: 700;
-  letter-spacing: 4rpx;
+  letter-spacing: 2rpx;
   color: #f2e6d2;
 }
 .brand-word .en {
@@ -64,6 +57,14 @@ page {
   padding: 48rpx 40rpx 64rpx;
   box-sizing: border-box;
   background: #171b1f;
+}
+
+/* 比 .wrap 更具体，底部留给自定义 tabBar + 刘海 */
+.tab-page,
+.wrap.tab-page {
+  padding-bottom: calc(180rpx + env(safe-area-inset-bottom));
+  min-height: 100vh;
+  box-sizing: border-box;
 }
 .title {
   font-size: 40rpx;

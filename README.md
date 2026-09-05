@@ -66,10 +66,10 @@ docker compose up --build -d
 
 ## 生产部署（Docker Compose）
 
-服务器：`123.56.26.229` · 代码目录：`/home/spjiangl/gym`
+服务器：`39.103.56.168` · 代码目录：`/home/spjiangl/gym`
 
 ```bash
-ssh -i ~/.ssh/id_rsa_wq_park root@123.56.26.229
+ssh -i ~/.ssh/id_rsa_wq_park root@39.103.56.168
 cd /home/spjiangl/gym
 git pull origin master
 ```
@@ -82,9 +82,9 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 | 域名（示例） | 反代到 |
 |---|---|
-| `admin.guanyespace.com` | `123.56.26.229:8080`（frontend） |
-| `m.guanyespace.com` | `123.56.26.229:8081`（member-web） |
-| `api.guanyespace.com` | `123.56.26.229:18000`（backend） |
+| `admin.guanyespace.com` | `39.103.56.168:8080`（frontend） |
+| `m.guanyespace.com` | `39.103.56.168:8081`（member-web） |
+| `api.guanyespace.com` | `39.103.56.168:18000`（backend） |
 
 `docker-compose.prod.yml` 会：关闭 uvicorn 热重载、去掉源码挂载、端口监听 `0.0.0.0`、服务自动重启。
 

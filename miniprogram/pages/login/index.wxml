@@ -1,7 +1,7 @@
 <view class="wrap">
   <view class="brand">
     <view class="brand-word">
-      <text class="cn">观野</text>
+      <text class="cn">晨曦观野</text>
       <text class="en">SPACE</text>
     </view>
     <view class="brand-tag">SPORTS · EVENTS · COMMUNITY</view>
@@ -29,4 +29,9 @@
     bindinput="onPassword"
   />
   <button bindtap="login">登录</button>
+  <view class="net-probe">
+    <view class="net-probe-title">临时网络探测（测完删除）</view>
+    <text class="net-probe-body" selectable user-select>{{netProbe}}</text>
+    <button class="net-probe-btn" size="mini" bindtap="probeNetwork">重新探测</button>
+  </view>
 </view>

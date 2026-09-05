@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import MarkdownView from '../components/MarkdownView.vue'
+import { mediaSrc } from '../lib/media'
 import { useSiteStore } from '../stores/site'
 import type { BrandKey } from '../api/types'
 
@@ -19,8 +20,9 @@ const others = computed(() => {
 <template>
   <article class="page">
     <header class="head">
-      <img v-if="brand?.cover_image_url" :src="brand.cover_image_url" alt="" />
-      <div class="veil" />
+      <figure class="hero-shot">
+        <img v-if="brand?.cover_image_url" :src="mediaSrc(brand.cover_image_url)" alt="" />
+      </figure>
       <div class="head-copy">
         <p class="kicker">{{ brand?.key.toUpperCase() }}</p>
         <h1>{{ brand?.title }}</h1>
@@ -32,13 +34,13 @@ const others = computed(() => {
         {{ brand.cta_label }}
       </a>
       <div v-if="brand?.gallery_image_urls.length" class="gallery">
-        <img v-for="url in brand.gallery_image_urls" :key="url" :src="url" alt="" />
+        <img v-for="url in brand.gallery_image_urls" :key="url" :src="mediaSrc(url)" alt="" />
       </div>
       <div v-if="others.length" class="others">
         <h2>园里还有</h2>
         <div class="row">
           <RouterLink v-for="b in others" :key="b.key" class="mini" :to="`/${b.key}`">
-            <img v-if="b.cover_image_url" :src="b.cover_image_url" alt="" />
+            <img v-if="b.cover_image_url" :src="mediaSrc(b.cover_image_url)" alt="" />
             <span>{{ b.title }}</span>
           </RouterLink>
         </div>
@@ -49,27 +51,24 @@ const others = computed(() => {
 
 <style scoped>
 .head {
-  position: relative;
-  min-height: 42vh;
+  background: #08090b;
+}
+.hero-shot {
+  margin: 0;
   display: flex;
-  align-items: flex-end;
-  background: #1c2229;
+  justify-content: center;
+  background: #050607;
 }
-.head img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.veil {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, transparent, rgba(18, 21, 26, 0.92));
+.hero-shot img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: min(88vh, 920px);
+  object-fit: contain;
 }
 .head-copy {
-  position: relative;
-  padding: 36px 28px;
+  padding: 36px clamp(20px, 4vw, 40px) 8px;
   max-width: 920px;
 }
 .kicker {
@@ -98,19 +97,15 @@ h1 {
 }
 .gallery {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
   margin-top: 36px;
 }
 .gallery img {
-  height: 180px;
   width: 100%;
-  object-fit: cover;
-  border-radius: 8px;
-}
-.gallery img:first-child {
-  grid-column: span 2;
-  height: 280px;
+  height: auto;
+  object-fit: contain;
+  background: #050607;
 }
 .others {
   margin-top: 48px;
@@ -130,9 +125,10 @@ h1 {
   background: var(--bg-2);
 }
 .mini img {
-  height: 120px;
   width: 100%;
-  object-fit: cover;
+  height: auto;
+  object-fit: contain;
+  background: #050607;
 }
 .mini span {
   display: block;
@@ -143,10 +139,8 @@ h1 {
   .row {
     grid-template-columns: 1fr;
   }
-  .gallery img,
-  .gallery img:first-child {
-    height: 180px;
-    grid-column: auto;
+  .gallery img {
+    height: auto;
   }
 }
 </style>

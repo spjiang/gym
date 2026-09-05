@@ -358,7 +358,7 @@ function maxCharge() {
       <div class="welcome-text">
         <p class="eyebrow">运营工作台 · {{ fmtDate() }} {{ weekday() }}</p>
         <h2>{{ greeting() }}，{{ auth.me?.display_name || '管理员' }}</h2>
-        <p class="lead">观野SPACE 综合管理平台 · 今日关键数据与待办事项一目了然。</p>
+        <p class="lead">晨曦观野SPACE 综合管理平台 · 今日关键数据与待办事项一目了然。</p>
       </div>
       <div class="welcome-actions">
         <el-button

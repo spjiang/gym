@@ -104,7 +104,7 @@ onMounted(load)
     <div class="toolbar">
       <div>
         <h3>站点设置</h3>
-        <p class="hint">官网名称、SEO、会员端入口与页脚补充。页脚固定展示「北京晨曦坤泽科技有限公司」版权，不必写在补充句里。地址/电话/营业时间来自「观野SPACE 介绍」。</p>
+        <p class="hint">官网名称、SEO、会员端入口与页脚补充。页脚固定展示「北京晨曦坤泽科技有限公司」版权，不必写在补充句里。地址/电话/营业时间来自「晨曦观野SPACE 介绍」。</p>
       </div>
       <el-button type="primary" :loading="saving" @click="save">保存</el-button>
     </div>
@@ -116,7 +116,7 @@ onMounted(load)
 
     <el-form label-width="140px" style="max-width: 760px">
       <el-form-item label="对外站点名">
-        <el-input v-model="form.display_name" maxlength="128" placeholder="默认 观野SPACE" />
+        <el-input v-model="form.display_name" maxlength="128" placeholder="默认 晨曦观野SPACE" />
       </el-form-item>
       <el-form-item label="SEO 标题">
         <el-input v-model="form.seo_title" maxlength="128" placeholder="空则使用站点名" />

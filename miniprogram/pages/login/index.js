@@ -8,6 +8,8 @@ Page({
     merchantId: null,
     table: '',
     redirect: '',
+    netProbe: '探测中…',
+    netProbeUrl: '',
   },
   onLoad(options) {
     const app = getApp()
@@ -36,12 +38,54 @@ Page({
       table,
       redirect,
     })
+    this.probeNetwork()
   },
   onShow() {
     const app = getApp()
     if (app.globalData.token) {
       wx.reLaunch({ url: '/pages/stores/index' })
     }
+  },
+  /** 临时：真机 Cronet -101 探测，测完删除 */
+  formatProbeErr(err) {
+    if (!err) return '未知错误'
+    try {
+      return JSON.stringify(err)
+    } catch (e) {
+      return `${err.errMsg || ''} ${err.errcode || ''} ${err.message || ''}`
+    }
+  },
+  probeOne(label, url) {
+    return new Promise((resolve) => {
+      const started = Date.now()
+      wx.request({
+        url,
+        method: 'GET',
+        timeout: 12000,
+        enableHttp2: false,
+        enableQuic: false,
+        success: (res) => {
+          resolve(`${label} 成功 ${res.statusCode} ${Date.now() - started}ms ${JSON.stringify(res.data)}`)
+        },
+        fail: (err) => {
+          resolve(`${label} 失败 ${Date.now() - started}ms ${this.formatProbeErr(err)}`)
+        },
+      })
+    })
+  },
+  async probeNetwork() {
+    const app = getApp()
+    const apiBase = app.globalData.apiBase || ''
+    const origin = String(apiBase).replace(/\/api\/v1\/?$/, '')
+    this.setData({ netProbe: '探测中…', netProbeUrl: `${origin}/health` })
+    const lines = [
+      `apiBase=${apiBase}`,
+      await this.probeOne('GET /health', `${origin}/health`),
+      await this.probeOne('GET /api/v1/member/me', `${apiBase}/member/me`),
+    ]
+    const text = lines.join('\n')
+    console.log('[net-probe]', text)
+    this.setData({ netProbe: text })
   },
   setMode(e) {
     this.setData({ mode: e.currentTarget.dataset.mode })

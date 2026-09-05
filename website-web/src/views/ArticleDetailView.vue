@@ -4,6 +4,7 @@ import { RouterLink, useRoute } from 'vue-router'
 import MarkdownView from '../components/MarkdownView.vue'
 import http, { ApiError } from '../api/http'
 import type { ArticleChannel, ArticleDetail } from '../api/types'
+import { mediaSrc } from '../lib/media'
 
 const props = defineProps<{ channel: ArticleChannel }>()
 const BACK: Record<ArticleChannel, { to: string; label: string }> = {
@@ -61,7 +62,7 @@ watch(() => [route.params.id, props.channel], load)
       <h1>{{ article.title }}</h1>
       <p v-if="article.published_at" class="day">{{ formatDay(article.published_at) }}</p>
       <p v-if="article.summary" class="sum">{{ article.summary }}</p>
-      <img v-if="article.cover_image_url" class="cover" :src="article.cover_image_url" alt="" />
+      <img v-if="article.cover_image_url" class="cover" :src="mediaSrc(article.cover_image_url)" alt="" />
       <MarkdownView :content="article.body" empty-text="" />
       <p v-if="article.contact_hint" class="contact">{{ article.contact_hint }}</p>
     </template>
@@ -96,9 +97,9 @@ h1 {
 }
 .cover {
   width: 100%;
-  max-height: 420px;
-  object-fit: cover;
-  border-radius: 10px;
+  height: auto;
+  object-fit: contain;
+  background: #050607;
   margin: 20px 0 8px;
 }
 .contact {

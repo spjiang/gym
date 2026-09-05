@@ -175,7 +175,7 @@ onMounted(load)
         <el-input v-model="form.api_secret" type="password" show-password placeholder="留空不修改" />
       </el-form-item>
       <el-form-item label="短信签名">
-        <el-input v-model="form.sign_name" placeholder="如：观野SPACE" />
+        <el-input v-model="form.sign_name" placeholder="如：晨曦观野SPACE" />
       </el-form-item>
     </el-form>
 
