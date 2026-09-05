@@ -22,12 +22,12 @@ const logging = ref(false)
 const wechatBusy = ref(false)
 const promoterName = ref('')
 const oaAppId = ref('')
-const qrSrc = ref('')
 const legalDoc = ref<LegalDoc | null>(null)
 const wechatTicket = ref(sessionStorage.getItem('gym_wechat_oa_ticket') || '')
+const insideWechat = /MicroMessenger/i.test(navigator.userAgent)
 
 function inWechat() {
-  return /MicroMessenger/i.test(navigator.userAgent)
+  return insideWechat
 }
 
 const merchantId = computed(() => {
@@ -123,7 +123,7 @@ async function loginByWechatCode(wxCode: string) {
 function startWechat() {
   err.value = ''
   if (!inWechat()) {
-    err.value = '请用微信扫右侧二维码，或在微信中打开本页'
+    err.value = '请在微信中打开本页后再使用微信登录'
     return
   }
   if (!oaAppId.value) {
@@ -139,26 +139,12 @@ function startWechat() {
   window.location.href = `${authorize.toString()}#wechat_redirect`
 }
 
-async function paintQr() {
-  const QRCode = (await import('qrcode')).default
-  qrSrc.value = await QRCode.toDataURL(loginPageUrl({ wechat: '1' }).toString(), {
-    width: 220,
-    margin: 1,
-    color: { dark: '#111111', light: '#ffffff' },
-  })
-}
-
 onMounted(async () => {
   try {
     const { data } = await http.get('/member/auth/wechat/oa/config')
     oaAppId.value = data.oa_app_id || ''
   } catch {
     oaAppId.value = ''
-  }
-  try {
-    await paintQr()
-  } catch {
-    qrSrc.value = ''
   }
   const wxCode = route.query.code
   if (typeof wxCode === 'string' && wxCode) {
@@ -302,7 +288,7 @@ async function login() {
           与
           <button class="login__legal-link" type="button" @click="legalDoc = 'privacy'">隐私政策</button>
           ，未注册的手机号将自动注册。
-          <template v-if="merchantId">扫码进入后会自动关联本店。</template>
+          <template v-if="merchantId">进入后会自动关联本店。</template>
         </p>
 
         <p v-if="tip" class="login__msg is-ok">{{ tip }}</p>
@@ -311,29 +297,19 @@ async function login() {
         <button class="login__submit" type="submit" :disabled="logging">
           {{ logging ? '登录中…' : '登录' }}
         </button>
+        <button
+          v-if="insideWechat"
+          class="login__wechat"
+          type="button"
+          :disabled="wechatBusy"
+          @click="startWechat"
+        >
+          {{ wechatBusy ? '正在打开微信…' : '微信一键登录' }}
+        </button>
         <button class="login__alt" type="button" @click="mode = mode === 'otp' ? 'password' : 'otp'">
           {{ mode === 'otp' ? '密码登录' : '验证码登录' }}
         </button>
       </form>
-
-      <aside class="login__qr">
-        <div class="login__qr-card">
-          <img v-if="qrSrc" :src="qrSrc" alt="微信扫码登录" />
-          <p v-else class="login__qr-wait">二维码生成中</p>
-        </div>
-        <p class="login__qr-label">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              fill="#07c160"
-              d="M9.5 4C5.9 4 3 6.5 3 9.6c0 1.8 1 3.4 2.6 4.5L5 16.2l2.3-1.2c.7.2 1.4.3 2.2.3.3 0 .5 0 .8-.1-.2-.5-.3-1-.3-1.6 0-2.8 2.6-5.1 5.8-5.1.2 0 .5 0 .7.1C15.8 5.8 12.9 4 9.5 4m-2 2.4c.5 0 .9.4.9.9s-.4.9-.9.9-.9-.4-.9-.9.4-.9.9-.9m4.1 0c.5 0 .9.4.9.9s-.4.9-.9.9-.9-.4-.9-.9.4-.9.9-.9M14.7 9.6c-2.7 0-4.9 1.9-4.9 4.3s2.2 4.3 4.9 4.3c.5 0 1.1-.1 1.6-.2l1.8.9-.5-1.6c1.2-.8 2-2 2-3.4 0-2.4-2.2-4.3-4.9-4.3m-1.6 3.1c.3 0 .6.3.6.6s-.3.6-.6.6-.6-.3-.6-.6.3-.6.6-.6m3.2 0c.3 0 .6.3.6.6s-.3.6-.6.6-.6-.3-.6-.6.3-.6.6-.6"
-            />
-          </svg>
-          微信扫码登录
-        </p>
-        <button class="login__wechat" type="button" :disabled="wechatBusy" @click="startWechat">
-          {{ wechatBusy ? '正在打开微信…' : '微信内一键登录' }}
-        </button>
-      </aside>
     </div>
 
     <p class="login__copy">{{ copyrightLine() }}</p>
@@ -384,11 +360,7 @@ async function login() {
 }
 
 .login__board {
-  width: min(760px, 100%);
-  display: grid;
-  grid-template-columns: 1fr 280px;
-  gap: 40px;
-  align-items: start;
+  width: min(400px, 100%);
 }
 
 .login__form {
@@ -549,56 +521,11 @@ async function login() {
   cursor: pointer;
 }
 
-.login__qr {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 28px 20px 24px;
-  border: 1px solid var(--mw-border);
-  border-radius: 16px;
-  background: var(--mw-surface);
-}
-
-.login__qr-card {
-  width: 196px;
-  height: 196px;
-  display: grid;
-  place-items: center;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: var(--mw-shadow);
-}
-
-.login__qr-card img {
-  width: 176px;
-  height: 176px;
-}
-
-.login__qr-wait {
-  margin: 0;
-  color: var(--mw-text-secondary);
-  font-size: 13px;
-}
-
-.login__qr-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 16px 0 0;
-  color: #07c160;
-  font-size: 14px;
-}
-
-.login__qr-label svg {
-  width: 18px;
-  height: 18px;
-}
-
 .login button.login__wechat {
-  display: none;
-  margin-top: 14px;
+  display: flex;
+  margin-top: 12px;
   width: 100%;
-  height: 40px;
+  height: 48px;
   border: 0;
   border-radius: 999px;
   background: #07c160;
@@ -618,27 +545,6 @@ async function login() {
 @media (max-width: 800px) {
   .login {
     padding: 36px 20px 28px;
-  }
-
-  .login__board {
-    grid-template-columns: 1fr;
-    gap: 20px;
-  }
-
-  .login__qr {
-    padding: 0;
-    border: 0;
-    background: transparent;
-  }
-
-  .login__qr-card,
-  .login__qr-label {
-    display: none;
-  }
-
-  .login button.login__wechat {
-    display: flex;
-    margin-top: 0;
   }
 }
 </style>
