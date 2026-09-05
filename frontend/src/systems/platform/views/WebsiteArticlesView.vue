@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, type UploadRequestOptions, type UploadUserFile } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import { previewUploadFile } from '../../../core/imagePreview'
 
 type Channel = 'news' | 'jobs' | 'partners'
@@ -221,12 +222,20 @@ onMounted(loadList)
         <template #default="{ row }">{{ statusText(row.status) }}</template>
       </el-table-column>
       <el-table-column prop="published_at" label="发布时间" width="180" />
-      <el-table-column label="操作" width="260" fixed="right">
+      <el-table-column label="操作" width="180" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button v-if="row.status !== 'published'" link type="primary" @click="publish(row)">发布</el-button>
-          <el-button v-if="row.status === 'published'" link @click="archive(row)">下架</el-button>
-          <el-button link type="danger" @click="remove(row)">删除</el-button>
+          <RowActions
+            :more="[
+              {
+                command: 'pub',
+                label: row.status === 'published' ? '下架' : '发布',
+              },
+              { command: 'del', label: '删除', danger: true, divided: true },
+            ]"
+            @more="(c) => (c === 'del' ? remove(row) : row.status === 'published' ? archive(row) : publish(row))"
+          >
+            <el-button size="small" type="primary" @click="openEdit(row)">编辑</el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>
@@ -303,6 +312,7 @@ onMounted(loadList)
 }
 .filters {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 12px;
 }

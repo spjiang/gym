@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, type FormInstance, type FormRules, type UploadFile, type UploadRequestOptions, type UploadUserFile } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import { previewUploadFile } from '../../../core/imagePreview'
 import { BUSINESS_SYSTEM_OPTIONS, defaultSubsystemsForTypeCode } from '../../../core/nav/systems'
 import { merchantStatusLabel } from '../../../core/labels'
@@ -560,27 +561,32 @@ onMounted(load)
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="260" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-          <el-button v-if="canEditProfile" link type="primary" @click="openMerchantDialog(row)">编辑</el-button>
-          <el-button link type="primary" @click="openQr(row)">获客码</el-button>
-          <el-button
-            v-if="isSiteAdmin && row.status !== 'active'"
-            link
-            type="success"
-            @click="setStatus(row, 'active')"
+          <RowActions
+            :more="[
+              { command: 'qr', label: '获客码' },
+              ...(isSiteAdmin
+                ? [
+                    {
+                      command: 'status',
+                      label: row.status === 'active' ? '停用' : '启用',
+                      danger: row.status === 'active',
+                      divided: true,
+                    },
+                  ]
+                : []),
+            ]"
+            @more="
+              (c) =>
+                c === 'qr' ? openQr(row) : setStatus(row, row.status === 'active' ? 'disabled' : 'active')
+            "
           >
-            启用
-          </el-button>
-          <el-button
-            v-if="isSiteAdmin && row.status === 'active'"
-            link
-            type="danger"
-            @click="setStatus(row, 'disabled')"
-          >
-            停用
-          </el-button>
+            <el-button size="small" type="primary" @click="openDetail(row)">详情</el-button>
+            <el-button v-if="canEditProfile" size="small" type="primary" @click="openMerchantDialog(row)">
+              编辑
+            </el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>

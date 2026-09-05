@@ -243,7 +243,7 @@ onMounted(load)
       </el-table-column>
       <el-table-column label="操作" width="140" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDialog(row)">编辑</el-button>
+          <el-button size="small" type="primary" @click="openDialog(row)">编辑</el-button>
           <el-button v-if="!row.is_builtin" link type="danger" @click="remove(row)">删除</el-button>
         </template>
       </el-table-column>

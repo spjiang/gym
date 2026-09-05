@@ -109,93 +109,111 @@ p {
   color: var(--admin-ink-muted);
 }
 
-/* —— 按钮：强制可读文字色（实心 / plain / link） —— */
-.el-button--primary {
+/* —— 按钮：能点=实心彩色，不能点=灰色禁用（含 link / text / plain） —— */
+.el-button {
+  font-weight: 600;
+}
+
+.el-button.is-link,
+.el-button.is-text {
+  min-height: 24px;
+  height: auto;
+  padding: 5px 11px;
+  border-style: solid;
+  border-width: 1px;
+}
+
+.el-button--primary,
+.el-button--primary.is-plain,
+.el-button--primary.is-link,
+.el-button--primary.is-text {
   --el-button-text-color: #ffffff;
   --el-button-bg-color: var(--admin-accent);
   --el-button-border-color: var(--admin-accent);
   --el-button-hover-text-color: #ffffff;
   --el-button-hover-bg-color: var(--admin-accent-strong);
   --el-button-hover-border-color: var(--admin-accent-strong);
-  --el-button-active-text-color: #ffffff;
-  --el-button-active-bg-color: #c44f12;
-  --el-button-active-border-color: #c44f12;
-  --el-button-disabled-text-color: #f2e6d2;
-  --el-button-disabled-bg-color: #f8a87a;
-  --el-button-disabled-border-color: #f8a87a;
-  color: #ffffff !important;
-  font-weight: 600;
-}
-
-.el-button--primary.is-plain {
-  --el-button-text-color: #d85a16;
-  --el-button-bg-color: #feeee6;
-  --el-button-border-color: #f8a87a;
-  --el-button-hover-text-color: #ffffff;
-  --el-button-hover-bg-color: var(--admin-accent);
-  --el-button-hover-border-color: var(--admin-accent);
-  --el-button-active-text-color: #ffffff;
-  color: #d85a16 !important;
-  background-color: #feeee6 !important;
-  border-color: #f8a87a !important;
-}
-
-.el-button--primary.is-plain:hover,
-.el-button--primary.is-plain:focus {
   color: #ffffff !important;
   background-color: var(--admin-accent) !important;
   border-color: var(--admin-accent) !important;
 }
 
-.el-button--primary.is-link,
-.el-button--primary.is-text {
-  color: var(--admin-accent-strong) !important;
-  background: transparent !important;
-  border-color: transparent !important;
+.el-button--primary:not(.is-disabled):hover,
+.el-button--primary:not(.is-disabled):focus {
+  background-color: var(--admin-accent-strong) !important;
+  border-color: var(--admin-accent-strong) !important;
 }
 
-.el-button--warning:not(.is-link):not(.is-text):not(.is-plain) {
-  --el-button-text-color: #ffffff;
+.el-button--success,
+.el-button--success.is-plain,
+.el-button--success.is-link,
+.el-button--success.is-text {
   color: #ffffff !important;
+  background-color: #15803d !important;
+  border-color: #15803d !important;
 }
 
+.el-button--warning,
+.el-button--warning.is-plain,
 .el-button--warning.is-link,
 .el-button--warning.is-text {
-  color: var(--admin-accent-strong) !important;
-  background: transparent !important;
-  border-color: transparent !important;
-}
-
-.el-button--warning.is-plain {
-  --el-button-text-color: #9a3412;
-  --el-button-bg-color: #fff7ed;
-  --el-button-border-color: #fdba74;
-  color: #9a3412 !important;
-  background-color: #fff7ed !important;
-  border-color: #fdba74 !important;
-}
-
-.el-button--warning.is-plain:hover,
-.el-button--warning.is-plain:focus {
   color: #ffffff !important;
   background-color: #c2410c !important;
   border-color: #c2410c !important;
 }
 
-.el-button--danger.is-plain {
-  color: #b42318 !important;
-  background-color: #fef3f2 !important;
-  border-color: #fecdca !important;
+.el-button--danger,
+.el-button--danger.is-plain,
+.el-button--danger.is-link,
+.el-button--danger.is-text {
+  color: #ffffff !important;
+  background-color: #b42318 !important;
+  border-color: #b42318 !important;
 }
 
+.el-button--info,
+.el-button--info.is-plain,
+.el-button--info.is-link,
+.el-button--info.is-text,
 .el-button--default,
 .el-button:not(.el-button--primary):not(.el-button--success):not(.el-button--warning):not(.el-button--danger):not(.el-button--info) {
-  --el-button-text-color: #292524;
-  color: #292524;
+  --el-button-text-color: #f2e6d2;
+  color: #f2e6d2 !important;
+  background-color: #171b1f !important;
+  border-color: #171b1f !important;
 }
 
-.el-button.is-link:not(.is-disabled) {
-  color: var(--admin-accent-strong);
+.el-pagination .btn-prev,
+.el-pagination .btn-next,
+.el-pagination .el-pager li {
+  color: inherit !important;
+  background-color: transparent !important;
+  border-color: transparent !important;
+}
+
+.el-pagination.is-background .btn-prev,
+.el-pagination.is-background .btn-next,
+.el-pagination.is-background .el-pager li {
+  color: #292524 !important;
+  background-color: #f3eee6 !important;
+}
+
+.el-pagination.is-background .el-pager li.is-active {
+  color: #ffffff !important;
+  background-color: var(--admin-accent) !important;
+}
+
+.el-button.is-disabled,
+.el-button.is-disabled:hover,
+.el-button.is-disabled:focus {
+  --el-button-disabled-text-color: #a8a29e;
+  --el-button-disabled-bg-color: #e7e5e4;
+  --el-button-disabled-border-color: #d6d3d1;
+  color: #a8a29e !important;
+  background-color: #e7e5e4 !important;
+  border-color: #d6d3d1 !important;
+  opacity: 1;
+  cursor: not-allowed;
 }
 
 /* —— 表单 / 选择器：选中值为黑色；仅未选时的占位符用灰色 —— */

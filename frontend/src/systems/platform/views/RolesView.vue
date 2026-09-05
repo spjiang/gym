@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import { auditSubsystemLabel } from '../../../core/labels'
 import { useAuthStore } from '../../../core/stores/auth'
 
@@ -367,10 +368,14 @@ onMounted(load)
       <el-table-column label="菜单数" width="90">
         <template #default="{ row }">{{ row.menu_codes.length }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="180">
+      <el-table-column label="操作" width="160" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" type="primary" plain @click="openGrants(row)">授权</el-button>
-          <el-button size="small" :disabled="row.is_system" @click="removeRole(row)">删除</el-button>
+          <RowActions
+            :more="[{ command: 'del', label: '删除', disabled: row.is_system, danger: true }]"
+            @more="removeRole(row)"
+          >
+            <el-button size="small" type="primary" @click="openGrants(row)">授权</el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>

@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import { commissionScopeLabel } from '../../../core/labels'
 import { merchantsWithSystem } from '../../../core/nav/systems'
 import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
@@ -269,8 +270,12 @@ onMounted(() => {
       </el-table-column>
       <el-table-column label="操作" width="160" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button v-if="row.is_active" link type="warning" @click="deactivate(row)">停用</el-button>
+          <RowActions
+            :more="row.is_active ? [{ command: 'off', label: '停用', danger: true }] : []"
+            @more="deactivate(row)"
+          >
+            <el-button size="small" type="primary" @click="openEdit(row)">编辑</el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>

@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
 
 type Merchant = { id: number; name: string; subsystem_codes: string[] }
@@ -258,13 +259,21 @@ onMounted(refresh)
           <span class="mono">{{ row.code }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="240" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openQr(row)">二维码</el-button>
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button link :type="row.is_active ? 'warning' : 'success'" @click="toggleActive(row)">
-            {{ row.is_active ? '停用' : '启用' }}
-          </el-button>
+          <RowActions
+            :more="[
+              {
+                command: 'toggle',
+                label: row.is_active ? '停用' : '启用',
+                danger: row.is_active,
+              },
+            ]"
+            @more="toggleActive(row)"
+          >
+            <el-button size="small" type="primary" @click="openQr(row)">二维码</el-button>
+            <el-button size="small" type="primary" @click="openEdit(row)">编辑</el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>

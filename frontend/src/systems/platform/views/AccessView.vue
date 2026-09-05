@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 
 type Point = { id: number; name: string; merchant_id: number | null; is_public_area?: boolean }
 type Device = { id: number; device_code: string; access_point_id: number; is_online: boolean }
@@ -359,7 +360,7 @@ onMounted(async () => {
           </el-table-column>
           <el-table-column label="操作" width="100">
             <template #default="{ row }">
-              <el-button size="small" @click="openPoint(row)">编辑</el-button>
+              <el-button size="small" type="primary" @click="openPoint(row)">编辑</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -394,7 +395,7 @@ onMounted(async () => {
           </el-table-column>
           <el-table-column label="操作" width="100">
             <template #default="{ row }">
-              <el-button size="small" @click="openDevice(row)">编辑</el-button>
+              <el-button size="small" type="primary" @click="openDevice(row)">编辑</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -430,10 +431,14 @@ onMounted(async () => {
               <el-tag :type="row.revoked ? 'info' : 'success'" size="small">{{ row.revoked ? '已撤销' : '有效' }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="160">
+          <el-table-column label="操作" width="160" fixed="right">
             <template #default="{ row }">
-              <el-button size="small" @click="openGrant(row)">编辑</el-button>
-              <el-button size="small" :disabled="row.revoked" @click="revoke(row.id)">撤销</el-button>
+              <RowActions
+                :more="[{ command: 'revoke', label: '撤销', disabled: row.revoked, danger: true }]"
+                @more="revoke(row.id)"
+              >
+                <el-button size="small" type="primary" @click="openGrant(row)">编辑</el-button>
+              </RowActions>
             </template>
           </el-table-column>
         </el-table>
@@ -472,10 +477,17 @@ onMounted(async () => {
           <el-table-column label="时间" width="180">
             <template #default="{ row }">{{ row.created_at?.slice(0, 19).replace('T', ' ') }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="140">
+          <el-table-column label="操作" width="180" fixed="right">
             <template #default="{ row }">
-              <el-button link type="primary" @click="openEventEdit(row)">编辑</el-button>
-              <el-button link type="primary" @click="eventDetail = row; eventDetailVisible = true">详情</el-button>
+              <RowActions :more="[{ command: 'edit', label: '编辑' }]" @more="openEventEdit(row)">
+                <el-button
+                  size="small"
+                  type="primary"
+                  @click="eventDetail = row; eventDetailVisible = true"
+                >
+                  详情
+                </el-button>
+              </RowActions>
             </template>
           </el-table-column>
         </el-table>

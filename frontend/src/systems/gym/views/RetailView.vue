@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type UploadFile, type UploadRequestOptions, type UploadUserFile } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import { previewUploadFile } from '../../../core/imagePreview'
 import { merchantsWithSystem } from '../../../core/nav/systems'
 import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
@@ -544,12 +545,18 @@ onMounted(refresh)
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="260" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button link type="primary" @click="openStockDialog(row)">库存</el-button>
-          <el-button v-if="row.is_active" link type="danger" @click="deactivate(row)">停用</el-button>
+          <RowActions
+            :more="[
+              { command: 'stock', label: '库存' },
+              ...(row.is_active ? [{ command: 'off', label: '停用', danger: true, divided: true }] : []),
+            ]"
+            @more="(c) => (c === 'stock' ? openStockDialog(row) : deactivate(row))"
+          >
+            <el-button size="small" type="primary" @click="openDetail(row)">详情</el-button>
+            <el-button size="small" type="primary" @click="openEdit(row)">编辑</el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>

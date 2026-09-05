@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import { bookingStatusLabel, sessionStatusLabel } from '../../../core/labels'
 import { merchantsWithSystem } from '../../../core/nav/systems'
 import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
@@ -256,10 +257,14 @@ onMounted(refresh)
       <el-table-column label="状态" width="90">
         <template #default="{ row }">{{ sessionStatusLabel(row.status) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="180">
+      <el-table-column label="操作" width="200" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openBookingList(row)">预约名单</el-button>
-          <el-button link type="primary" :disabled="row.status !== 'open'" @click="openBookDialog(row)">代约</el-button>
+          <RowActions
+            :more="[{ command: 'book', label: '代约', disabled: row.status !== 'open' }]"
+            @more="openBookDialog(row)"
+          >
+            <el-button size="small" type="primary" @click="openBookingList(row)">预约名单</el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>
@@ -319,7 +324,7 @@ onMounted(refresh)
         </el-table-column>
         <el-table-column label="操作" width="100">
           <template #default="{ row }">
-            <el-button v-if="row.status === 'booked'" link type="danger" @click="cancel(row.id)">取消</el-button>
+            <el-button v-if="row.status === 'booked'" size="small" type="danger" @click="cancel(row.id)">取消</el-button>
           </template>
         </el-table-column>
       </el-table>

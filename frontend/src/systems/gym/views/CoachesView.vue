@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, type FormInstance, type FormRules, type UploadFile, type UploadRequestOptions, type UploadUserFile } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import { percentLabel, commissionScopeLabel } from '../../../core/labels'
 import { merchantsWithSystem } from '../../../core/nav/systems'
 import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
@@ -456,11 +457,15 @@ onMounted(refresh)
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="180" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button v-if="row.is_active" link type="danger" @click="deactivate(row.id)">停用</el-button>
+          <RowActions
+            :more="row.is_active ? [{ command: 'off', label: '停用', danger: true }] : []"
+            @more="deactivate(row.id)"
+          >
+            <el-button size="small" type="primary" @click="openDetail(row)">详情</el-button>
+            <el-button size="small" type="primary" @click="openEdit(row)">编辑</el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>
@@ -689,7 +694,14 @@ onMounted(refresh)
   line-height: 1.5;
 }
 .filters {
-  margin-bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.filters :deep(.el-form-item) {
+  margin-bottom: 0;
 }
 .coach-cell {
   display: flex;

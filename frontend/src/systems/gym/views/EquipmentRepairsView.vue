@@ -199,11 +199,11 @@ onMounted(refresh)
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column v-if="canManage" label="操作" width="120">
+      <el-table-column v-if="canManage" label="操作" width="100">
         <template #default="{ row }">
           <el-button
             v-if="row.status === 'open' || row.status === 'in_progress'"
-            link
+            size="small"
             type="primary"
             @click="completeRepair(row.id)"
           >

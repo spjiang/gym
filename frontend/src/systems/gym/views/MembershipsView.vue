@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { ArrowDown } from '@element-plus/icons-vue'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import { merchantsWithSystem } from '../../../core/nav/systems'
 import { useAuthStore } from '../../../core/stores/auth'
 import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
@@ -658,28 +658,29 @@ onMounted(refresh)
       <el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip>
         <template #default="{ row }">{{ row.remark || '—' }}</template>
       </el-table-column>
-      <el-table-column label="操作" min-width="168" fixed="right" align="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
-          <div class="row-actions">
-            <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-            <el-button v-if="canConsume(row)" link type="success" @click="openConsume(row)">
+          <RowActions
+            :more="[
+              ...(row.status !== 'void' ? [{ command: 'edit', label: '编辑' }] : []),
+              { command: 'log', label: '核销记录' },
+              ...(row.status === 'active'
+                ? [
+                    { command: 'renew', label: '续卡' },
+                    { command: 'freeze', label: '停卡' },
+                  ]
+                : []),
+              ...(row.status !== 'void'
+                ? [{ command: 'void', label: '作废', danger: true, divided: true }]
+                : []),
+            ]"
+            @more="(c) => onRowAction(c, row)"
+          >
+            <el-button size="small" type="primary" @click="openDetail(row)">详情</el-button>
+            <el-button v-if="canConsume(row)" size="small" type="primary" @click="openConsume(row)">
               {{ row.product_type === 'count' ? '销次' : '扣值' }}
             </el-button>
-            <el-dropdown trigger="click" teleported @command="onRowAction($event, row)">
-              <el-button link type="primary">
-                更多<el-icon class="more-icon"><ArrowDown /></el-icon>
-              </el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item v-if="row.status !== 'void'" command="edit">编辑</el-dropdown-item>
-                  <el-dropdown-item command="log">核销记录</el-dropdown-item>
-                  <el-dropdown-item v-if="row.status === 'active'" command="renew">续卡</el-dropdown-item>
-                  <el-dropdown-item v-if="row.status === 'active'" command="freeze">停卡</el-dropdown-item>
-                  <el-dropdown-item v-if="row.status !== 'void'" command="void" divided>作废</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-          </div>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>
@@ -1123,23 +1124,6 @@ onMounted(refresh)
   margin-top: 2px;
   font-size: 12px;
   color: var(--el-text-color-secondary);
-}
-.row-actions {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0 2px;
-  max-width: 100%;
-}
-.row-actions :deep(.el-button.is-link) {
-  margin: 0;
-  padding: 0 6px;
-  height: 28px;
-}
-.more-icon {
-  margin-left: 2px;
-  font-size: 12px;
 }
 .filters {
   margin-bottom: 8px;

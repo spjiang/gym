@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 
 type LlmAccount = {
   id: number
@@ -162,10 +163,11 @@ onMounted(load)
         </template>
       </el-table-column>
       <el-table-column prop="remark" label="备注" min-width="120" show-overflow-tooltip />
-      <el-table-column label="操作" width="140" fixed="right">
+      <el-table-column label="操作" width="160" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDialog(row)">编辑</el-button>
-          <el-button link type="danger" @click="remove(row)">删除</el-button>
+          <RowActions :more="[{ command: 'del', label: '删除', danger: true }]" @more="remove(row)">
+            <el-button size="small" type="primary" @click="openDialog(row)">编辑</el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>

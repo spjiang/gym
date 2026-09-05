@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import { registrationStatusLabel } from '../../../core/labels'
 import { merchantsWithSystem } from '../../../core/nav/systems'
 import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
@@ -254,18 +255,30 @@ onMounted(refresh)
       <el-table-column prop="note" label="备注" min-width="140">
         <template #default="{ row }">{{ row.note || '—' }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="210" fixed="right">
+      <el-table-column label="操作" width="180" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" :disabled="row.status !== 'confirmed'" @click="act(row, 'checkin')">签到</el-button>
-          <el-button link type="warning" :disabled="row.status !== 'confirmed'" @click="act(row, 'no-show')">未到</el-button>
-          <el-button
-            link
-            type="danger"
-            :disabled="!['pending', 'confirmed'].includes(row.status)"
-            @click="act(row, 'cancel')"
+          <RowActions
+            :more="[
+              { command: 'noshow', label: '未到', disabled: row.status !== 'confirmed' },
+              {
+                command: 'cancel',
+                label: '取消',
+                disabled: !['pending', 'confirmed'].includes(row.status),
+                danger: true,
+                divided: true,
+              },
+            ]"
+            @more="(c) => act(row, c === 'noshow' ? 'no-show' : 'cancel')"
           >
-            取消
-          </el-button>
+            <el-button
+              size="small"
+              type="primary"
+              :disabled="row.status !== 'confirmed'"
+              @click="act(row, 'checkin')"
+            >
+              签到
+            </el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>

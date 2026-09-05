@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 
 type Settings = {
   provider: string
@@ -210,10 +211,11 @@ onMounted(load)
       <el-table-column label="启用" width="80">
         <template #default="{ row }">{{ row.is_enabled ? '是' : '否' }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="160">
+      <el-table-column label="操作" width="160" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" @click="openTpl(row)">编辑</el-button>
-          <el-button size="small" @click="removeTpl(row)">删除</el-button>
+          <RowActions :more="[{ command: 'del', label: '删除', danger: true }]" @more="removeTpl(row)">
+            <el-button size="small" type="primary" @click="openTpl(row)">编辑</el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>

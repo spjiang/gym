@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import { PT_PACKAGE_STATUS_LABELS } from '../../../core/labels'
 import { merchantsWithSystem } from '../../../core/nav/systems'
 import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
@@ -384,12 +385,18 @@ onMounted(refresh)
       <el-table-column label="到期" width="120">
         <template #default="{ row }">{{ datePart(row.ends_at) || '—' }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="280" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-          <el-button link type="primary" @click="openConsumes(row)">核销记录</el-button>
-          <el-button v-if="row.status !== 'void'" link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button v-if="row.status === 'active'" link type="danger" @click="consume(row)">核销</el-button>
+          <RowActions
+            :more="[
+              { command: 'log', label: '核销记录' },
+              ...(row.status !== 'void' ? [{ command: 'edit', label: '编辑' }] : []),
+            ]"
+            @more="(c) => (c === 'log' ? openConsumes(row) : openEdit(row))"
+          >
+            <el-button size="small" type="primary" @click="openDetail(row)">详情</el-button>
+            <el-button v-if="row.status === 'active'" size="small" type="primary" @click="consume(row)">核销</el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>

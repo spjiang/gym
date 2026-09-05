@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import { diningStatusLabel } from '../../../core/labels'
 import { canAny } from '../../../core/nav/systems'
 import { useAuthStore } from '../../../core/stores/auth'
@@ -264,26 +265,38 @@ onMounted(refresh)
           <span v-else>—</span>
         </template>
       </el-table-column>
-      <el-table-column v-if="canOperate" label="操作" min-width="300">
+      <el-table-column v-if="canOperate" label="操作" width="200" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" :disabled="row.status !== 'pending'" @click="payPending(row)">收款</el-button>
-          <el-button size="small" :disabled="row.status !== 'pending'" @click="cancelPending(row)">取消</el-button>
-          <el-button
-            size="small"
-            type="primary"
-            :disabled="row.status !== 'paid' || (row.dining_status || 'preparing') !== 'preparing'"
-            @click="markReady(row)"
+          <RowActions
+            :more="[
+              { command: 'cancel', label: '取消', disabled: row.status !== 'pending' },
+              {
+                command: 'ready',
+                label: '出餐',
+                disabled: row.status !== 'paid' || (row.dining_status || 'preparing') !== 'preparing',
+              },
+              {
+                command: 'done',
+                label: '完成',
+                disabled: row.status !== 'paid' || row.dining_status !== 'ready',
+              },
+              { command: 'refund', label: '退款', disabled: row.status !== 'paid', danger: true, divided: true },
+            ]"
+            @more="
+              (c) =>
+                c === 'cancel'
+                  ? cancelPending(row)
+                  : c === 'ready'
+                    ? markReady(row)
+                    : c === 'done'
+                      ? markComplete(row)
+                      : refund(row)
+            "
           >
-            出餐
-          </el-button>
-          <el-button
-            size="small"
-            :disabled="row.status !== 'paid' || row.dining_status !== 'ready'"
-            @click="markComplete(row)"
-          >
-            完成
-          </el-button>
-          <el-button size="small" :disabled="row.status !== 'paid'" @click="refund(row)">退款</el-button>
+            <el-button size="small" type="primary" :disabled="row.status !== 'pending'" @click="payPending(row)">
+              收款
+            </el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>

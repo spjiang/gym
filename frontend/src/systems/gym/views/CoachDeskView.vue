@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import { bookingStatusLabel, sessionStatusLabel } from '../../../core/labels'
 import { merchantsWithSystem } from '../../../core/nav/systems'
 import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
@@ -268,9 +269,9 @@ onMounted(refresh)
       <el-table-column label="状态" width="90">
         <template #default="{ row }">{{ sessionStatusLabel(row.status) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="100">
+      <el-table-column label="操作" width="120" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openRoster(row)">查看名单</el-button>
+          <el-button size="small" type="primary" @click="openRoster(row)">查看名单</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -332,21 +333,28 @@ onMounted(refresh)
         </el-table-column>
         <el-table-column label="操作" width="180">
           <template #default="{ row }">
-            <el-button
-              v-if="row.status === 'booked' || row.status === 'no_show'"
-              type="primary"
-              link
-              @click.stop="checkin(row.id, 'attended')"
+            <RowActions
+              :more="
+                row.status === 'booked' || row.status === 'attended'
+                  ? [
+                      {
+                        command: 'noshow',
+                        label: row.status === 'attended' ? '改为未出席' : '未出席',
+                      },
+                    ]
+                  : []
+              "
+              @more="checkin(row.id, 'no_show')"
             >
-              {{ row.status === 'no_show' ? '改为已出席' : '签到' }}
-            </el-button>
-            <el-button
-              v-if="row.status === 'booked' || row.status === 'attended'"
-              link
-              @click="checkin(row.id, 'no_show')"
-            >
-              {{ row.status === 'attended' ? '改为未出席' : '未出席' }}
-            </el-button>
+              <el-button
+                v-if="row.status === 'booked' || row.status === 'no_show'"
+                size="small"
+                type="primary"
+                @click.stop="checkin(row.id, 'attended')"
+              >
+                {{ row.status === 'no_show' ? '改为已出席' : '签到' }}
+              </el-button>
+            </RowActions>
           </template>
         </el-table-column>
       </el-table>

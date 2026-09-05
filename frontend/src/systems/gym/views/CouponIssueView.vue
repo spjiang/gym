@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import { couponStatusLabel } from '../../../core/labels'
 import { merchantsWithSystem } from '../../../core/nav/systems'
 import { useAuthStore } from '../../../core/stores/auth'
@@ -303,25 +304,26 @@ onMounted(load)
       <el-table-column label="有效至" width="120">
         <template #default="{ row }">{{ dateOnly(row.ends_at) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-          <el-button
-            v-if="canManage && row.status === 'unused'"
-            link
-            type="primary"
-            @click="openEdit(row)"
+          <RowActions
+            :more="
+              canManage && row.status === 'unused'
+                ? [{ command: 'off', label: '停用', danger: true }]
+                : []
+            "
+            @more="deactivate(row)"
           >
-            编辑
-          </el-button>
-          <el-button
-            v-if="canManage && row.status === 'unused'"
-            link
-            type="danger"
-            @click="deactivate(row)"
-          >
-            停用
-          </el-button>
+            <el-button size="small" type="primary" @click="openDetail(row)">详情</el-button>
+            <el-button
+              v-if="canManage && row.status === 'unused'"
+              size="small"
+              type="primary"
+              @click="openEdit(row)"
+            >
+              编辑
+            </el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>

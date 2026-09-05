@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import { ptAppointmentStatusLabel } from '../../../core/labels'
 import { merchantsWithSystem } from '../../../core/nav/systems'
 import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
@@ -367,12 +368,23 @@ onMounted(refresh)
           <el-tag size="small" :type="statusTagType(row.status)">{{ ptAppointmentStatusLabel(row.status) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="250" fixed="right">
+      <el-table-column label="操作" width="180" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" :disabled="row.status !== 'booked'" @click="complete(row)">完成</el-button>
-          <el-button link type="primary" :disabled="row.status !== 'booked'" @click="openEdit(row)">改期</el-button>
-          <el-button link type="warning" :disabled="row.status !== 'booked'" @click="noShow(row)">未到</el-button>
-          <el-button link type="danger" :disabled="row.status !== 'booked'" @click="cancel(row)">取消</el-button>
+          <RowActions
+            :more="[
+              { command: 'reschedule', label: '改期', disabled: row.status !== 'booked' },
+              { command: 'noshow', label: '未到', disabled: row.status !== 'booked' },
+              { command: 'cancel', label: '取消', disabled: row.status !== 'booked', danger: true, divided: true },
+            ]"
+            @more="
+              (c) =>
+                c === 'reschedule' ? openEdit(row) : c === 'noshow' ? noShow(row) : cancel(row)
+            "
+          >
+            <el-button size="small" type="primary" :disabled="row.status !== 'booked'" @click="complete(row)">
+              完成
+            </el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>

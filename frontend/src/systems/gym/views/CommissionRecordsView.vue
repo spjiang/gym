@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import {
   COMMISSION_CATEGORY_LABELS,
   COMMISSION_SCOPE_LABELS,
@@ -399,33 +400,34 @@ onMounted(refresh)
           <el-table-column label="备注" min-width="160">
             <template #default="{ row }">{{ row.note || '—' }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="190" fixed="right">
+          <el-table-column label="操作" width="160" fixed="right">
             <template #default="{ row }">
-              <el-button
-                v-if="row.status === 'pending'"
-                link
-                type="primary"
-                @click="changeStatus(row, 'confirmed', '确认')"
+              <RowActions
+                :more="
+                  row.status === 'pending' || row.status === 'confirmed'
+                    ? [{ command: 'void', label: '作废', danger: true }]
+                    : []
+                "
+                @more="changeStatus(row, 'void', '作废')"
               >
-                确认
-              </el-button>
-              <el-button
-                v-if="row.status === 'confirmed' && row.settle_ready !== false"
-                link
-                type="success"
-                @click="changeStatus(row, 'paid', '结算')"
-              >
-                结算
-              </el-button>
-              <el-button
-                v-if="row.status === 'pending' || row.status === 'confirmed'"
-                link
-                type="danger"
-                @click="changeStatus(row, 'void', '作废')"
-              >
-                作废
-              </el-button>
-              <span v-if="row.status === 'paid' || row.status === 'void'" class="sub">已终结</span>
+                <el-button
+                  v-if="row.status === 'pending'"
+                  size="small"
+                  type="primary"
+                  @click="changeStatus(row, 'confirmed', '确认')"
+                >
+                  确认
+                </el-button>
+                <el-button
+                  v-if="row.status === 'confirmed' && row.settle_ready !== false"
+                  size="small"
+                  type="primary"
+                  @click="changeStatus(row, 'paid', '结算')"
+                >
+                  结算
+                </el-button>
+                <span v-if="row.status === 'paid' || row.status === 'void'" class="sub">已终结</span>
+              </RowActions>
             </template>
           </el-table-column>
         </el-table>

@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import MarkdownView from '../../../core/components/MarkdownView.vue'
 
 type AnalysisRecord = {
@@ -167,10 +168,14 @@ onMounted(refresh)
         </template>
       </el-table-column>
       <el-table-column prop="created_at" label="时间" width="170" />
-      <el-table-column label="操作" width="140" fixed="right">
+      <el-table-column label="操作" width="180" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-          <el-button link type="primary" :disabled="row.status !== 'success'" @click="downloadRecord(row)">下载</el-button>
+          <RowActions
+            :more="[{ command: 'dl', label: '下载', disabled: row.status !== 'success' }]"
+            @more="downloadRecord(row)"
+          >
+            <el-button size="small" type="primary" @click="openDetail(row)">详情</el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>

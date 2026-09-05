@@ -118,7 +118,7 @@ onMounted(refresh)
       <el-table-column prop="actor_name" label="操作人" width="100" show-overflow-tooltip />
       <el-table-column label="" width="72" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDetail(row)">详情</el-button>
+          <el-button size="small" type="primary" @click="openDetail(row)">详情</el-button>
         </template>
       </el-table-column>
     </el-table>

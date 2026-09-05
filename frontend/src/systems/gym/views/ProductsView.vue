@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import { merchantsWithSystem } from '../../../core/nav/systems'
 import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
 
@@ -479,9 +480,13 @@ onMounted(refresh)
       </el-table-column>
       <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" @click="openDetail(row)">详情</el-button>
-          <el-button size="small" @click="openEdit(row)">编辑</el-button>
-          <el-button size="small" :disabled="!row.is_active" @click="deactivate(row.id)">停售</el-button>
+          <RowActions
+            :more="[{ command: 'off', label: '停售', disabled: !row.is_active, danger: true }]"
+            @more="deactivate(row.id)"
+          >
+            <el-button size="small" type="primary" @click="openDetail(row)">详情</el-button>
+            <el-button size="small" type="primary" @click="openEdit(row)">编辑</el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>

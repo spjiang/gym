@@ -213,9 +213,9 @@ onMounted(refresh)
           <el-tag :type="row.is_active ? 'success' : 'info'" size="small">{{ row.is_active ? '启用' : '停用' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="90" fixed="right">
+      <el-table-column label="操作" width="100" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+          <el-button size="small" type="primary" @click="openEdit(row)">编辑</el-button>
         </template>
       </el-table-column>
     </el-table>

@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import {
   COMMISSION_BASIS_LABELS,
   COMMISSION_SCOPE_LABELS,
@@ -384,11 +385,17 @@ onMounted(refresh)
           <el-tag size="small" :type="row.is_active ? 'success' : 'info'">{{ row.is_active ? '启用' : '停用' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="180" fixed="right">
+      <el-table-column label="操作" width="160" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button link type="warning" @click="toggle(row)">{{ row.is_active ? '停用' : '启用' }}</el-button>
-          <el-button link type="danger" @click="remove(row)">删除</el-button>
+          <RowActions
+            :more="[
+              { command: 'toggle', label: row.is_active ? '停用' : '启用', danger: row.is_active },
+              { command: 'del', label: '删除', danger: true, divided: true },
+            ]"
+            @more="(c) => (c === 'toggle' ? toggle(row) : remove(row))"
+          >
+            <el-button size="small" type="primary" @click="openEdit(row)">编辑</el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>
@@ -518,7 +525,14 @@ onMounted(refresh)
 }
 
 .filters {
-  margin-bottom: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.filters :deep(.el-form-item) {
+  margin-bottom: 0;
 }
 
 .pager {

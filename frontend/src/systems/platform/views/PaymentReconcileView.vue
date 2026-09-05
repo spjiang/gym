@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import { orderStatusLabel } from '../../../core/labels'
 
 type Item = Record<string, unknown>
@@ -120,11 +121,17 @@ onMounted(load)
         <template #default="{ row }">{{ orderStatusLabel(String(row.status || '')) || row.status || '—' }}</template>
       </el-table-column>
       <el-table-column prop="amount" label="金额" width="100" />
-      <el-table-column label="操作" width="280" fixed="right">
+      <el-table-column label="操作" width="180" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" @click="queryPay(row)">查单</el-button>
-          <el-button size="small" @click="closeIntent(row)">关闭意图</el-button>
-          <el-button size="small" type="danger" @click="forceFulfill(row)">强制履约</el-button>
+          <RowActions
+            :more="[
+              { command: 'close', label: '关闭意图' },
+              { command: 'force', label: '强制履约', danger: true, divided: true },
+            ]"
+            @more="(c) => (c === 'close' ? closeIntent(row) : forceFulfill(row))"
+          >
+            <el-button size="small" type="primary" @click="queryPay(row)">查单</el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>

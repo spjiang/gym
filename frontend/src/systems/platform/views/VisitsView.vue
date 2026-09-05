@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import { visitStatusLabel } from '../../../core/labels'
 
 type Merchant = { id: number; name: string }
@@ -196,11 +197,17 @@ onMounted(refresh)
         </template>
       </el-table-column>
       <el-table-column prop="created_at" label="创建时间" />
-      <el-table-column label="操作" width="200">
+      <el-table-column label="操作" width="160" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDialog(row)">编辑</el-button>
-          <el-button v-if="row.status === 'active'" link type="danger" @click="revokeVisit(row.id)">撤销</el-button>
-          <el-button link type="danger" @click="removeVisit(row)">删除</el-button>
+          <RowActions
+            :more="[
+              ...(row.status === 'active' ? [{ command: 'revoke', label: '撤销', danger: true }] : []),
+              { command: 'del', label: '删除', danger: true, divided: row.status === 'active' },
+            ]"
+            @more="(c) => (c === 'revoke' ? revokeVisit(row.id) : removeVisit(row))"
+          >
+            <el-button size="small" type="primary" @click="openDialog(row)">编辑</el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type UploadRequestOptions, type UploadUserFile } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { ArrowDown, Plus } from '@element-plus/icons-vue'
 import http from '../../../core/api/http'
 import { previewUploadFile } from '../../../core/imagePreview'
 import { activityStatusLabel } from '../../../core/labels'
@@ -90,6 +90,19 @@ function fmtTime(iso: string | null | undefined) {
   if (Number.isNaN(d.getTime())) return iso
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function fmtTimeShort(iso: string | null | undefined) {
+  const full = fmtTime(iso)
+  if (full === '—') return full
+  const year = `${new Date().getFullYear()}-`
+  return full.startsWith(year) ? full.slice(5) : full
+}
+
+function onRowMore(command: string, row: Activity) {
+  if (command === 'publish') void changeStatus(row, 'publish')
+  else if (command === 'close') void changeStatus(row, 'close')
+  else if (command === 'cancel') void changeStatus(row, 'cancel')
 }
 
 function statusTagType(status: string) {
@@ -444,41 +457,31 @@ onMounted(refresh)
       <el-button type="primary" @click="openCreate">新建活动</el-button>
     </div>
 
-    <el-form inline class="filters">
-      <el-form-item label="商户">
-        <el-select v-model="merchantId" clearable placeholder="全部商户" style="width: 180px">
-          <el-option v-for="m in merchants" :key="m.id" :label="m.name" :value="m.id" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="关键词">
-        <el-input v-model="query.q" clearable placeholder="活动名称 / 场地 / ID" style="width: 200px" @keyup.enter="search" />
-      </el-form-item>
-      <el-form-item label="状态">
-        <el-select v-model="query.status" clearable placeholder="全部" style="width: 140px">
-          <el-option label="草稿" value="draft" />
-          <el-option label="报名中" value="published" />
-          <el-option label="已停止报名" value="closed" />
-          <el-option label="已取消" value="cancelled" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="分类">
-        <el-input v-model="query.category" clearable placeholder="如 赛事" style="width: 140px" @keyup.enter="search" />
-      </el-form-item>
-      <el-form-item label="开始时间">
-        <el-date-picker
-          v-model="query.range"
-          type="datetimerange"
-          value-format="YYYY-MM-DDTHH:mm:ss"
-          start-placeholder="起"
-          end-placeholder="止"
-          style="width: 320px"
-        />
-      </el-form-item>
-      <el-form-item>
+    <div class="filters">
+      <el-select v-model="merchantId" clearable placeholder="全部商户">
+        <el-option v-for="m in merchants" :key="m.id" :label="m.name" :value="m.id" />
+      </el-select>
+      <el-input v-model="query.q" clearable class="f-q" placeholder="活动名称 / 场地 / ID" @keyup.enter="search" />
+      <el-select v-model="query.status" clearable placeholder="状态">
+        <el-option label="草稿" value="draft" />
+        <el-option label="报名中" value="published" />
+        <el-option label="已停止报名" value="closed" />
+        <el-option label="已取消" value="cancelled" />
+      </el-select>
+      <el-input v-model="query.category" clearable placeholder="分类" @keyup.enter="search" />
+      <el-date-picker
+        v-model="query.range"
+        type="daterange"
+        value-format="YYYY-MM-DDTHH:mm:ss"
+        start-placeholder="开始日期"
+        end-placeholder="结束日期"
+        class="f-range"
+      />
+      <div class="filters-actions">
         <el-button type="primary" @click="search">查询</el-button>
         <el-button @click="resetSearch">重置</el-button>
-      </el-form-item>
-    </el-form>
+      </div>
+    </div>
 
     <el-table :data="rows" v-loading="loading" stripe style="width: 100%">
       <el-table-column prop="id" label="ID" width="70" />
@@ -488,15 +491,18 @@ onMounted(refresh)
           <span v-else class="muted">—</span>
         </template>
       </el-table-column>
-      <el-table-column prop="name" label="活动" min-width="160" />
-      <el-table-column prop="category" label="分类" width="100">
+      <el-table-column prop="name" label="活动" min-width="140" show-overflow-tooltip />
+      <el-table-column prop="category" label="分类" width="88">
         <template #default="{ row }">{{ row.category || '—' }}</template>
       </el-table-column>
-      <el-table-column label="时间" min-width="300">
-        <template #default="{ row }">{{ fmtTime(row.starts_at) }} ~ {{ fmtTime(row.ends_at) }}</template>
+      <el-table-column label="时间" width="148">
+        <template #default="{ row }">
+          <div>{{ fmtTimeShort(row.starts_at) }}</div>
+          <div class="muted">至 {{ fmtTimeShort(row.ends_at) }}</div>
+        </template>
       </el-table-column>
-      <el-table-column label="报名截止" min-width="160">
-        <template #default="{ row }">{{ fmtTime(row.register_ends_at) }}</template>
+      <el-table-column label="报名截止" width="128">
+        <template #default="{ row }">{{ fmtTimeShort(row.register_ends_at) }}</template>
       </el-table-column>
       <el-table-column label="报名/名额" width="130">
         <template #default="{ row }">{{ capacityText(row) }}</template>
@@ -515,23 +521,34 @@ onMounted(refresh)
           <el-tag size="small" :type="statusTagType(row.status)">{{ activityStatusLabel(row.status) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="280" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" :disabled="row.status === 'cancelled'" @click="openEdit(row)">编辑</el-button>
-          <el-button link type="primary" @click="openPoster(row)">海报</el-button>
-          <el-button
-            v-if="row.status !== 'published'"
-            link
-            type="primary"
-            :disabled="row.status === 'cancelled'"
-            @click="changeStatus(row, 'publish')"
-          >
-            发布
-          </el-button>
-          <el-button v-else link type="warning" @click="changeStatus(row, 'close')">停止报名</el-button>
-          <el-button link type="danger" :disabled="row.status === 'cancelled'" @click="changeStatus(row, 'cancel')">
-            取消
-          </el-button>
+          <div class="row-actions">
+            <el-button size="small" type="primary" :disabled="row.status === 'cancelled'" @click="openEdit(row)">
+              编辑
+            </el-button>
+            <el-button size="small" type="primary" @click="openPoster(row)">海报</el-button>
+            <el-dropdown trigger="click" teleported @command="onRowMore($event, row)">
+              <el-button size="small">
+                更多<el-icon class="more-icon"><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item
+                    v-if="row.status !== 'published'"
+                    command="publish"
+                    :disabled="row.status === 'cancelled'"
+                  >
+                    发布
+                  </el-dropdown-item>
+                  <el-dropdown-item v-else command="close">停止报名</el-dropdown-item>
+                  <el-dropdown-item command="cancel" :disabled="row.status === 'cancelled'" divided>
+                    取消活动
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
         </template>
       </el-table-column>
     </el-table>
@@ -653,7 +670,35 @@ onMounted(refresh)
 }
 
 .filters {
-  margin-bottom: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.filters > :deep(.el-input),
+.filters > :deep(.el-select) {
+  width: 156px;
+}
+.filters .f-q {
+  width: 220px;
+}
+.filters .f-range {
+  width: 260px;
+}
+.filters-actions {
+  display: flex;
+  gap: 8px;
+}
+.row-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.more-icon {
+  margin-left: 2px;
 }
 
 .pager {

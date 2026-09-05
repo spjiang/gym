@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type UploadRequestOptions } from 'element-plus'
+import { ArrowDown } from '@element-plus/icons-vue'
 import http from '../../../core/api/http'
 import { useAuthStore } from '../../../core/stores/auth'
 
@@ -655,6 +656,15 @@ async function saveResetPwd() {
   }
 }
 
+function onRowMore(command: string, row: Member) {
+  if (command === 'promote') goPromotion(row)
+  else if (command === 'password') openResetPwd(row)
+  else if (command === 'link') openLink(row)
+  else if (command === 'delete') void remove(row)
+}
+
+const showRowMore = computed(() => canPromote.value || canResetPassword.value || canWrite.value)
+
 async function remove(row: Member) {
   try {
     await ElMessageBox.confirm(
@@ -689,37 +699,27 @@ onMounted(load)
     </div>
 
     <div class="filters">
-      <el-input
-        v-model="query.q"
-        clearable
-        placeholder="手机号 / 姓名"
-        style="width: 200px"
-        @keyup.enter="search"
-      />
-      <el-select v-model="query.merchant_id" clearable placeholder="关联商户" style="width: 180px">
+      <el-input v-model="query.q" clearable class="f-q" placeholder="手机号 / 姓名" @keyup.enter="search" />
+      <el-select v-model="query.merchant_id" clearable placeholder="关联商户">
         <el-option v-for="m in merchants" :key="m.id" :label="m.name" :value="m.id" />
       </el-select>
-      <el-select v-model="query.face_status" clearable placeholder="人脸状态" style="width: 130px">
+      <el-select v-model="query.face_status" clearable placeholder="人脸状态">
         <el-option label="已录入" value="enrolled" />
         <el-option label="未录入" value="not_enrolled" />
       </el-select>
-      <el-select v-model="query.has_password" clearable placeholder="登录密码" style="width: 130px">
+      <el-select v-model="query.has_password" clearable placeholder="登录密码">
         <el-option label="已设置" value="true" />
         <el-option label="未设置" value="false" />
       </el-select>
-      <el-select v-model="query.has_referrer" clearable placeholder="推荐关系" style="width: 130px">
+      <el-select v-model="query.has_referrer" clearable placeholder="推荐关系">
         <el-option label="有推荐人" value="true" />
         <el-option label="无推荐人" value="false" />
       </el-select>
-      <el-input
-        v-model="query.referral_code"
-        clearable
-        placeholder="推广码"
-        style="width: 130px"
-        @keyup.enter="search"
-      />
-      <el-button type="primary" @click="search">查询</el-button>
-      <el-button @click="resetSearch">重置</el-button>
+      <el-input v-model="query.referral_code" clearable placeholder="推广码" @keyup.enter="search" />
+      <div class="filters-actions">
+        <el-button type="primary" @click="search">查询</el-button>
+        <el-button @click="resetSearch">重置</el-button>
+      </div>
     </div>
 
     <el-table :data="members" v-loading="loading" stripe>
@@ -730,8 +730,8 @@ onMounted(load)
           <div v-else class="avatar avatar-fallback">{{ (row.name || '?').slice(0, 1) }}</div>
         </template>
       </el-table-column>
-      <el-table-column prop="phone" label="手机号" />
-      <el-table-column prop="name" label="姓名" />
+      <el-table-column prop="phone" label="手机号" width="132" />
+      <el-table-column prop="name" label="姓名" width="100" show-overflow-tooltip />
       <el-table-column label="登录密码" width="110">
         <template #default="{ row }">
           <el-tag :type="row.has_password ? 'success' : 'info'" size="small">
@@ -758,28 +758,38 @@ onMounted(load)
           <div v-if="row.referred_count" class="sub">已推荐 {{ row.referred_count }} 人</div>
         </template>
       </el-table-column>
-      <el-table-column label="关联商户">
+      <el-table-column label="关联商户" min-width="148">
         <template #default="{ row }">
-          <el-tag
-            v-for="id in row.merchant_ids"
-            :key="id"
-            size="small"
-            effect="plain"
-            style="margin-right: 6px"
-          >
-            {{ merchantName(id) }}
-          </el-tag>
-          <span v-if="!row.merchant_ids.length">—</span>
+          <div v-if="row.merchant_ids.length" class="merchant-cell">
+            <el-tag v-for="id in row.merchant_ids.slice(0, 2)" :key="id" size="small" effect="plain">
+              {{ merchantName(id) }}
+            </el-tag>
+            <span v-if="row.merchant_ids.length > 2" class="sub">+{{ row.merchant_ids.length - 2 }}</span>
+          </div>
+          <span v-else>—</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="340" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-          <el-button v-if="canWrite" link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button v-if="canPromote" link type="primary" @click="goPromotion(row)">推广</el-button>
-          <el-button v-if="canResetPassword" link type="primary" @click="openResetPwd(row)">改密</el-button>
-          <el-button v-if="canWrite" link type="primary" @click="openLink(row)">关联商户</el-button>
-          <el-button v-if="canWrite" link type="danger" @click="remove(row)">删除</el-button>
+          <div class="row-actions">
+            <el-button size="small" type="primary" @click="openDetail(row)">详情</el-button>
+            <el-button v-if="canWrite" size="small" type="primary" @click="openEdit(row)">编辑</el-button>
+            <el-dropdown v-if="showRowMore" trigger="click" teleported @command="onRowMore($event, row)">
+              <el-button size="small">
+                更多<el-icon class="more-icon"><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item v-if="canPromote" command="promote">推广</el-dropdown-item>
+                  <el-dropdown-item v-if="canResetPassword" command="password">改密</el-dropdown-item>
+                  <el-dropdown-item v-if="canWrite" command="link">关联商户</el-dropdown-item>
+                  <el-dropdown-item v-if="canWrite" command="delete" divided class="danger-item">
+                    删除
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
         </template>
       </el-table-column>
     </el-table>
@@ -1305,8 +1315,40 @@ onMounted(load)
 .filters {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.filters > :deep(.el-input),
+.filters > :deep(.el-select) {
+  width: 156px;
+}
+.filters .f-q {
+  width: 200px;
+}
+.filters-actions {
+  display: flex;
   gap: 8px;
-  margin-bottom: 12px;
+}
+.row-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.more-icon {
+  margin-left: 2px;
+}
+:deep(.danger-item) {
+  color: #b42318;
+}
+.merchant-cell {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
 }
 .pager {
   margin-top: 16px;

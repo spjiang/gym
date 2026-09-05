@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import {
   PAYOUT_SOURCE_LABELS,
   PAYOUT_STATUS_LABELS,
@@ -240,13 +241,26 @@ onMounted(refresh)
           <span v-else>—</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
+      <el-table-column label="操作" width="180" fixed="right">
         <template #default="{ row }">
-          <el-button v-if="row.status === 'requested'" link type="primary" @click="approve(row)">通过</el-button>
-          <el-button v-if="row.status === 'requested'" link type="danger" @click="reject(row)">驳回</el-button>
-          <el-button v-if="row.status === 'requested' || row.status === 'approved'" link type="success" @click="openPay(row)">
-            登记打款
-          </el-button>
+          <RowActions
+            :more="
+              row.status === 'requested'
+                ? [
+                    { command: 'reject', label: '驳回', danger: true },
+                    { command: 'pay', label: '登记打款' },
+                  ]
+                : []
+            "
+            @more="(c) => (c === 'reject' ? reject(row) : openPay(row))"
+          >
+            <el-button v-if="row.status === 'requested'" size="small" type="primary" @click="approve(row)">
+              通过
+            </el-button>
+            <el-button v-if="row.status === 'approved'" size="small" type="primary" @click="openPay(row)">
+              登记打款
+            </el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>

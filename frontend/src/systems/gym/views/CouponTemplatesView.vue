@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import { couponApplicableLabel } from '../../../core/labels'
 import { merchantsWithSystem } from '../../../core/nav/systems'
 import { useAuthStore } from '../../../core/stores/auth'
@@ -283,16 +284,25 @@ onMounted(load)
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-          <el-button v-if="canManage" link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button v-if="canManage && row.is_active" link type="danger" @click="setActive(row, false)">
-            停用
-          </el-button>
-          <el-button v-if="canManage && !row.is_active" link type="success" @click="setActive(row, true)">
-            启用
-          </el-button>
+          <RowActions
+            :more="
+              canManage
+                ? [
+                    {
+                      command: 'toggle',
+                      label: row.is_active ? '停用' : '启用',
+                      danger: row.is_active,
+                    },
+                  ]
+                : []
+            "
+            @more="setActive(row, !row.is_active)"
+          >
+            <el-button size="small" type="primary" @click="openDetail(row)">详情</el-button>
+            <el-button v-if="canManage" size="small" type="primary" @click="openEdit(row)">编辑</el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>

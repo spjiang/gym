@@ -257,7 +257,7 @@ onMounted(refresh)
       </el-table-column>
       <el-table-column label="" width="72" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDetail(row)">详情</el-button>
+          <el-button size="small" type="primary" @click="openDetail(row)">详情</el-button>
         </template>
       </el-table-column>
     </el-table>

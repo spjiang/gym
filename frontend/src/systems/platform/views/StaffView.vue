@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 
 type Staff = {
   id: number
@@ -291,25 +292,30 @@ onMounted(load)
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="340">
+      <el-table-column label="操作" width="280" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" @click="openEdit(row)">编辑</el-button>
-          <el-button size="small" type="warning" plain @click="openResetPwd(row)">改密</el-button>
-          <el-button
-            size="small"
-            :type="row.is_active ? 'warning' : 'success'"
-            @click="toggleActive(row)"
+          <RowActions
+            :more="[
+              { command: 'pwd', label: '改密' },
+              {
+                command: 'toggle',
+                label: row.is_active ? '禁用' : '启用',
+                danger: row.is_active,
+                divided: true,
+              },
+            ]"
+            @more="(c) => (c === 'pwd' ? openResetPwd(row) : toggleActive(row))"
           >
-            {{ row.is_active ? '禁用' : '启用' }}
-          </el-button>
-          <el-select
-            :model-value="row.role_codes[0]"
-            placeholder="切换角色"
-            style="width: 120px; margin-left: 8px"
-            @change="(v: string) => setRoles(row, v)"
-          >
-            <el-option v-for="o in roleOptions" :key="o.code" :label="o.name" :value="o.code" />
-          </el-select>
+            <el-button size="small" type="primary" @click="openEdit(row)">编辑</el-button>
+            <el-select
+              :model-value="row.role_codes[0]"
+              placeholder="角色"
+              style="width: 108px"
+              @change="(v: string) => setRoles(row, v)"
+            >
+              <el-option v-for="o in roleOptions" :key="o.code" :label="o.name" :value="o.code" />
+            </el-select>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>

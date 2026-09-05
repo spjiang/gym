@@ -221,9 +221,9 @@ onMounted(refresh)
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column v-if="canManage" label="操作" width="90">
+      <el-table-column v-if="canManage" label="操作" width="100">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openEditAsset(row)">编辑</el-button>
+          <el-button size="small" type="primary" @click="openEditAsset(row)">编辑</el-button>
         </template>
       </el-table-column>
     </el-table>

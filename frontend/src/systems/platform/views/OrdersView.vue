@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import { ORDER_TYPE_LABELS, orderTypeLabel as mapOrderType } from '../../../core/labels'
 
 type MemberBrief = { id: number; name: string; phone: string }
@@ -297,13 +298,17 @@ onMounted(load)
           <el-tag :type="statusMeta(row.status).type" size="small">{{ statusMeta(row.status).label }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="260" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-          <el-button size="small" :disabled="row.status !== 'pending'" @click="payOffline(row)">
-            线下收款
-          </el-button>
-          <el-button size="small" :disabled="row.status !== 'paid'" @click="refund(row)">退款</el-button>
+          <RowActions
+            :more="[{ command: 'refund', label: '退款', disabled: row.status !== 'paid', danger: true }]"
+            @more="refund(row)"
+          >
+            <el-button size="small" type="primary" @click="openDetail(row)">详情</el-button>
+            <el-button size="small" type="primary" :disabled="row.status !== 'pending'" @click="payOffline(row)">
+              线下收款
+            </el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>

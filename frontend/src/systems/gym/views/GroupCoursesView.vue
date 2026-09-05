@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import { sessionStatusLabel } from '../../../core/labels'
 import { merchantsWithSystem } from '../../../core/nav/systems'
 import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
@@ -314,11 +315,17 @@ onMounted(refresh)
       <el-table-column label="状态" width="90">
         <template #default="{ row }">{{ sessionStatusLabel(row.status) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="180" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button v-if="row.status !== 'cancelled'" link type="danger" @click="removeSession(row)">删除</el-button>
+          <RowActions
+            :more="
+              row.status !== 'cancelled' ? [{ command: 'del', label: '删除', danger: true }] : []
+            "
+            @more="removeSession(row)"
+          >
+            <el-button size="small" type="primary" @click="openDetail(row)">详情</el-button>
+            <el-button size="small" type="primary" @click="openEdit(row)">编辑</el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>
@@ -444,7 +451,14 @@ onMounted(refresh)
 }
 
 .filters {
-  margin-bottom: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.filters :deep(.el-form-item) {
+  margin-bottom: 0;
 }
 
 .pager {

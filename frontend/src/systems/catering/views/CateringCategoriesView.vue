@@ -3,6 +3,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
+import RowActions from '../../../core/components/RowActions.vue'
 import { useOpsMerchant } from '../../../core/stores/useOpsMerchant'
 
 type Merchant = { id: number; name: string; subsystem_codes: string[] }
@@ -199,11 +200,20 @@ onMounted(refresh)
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="150" fixed="right">
+      <el-table-column label="操作" width="160" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button v-if="row.is_active" link type="danger" @click="setActive(row, false)">停用</el-button>
-          <el-button v-else link type="success" @click="setActive(row, true)">启用</el-button>
+          <RowActions
+            :more="[
+              {
+                command: 'toggle',
+                label: row.is_active ? '停用' : '启用',
+                danger: row.is_active,
+              },
+            ]"
+            @more="setActive(row, !row.is_active)"
+          >
+            <el-button size="small" type="primary" @click="openEdit(row)">编辑</el-button>
+          </RowActions>
         </template>
       </el-table-column>
     </el-table>
