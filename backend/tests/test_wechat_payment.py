@@ -29,6 +29,47 @@ def test_payment_settings_mask_and_persist(client: TestClient, admin_headers: di
     assert "super-secret" not in str(got.json())
 
 
+def test_payment_settings_clear_secret(client: TestClient, admin_headers: dict):
+    put = client.put(
+        "/api/v1/site/payment-settings",
+        headers=admin_headers,
+        json={
+            "mode": "wechat",
+            "dry_run": True,
+            "mp_app_secret": "mini-secret",
+            "mch_private_key": "-----BEGIN PRIVATE KEY-----\nMIIB\n-----END PRIVATE KEY-----",
+            "platform_public_key": "-----BEGIN PUBLIC KEY-----\nMFww\n-----END PUBLIC KEY-----",
+        },
+    )
+    assert put.status_code == 200, put.text
+    body = put.json()
+    assert body["mp_app_secret"]["configured"] is True
+    assert body["mch_private_key"]["configured"] is True
+    assert body["platform_public_key"]["configured"] is True
+
+    keep = client.put(
+        "/api/v1/site/payment-settings",
+        headers=admin_headers,
+        json={"mch_id": "1900000099"},
+    )
+    assert keep.status_code == 200, keep.text
+    assert keep.json()["mp_app_secret"]["configured"] is True
+    assert keep.json()["mch_private_key"]["configured"] is True
+    assert keep.json()["platform_public_key"]["configured"] is True
+    assert keep.json()["mch_id"] == "1900000099"
+
+    cleared = client.put(
+        "/api/v1/site/payment-settings",
+        headers=admin_headers,
+        json={"mp_app_secret": "", "mch_private_key": "", "platform_public_key": ""},
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["mp_app_secret"]["configured"] is False
+    assert cleared.json()["mch_private_key"]["configured"] is False
+    assert cleared.json()["platform_public_key"]["configured"] is False
+    assert cleared.json()["mch_id"] == "1900000099"
+
+
 def test_member_wechat_dry_run_pay_flow(client: TestClient, admin_headers: dict):
     client.put(
         "/api/v1/site/payment-settings",

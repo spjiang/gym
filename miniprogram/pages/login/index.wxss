@@ -31,26 +31,9 @@
   flex: 1;
   margin-bottom: 0;
 }
-.net-probe {
-  margin-top: 32rpx;
-  padding: 20rpx;
-  border: 1rpx solid #f36b21;
-  border-radius: 8rpx;
-  background: rgba(243, 107, 33, 0.12);
-}
-.net-probe-title {
-  margin-bottom: 12rpx;
-  font-size: 24rpx;
-  color: #f36b21;
-}
-.net-probe-body {
-  display: block;
+.beian {
+  margin-top: 48rpx;
+  text-align: center;
   font-size: 22rpx;
-  line-height: 1.5;
-  color: #f2e6d2;
-  word-break: break-all;
-  white-space: pre-wrap;
-}
-.net-probe-btn {
-  margin-top: 16rpx;
+  color: #7d8389;
 }

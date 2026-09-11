@@ -104,3 +104,9 @@ button.ghost {
   border: 1rpx solid #343b42 !important;
   margin-top: 24rpx;
 }
+.beian {
+  margin: 40rpx 0 24rpx;
+  text-align: center;
+  font-size: 22rpx;
+  color: #7d8389;
+}

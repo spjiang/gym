@@ -2,7 +2,12 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import http from '../../../core/api/http'
-import { REBATE_LEDGER_KIND_LABELS, rebateLedgerKindLabel } from '../../../core/labels'
+import {
+  REBATE_LEDGER_KIND_LABELS,
+  orderStatusLabel,
+  orderTypeLabel,
+  rebateLedgerKindLabel,
+} from '../../../core/labels'
 
 type Ledger = {
   id: number
@@ -27,6 +32,23 @@ type Account = {
   total_withdrawn: string
 }
 type Member = { id: number; name: string; phone: string }
+type MemberBrief = { id: number; name: string; phone: string }
+type OrderDetail = {
+  id: number
+  title: string
+  amount: string
+  status: string
+  merchant_id: number
+  merchant_name?: string | null
+  order_type: string
+  member_id?: number | null
+  promoter_code?: string | null
+  pickup_code?: string | null
+  customer_note?: string | null
+  created_at?: string
+  member?: MemberBrief | null
+}
+type Merchant = { id: number; name: string }
 
 const rows = ref<Ledger[]>([])
 const loading = ref(false)
@@ -39,12 +61,28 @@ const query = reactive({
   range: undefined as [string, string] | undefined,
 })
 const members = ref<Member[]>([])
+const merchants = ref<Merchant[]>([])
+
+const orderVisible = ref(false)
+const orderLoading = ref(false)
+const orderDetail = ref<OrderDetail | null>(null)
 
 const adjustDialog = ref(false)
 const adjustMemberId = ref<number | undefined>()
 const adjustAmount = ref('')
 const adjustNote = ref('')
 const submitting = ref(false)
+
+function merchantName(row: OrderDetail) {
+  if (row.merchant_name) return row.merchant_name
+  return merchants.value.find((m) => m.id === row.merchant_id)?.name || `商户 #${row.merchant_id}`
+}
+
+function orderMemberLabel(row: OrderDetail) {
+  if (row.member) return `${row.member.name} ${row.member.phone}`
+  if (row.member_id) return `#${row.member_id}`
+  return '—'
+}
 
 function fmtTime(iso: string | null) {
   if (!iso) return '—'
@@ -56,10 +94,30 @@ function fmtTime(iso: string | null) {
 
 async function loadMembers() {
   try {
-    const { data } = await http.get<Page<Member>>('/members', { params: { page: 1, page_size: 200 } })
-    members.value = data.items
+    const [{ data: memberPage }, { data: merchantRows }] = await Promise.all([
+      http.get<Page<Member>>('/members', { params: { page: 1, page_size: 200 } }),
+      http.get<Merchant[]>('/merchants'),
+    ])
+    members.value = memberPage.items
+    merchants.value = merchantRows
   } catch {
     members.value = []
+    merchants.value = []
+  }
+}
+
+async function openOrder(orderId: number) {
+  orderVisible.value = true
+  orderLoading.value = true
+  orderDetail.value = null
+  try {
+    const { data } = await http.get<OrderDetail>(`/orders/${orderId}`)
+    orderDetail.value = data
+  } catch (e: unknown) {
+    ElMessage.error(e instanceof Error ? e.message : '加载订单失败')
+    orderVisible.value = false
+  } finally {
+    orderLoading.value = false
   }
 }
 
@@ -198,8 +256,13 @@ onMounted(async () => {
       <el-table-column label="来源下级" min-width="120">
         <template #default="{ row }">{{ row.from_member_name || '—' }}</template>
       </el-table-column>
-      <el-table-column label="订单" width="90">
-        <template #default="{ row }">{{ row.order_id ? `#${row.order_id}` : '—' }}</template>
+      <el-table-column label="订单" width="100">
+        <template #default="{ row }">
+          <el-button v-if="row.order_id" link type="primary" @click="openOrder(row.order_id)">
+            #{{ row.order_id }}
+          </el-button>
+          <span v-else>—</span>
+        </template>
       </el-table-column>
       <el-table-column label="口径" min-width="140">
         <template #default="{ row }">
@@ -229,6 +292,30 @@ onMounted(async () => {
         "
       />
     </div>
+
+    <el-drawer v-model="orderVisible" title="订单详情" size="440px">
+      <div v-loading="orderLoading">
+        <el-descriptions v-if="orderDetail" :column="1" border>
+          <el-descriptions-item label="订单号">{{ orderDetail.id }}</el-descriptions-item>
+          <el-descriptions-item label="标题">{{ orderDetail.title }}</el-descriptions-item>
+          <el-descriptions-item label="金额">¥{{ orderDetail.amount }}</el-descriptions-item>
+          <el-descriptions-item label="状态">{{ orderStatusLabel(orderDetail.status) }}</el-descriptions-item>
+          <el-descriptions-item label="类型">{{ orderTypeLabel(orderDetail.order_type) }}</el-descriptions-item>
+          <el-descriptions-item label="商户">{{ merchantName(orderDetail) }}</el-descriptions-item>
+          <el-descriptions-item label="下单会员">{{ orderMemberLabel(orderDetail) }}</el-descriptions-item>
+          <el-descriptions-item v-if="orderDetail.promoter_code" label="推广码">
+            {{ orderDetail.promoter_code }}
+          </el-descriptions-item>
+          <el-descriptions-item v-if="orderDetail.pickup_code" label="取餐号">
+            {{ orderDetail.pickup_code }}
+          </el-descriptions-item>
+          <el-descriptions-item v-if="orderDetail.customer_note" label="备注">
+            {{ orderDetail.customer_note }}
+          </el-descriptions-item>
+          <el-descriptions-item label="下单时间">{{ fmtTime(orderDetail.created_at || null) }}</el-descriptions-item>
+        </el-descriptions>
+      </div>
+    </el-drawer>
 
     <el-dialog v-model="adjustDialog" title="人工调整返点余额" width="460px" destroy-on-close>
       <el-form label-width="90px">

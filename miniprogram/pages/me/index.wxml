@@ -54,5 +54,6 @@
   <button bindtap="goPromotion">我的推广</button>
   <button bindtap="goStores">全部门店 / 切换业态</button>
   <button class="ghost" bindtap="logout">退出登录</button>
+  <view class="beian">{{icpBeian}}</view>
 </view>
 <bottom-nav active="/pages/me/index" />

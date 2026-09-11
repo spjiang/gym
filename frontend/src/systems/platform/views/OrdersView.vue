@@ -12,6 +12,7 @@ type Order = {
   amount: string
   status: string
   merchant_id: number
+  merchant_name?: string | null
   order_type: string
   member_id?: number | null
   pickup_code?: string | null
@@ -76,8 +77,9 @@ const titlePlaceholder = computed(() => {
   return '如：零售商品收款'
 })
 
-function merchantName(id: number) {
-  return merchants.value.find((m) => m.id === id)?.name || `#${id}`
+function merchantName(row: Pick<Order, 'merchant_id' | 'merchant_name'>) {
+  if (row.merchant_name) return row.merchant_name
+  return merchants.value.find((m) => m.id === row.merchant_id)?.name || `商户 #${row.merchant_id}`
 }
 
 function memberLabel(row: Order) {
@@ -285,7 +287,7 @@ onMounted(load)
         <template #default="{ row }">{{ memberLabel(row) }}</template>
       </el-table-column>
       <el-table-column label="商户" width="160">
-        <template #default="{ row }">{{ merchantName(row.merchant_id) }}</template>
+        <template #default="{ row }">{{ merchantName(row) }}</template>
       </el-table-column>
       <el-table-column label="类型" width="100">
         <template #default="{ row }">{{ orderTypeLabel(row.order_type) }}</template>
@@ -339,7 +341,7 @@ onMounted(load)
           <el-descriptions-item label="金额">¥{{ detail.amount }}</el-descriptions-item>
           <el-descriptions-item label="状态">{{ statusMeta(detail.status).label }}</el-descriptions-item>
           <el-descriptions-item label="类型">{{ orderTypeLabel(detail.order_type) }}</el-descriptions-item>
-          <el-descriptions-item label="商户">{{ merchantName(detail.merchant_id) }}</el-descriptions-item>
+          <el-descriptions-item label="商户">{{ merchantName(detail) }}</el-descriptions-item>
           <el-descriptions-item label="会员">{{ memberLabel(detail) }}</el-descriptions-item>
           <el-descriptions-item v-if="detail.pickup_code" label="取餐号">
             {{ detail.pickup_code }}

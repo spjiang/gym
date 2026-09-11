@@ -354,6 +354,7 @@ class OrderOut(ORMModel):
     customer_note: str | None = None
     dining_status: str | None = None
     created_at: datetime
+    merchant_name: str | None = None
     member: MemberBrief | None = None
 
     @field_serializer(

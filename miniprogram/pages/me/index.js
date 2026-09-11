@@ -11,11 +11,13 @@ Page({
     merchants: [],
     events: [],
     uploading: false,
+    icpBeian: '',
   },
   async onShow() {
     const { requireLogin, refreshMemberSession } = require('../../utils/session')
     if (!requireLogin()) return
     await refreshMemberSession()
+    this.setData({ icpBeian: getApp().globalData.icpBeian || '' })
     await this.loadMe()
   },
   async loadMe() {

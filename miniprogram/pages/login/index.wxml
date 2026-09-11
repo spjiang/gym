@@ -29,9 +29,5 @@
     bindinput="onPassword"
   />
   <button bindtap="login">登录</button>
-  <view class="net-probe">
-    <view class="net-probe-title">临时网络探测（测完删除）</view>
-    <text class="net-probe-body" selectable user-select>{{netProbe}}</text>
-    <button class="net-probe-btn" size="mini" bindtap="probeNetwork">重新探测</button>
-  </view>
+  <view class="beian">{{icpBeian}}</view>
 </view>

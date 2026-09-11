@@ -62,6 +62,16 @@ def test_orders_page_with_member(client: TestClient, admin_headers: dict):
     assert row["member"]["name"] == "订单会员"
     assert row["member"]["phone"] == "13980002201"
 
+    detail = client.get(f"/api/v1/orders/{order['id']}", headers=admin_headers)
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert body["id"] == order["id"]
+    assert body["member"]["id"] == member["id"]
+    assert body["member"]["name"] == "订单会员"
+    assert body["member"]["phone"] == "13980002201"
+    assert body.get("merchant_name")
+    assert "#" not in str(body["merchant_name"])
+
 
 def test_memberships_and_access_events_page(client: TestClient, admin_headers: dict):
     gym_id = client.get("/api/v1/merchants", headers=admin_headers).json()[0]["id"]

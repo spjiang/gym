@@ -28,11 +28,20 @@ const PEM_MASK = '************************\n************************'
 
 type SecretField = 'mp_app_secret' | 'oa_app_secret' | 'api_v3_key' | 'mch_private_key' | 'platform_public_key'
 
+const SECRET_FIELDS: SecretField[] = [
+  'mp_app_secret',
+  'oa_app_secret',
+  'api_v3_key',
+  'mch_private_key',
+  'platform_public_key',
+]
+
 function maskOf(field: SecretField) {
   return field === 'mch_private_key' || field === 'platform_public_key' ? PEM_MASK : SECRET_MASK
 }
 
 function isUnchangedSecret(field: SecretField) {
+  if (pendingClear[field]) return false
   const value = form[field].trim()
   return !value || value === maskOf(field)
 }
@@ -46,11 +55,47 @@ function onSecretFocus(field: SecretField) {
 }
 
 function onSecretBlur(field: SecretField) {
+  if (pendingClear[field]) return
   if (!form[field].trim() && meta[field]) form[field] = maskOf(field)
+}
+
+function onSecretInput(field: SecretField) {
+  if (form[field].trim()) pendingClear[field] = false
+}
+
+function clearSecret(field: SecretField) {
+  pendingClear[field] = true
+  form[field] = ''
+}
+
+function undoClearSecret(field: SecretField) {
+  pendingClear[field] = false
+  showSecretMask(field)
+}
+
+function secretTagType(field: SecretField) {
+  if (pendingClear[field]) return 'warning'
+  return meta[field] ? 'success' : 'info'
+}
+
+function secretTagText(field: SecretField) {
+  if (pendingClear[field]) return '将清空'
+  return meta[field] ? '已配置' : '未配置'
+}
+
+function canClearSecret(field: SecretField) {
+  return meta[field] || pendingClear[field]
 }
 
 const loading = ref(false)
 const saving = ref(false)
+const pendingClear = reactive<Record<SecretField, boolean>>({
+  mp_app_secret: false,
+  oa_app_secret: false,
+  api_v3_key: false,
+  mch_private_key: false,
+  platform_public_key: false,
+})
 const form = reactive({
   mode: 'unconfigured',
   dry_run: true,
@@ -95,6 +140,7 @@ async function load() {
     meta.api_v3_key = !!data.api_v3_key?.configured
     meta.mch_private_key = !!data.mch_private_key?.configured
     meta.platform_public_key = !!data.platform_public_key?.configured
+    for (const field of SECRET_FIELDS) pendingClear[field] = false
     showSecretMask('mp_app_secret')
     showSecretMask('oa_app_secret')
     showSecretMask('api_v3_key')
@@ -121,11 +167,10 @@ async function save() {
       notify_url: form.notify_url,
       h5_return_url: form.h5_return_url,
     }
-    if (!isUnchangedSecret('mp_app_secret')) payload.mp_app_secret = form.mp_app_secret.trim()
-    if (!isUnchangedSecret('oa_app_secret')) payload.oa_app_secret = form.oa_app_secret.trim()
-    if (!isUnchangedSecret('api_v3_key')) payload.api_v3_key = form.api_v3_key.trim()
-    if (!isUnchangedSecret('mch_private_key')) payload.mch_private_key = form.mch_private_key.trim()
-    if (!isUnchangedSecret('platform_public_key')) payload.platform_public_key = form.platform_public_key.trim()
+    for (const field of SECRET_FIELDS) {
+      if (pendingClear[field]) payload[field] = ''
+      else if (!isUnchangedSecret(field)) payload[field] = form[field].trim()
+    }
     await http.put('/site/payment-settings', payload)
     ElMessage.success('已保存')
     await load()
@@ -157,7 +202,7 @@ onMounted(load)
     <div class="toolbar">
       <div>
         <h3>微信支付</h3>
-        <p class="lead">全场地共用一套商户号（APIv3）。密钥只写入不回显，已保存的项留空即保持不变。</p>
+        <p class="lead">全场地共用一套商户号（APIv3）。密钥只写入不回显；星号占位无法直接删，要点「清空」再保存才会从库里去掉。</p>
       </div>
       <div class="actions">
         <el-tag :type="meta.source === 'db' ? 'success' : 'info'" effect="plain" size="small">
@@ -208,9 +253,19 @@ onMounted(load)
             <template #label>
               <span class="label-with-tag">
                 Secret
-                <el-tag :type="meta.mp_app_secret ? 'success' : 'info'" effect="plain" size="small">
-                  {{ meta.mp_app_secret ? '已配置' : '未配置' }}
+                <el-tag :type="secretTagType('mp_app_secret')" effect="plain" size="small">
+                  {{ secretTagText('mp_app_secret') }}
                 </el-tag>
+                <el-button
+                  v-if="canClearSecret('mp_app_secret')"
+                  class="secret-clear-btn"
+                  :type="pendingClear.mp_app_secret ? 'info' : 'danger'"
+                  plain
+                  size="small"
+                  @click.prevent="pendingClear.mp_app_secret ? undoClearSecret('mp_app_secret') : clearSecret('mp_app_secret')"
+                >
+                  {{ pendingClear.mp_app_secret ? '撤销' : '清空' }}
+                </el-button>
               </span>
             </template>
             <el-input
@@ -218,9 +273,10 @@ onMounted(load)
               :type="form.mp_app_secret === SECRET_MASK ? 'text' : 'password'"
               :show-password="form.mp_app_secret !== SECRET_MASK"
               autocomplete="new-password"
-              :placeholder="meta.mp_app_secret ? '点击后可更换' : '未配置'"
+              :placeholder="pendingClear.mp_app_secret ? '将在保存后删除' : meta.mp_app_secret ? '点击后可更换' : '未配置'"
               @focus="onSecretFocus('mp_app_secret')"
               @blur="onSecretBlur('mp_app_secret')"
+              @update:model-value="onSecretInput('mp_app_secret')"
             />
           </el-form-item>
         </div>
@@ -241,9 +297,19 @@ onMounted(load)
             <template #label>
               <span class="label-with-tag">
                 APIv3 密钥
-                <el-tag :type="meta.api_v3_key ? 'success' : 'info'" effect="plain" size="small">
-                  {{ meta.api_v3_key ? '已配置' : '未配置' }}
+                <el-tag :type="secretTagType('api_v3_key')" effect="plain" size="small">
+                  {{ secretTagText('api_v3_key') }}
                 </el-tag>
+                <el-button
+                  v-if="canClearSecret('api_v3_key')"
+                  class="secret-clear-btn"
+                  :type="pendingClear.api_v3_key ? 'info' : 'danger'"
+                  plain
+                  size="small"
+                  @click.prevent="pendingClear.api_v3_key ? undoClearSecret('api_v3_key') : clearSecret('api_v3_key')"
+                >
+                  {{ pendingClear.api_v3_key ? '撤销' : '清空' }}
+                </el-button>
               </span>
             </template>
             <el-input
@@ -251,9 +317,10 @@ onMounted(load)
               :type="form.api_v3_key === SECRET_MASK ? 'text' : 'password'"
               :show-password="form.api_v3_key !== SECRET_MASK"
               autocomplete="new-password"
-              :placeholder="meta.api_v3_key ? '点击后可更换' : '32 位，未配置'"
+              :placeholder="pendingClear.api_v3_key ? '将在保存后删除' : meta.api_v3_key ? '点击后可更换' : '32 位，未配置'"
               @focus="onSecretFocus('api_v3_key')"
               @blur="onSecretBlur('api_v3_key')"
+              @update:model-value="onSecretInput('api_v3_key')"
             />
           </el-form-item>
           <el-form-item label="证书序列号">
@@ -263,9 +330,19 @@ onMounted(load)
             <template #label>
               <span class="label-with-tag">
                 商户私钥
-                <el-tag :type="meta.mch_private_key ? 'success' : 'info'" effect="plain" size="small">
-                  {{ meta.mch_private_key ? '已配置' : '未配置' }}
+                <el-tag :type="secretTagType('mch_private_key')" effect="plain" size="small">
+                  {{ secretTagText('mch_private_key') }}
                 </el-tag>
+                <el-button
+                  v-if="canClearSecret('mch_private_key')"
+                  class="secret-clear-btn"
+                  :type="pendingClear.mch_private_key ? 'info' : 'danger'"
+                  plain
+                  size="small"
+                  @click.prevent="pendingClear.mch_private_key ? undoClearSecret('mch_private_key') : clearSecret('mch_private_key')"
+                >
+                  {{ pendingClear.mch_private_key ? '撤销' : '清空' }}
+                </el-button>
               </span>
             </template>
             <el-input
@@ -273,9 +350,10 @@ onMounted(load)
               type="textarea"
               :rows="4"
               class="pem-input"
-              :placeholder="meta.mch_private_key ? '点击后粘贴新的 apiclient_key.pem' : '粘贴 apiclient_key.pem 全文（含 BEGIN/END）'"
+              :placeholder="pendingClear.mch_private_key ? '将在保存后删除' : meta.mch_private_key ? '点击后粘贴新的 apiclient_key.pem' : '粘贴 apiclient_key.pem 全文（含 BEGIN/END）'"
               @focus="onSecretFocus('mch_private_key')"
               @blur="onSecretBlur('mch_private_key')"
+              @update:model-value="onSecretInput('mch_private_key')"
             />
           </el-form-item>
           <el-form-item label="平台证书序列号">
@@ -285,9 +363,19 @@ onMounted(load)
             <template #label>
               <span class="label-with-tag">
                 平台公钥
-                <el-tag :type="meta.platform_public_key ? 'success' : 'info'" effect="plain" size="small">
-                  {{ meta.platform_public_key ? '已配置' : '未配置' }}
+                <el-tag :type="secretTagType('platform_public_key')" effect="plain" size="small">
+                  {{ secretTagText('platform_public_key') }}
                 </el-tag>
+                <el-button
+                  v-if="canClearSecret('platform_public_key')"
+                  class="secret-clear-btn"
+                  :type="pendingClear.platform_public_key ? 'info' : 'danger'"
+                  plain
+                  size="small"
+                  @click.prevent="pendingClear.platform_public_key ? undoClearSecret('platform_public_key') : clearSecret('platform_public_key')"
+                >
+                  {{ pendingClear.platform_public_key ? '撤销' : '清空' }}
+                </el-button>
               </span>
             </template>
             <el-input
@@ -295,11 +383,12 @@ onMounted(load)
               type="textarea"
               :rows="4"
               class="pem-input"
-              :placeholder="meta.platform_public_key ? '点击后粘贴新的平台公钥 PEM' : '真实回调必填，粘贴微信平台公钥 PEM'"
+              :placeholder="pendingClear.platform_public_key ? '将在保存后删除，也可直接粘贴新的 PEM' : meta.platform_public_key ? '点击后粘贴新的平台公钥 PEM' : '真实回调必填，粘贴微信平台公钥 PEM'"
               @focus="onSecretFocus('platform_public_key')"
               @blur="onSecretBlur('platform_public_key')"
+              @update:model-value="onSecretInput('platform_public_key')"
             />
-            <p class="field-hint">真实下单时用此公钥校验 Wechatpay-Signature；干跑不验签。</p>
+            <p class="field-hint">真实下单时用此公钥校验 Wechatpay-Signature；干跑不验签。要换成新密钥：点清空后粘贴再保存。</p>
           </el-form-item>
         </div>
       </el-card>
@@ -336,9 +425,19 @@ onMounted(load)
             <template #label>
               <span class="label-with-tag">
                 Secret
-                <el-tag :type="meta.oa_app_secret ? 'success' : 'info'" effect="plain" size="small">
-                  {{ meta.oa_app_secret ? '已配置' : '未配置' }}
+                <el-tag :type="secretTagType('oa_app_secret')" effect="plain" size="small">
+                  {{ secretTagText('oa_app_secret') }}
                 </el-tag>
+                <el-button
+                  v-if="canClearSecret('oa_app_secret')"
+                  class="secret-clear-btn"
+                  :type="pendingClear.oa_app_secret ? 'info' : 'danger'"
+                  plain
+                  size="small"
+                  @click.prevent="pendingClear.oa_app_secret ? undoClearSecret('oa_app_secret') : clearSecret('oa_app_secret')"
+                >
+                  {{ pendingClear.oa_app_secret ? '撤销' : '清空' }}
+                </el-button>
               </span>
             </template>
             <el-input
@@ -346,9 +445,10 @@ onMounted(load)
               :type="form.oa_app_secret === SECRET_MASK ? 'text' : 'password'"
               :show-password="form.oa_app_secret !== SECRET_MASK"
               autocomplete="new-password"
-              :placeholder="meta.oa_app_secret ? '点击后可更换' : '未配置'"
+              :placeholder="pendingClear.oa_app_secret ? '将在保存后删除' : meta.oa_app_secret ? '点击后可更换' : '未配置'"
               @focus="onSecretFocus('oa_app_secret')"
               @blur="onSecretBlur('oa_app_secret')"
+              @update:model-value="onSecretInput('oa_app_secret')"
             />
           </el-form-item>
         </div>
@@ -449,7 +549,12 @@ onMounted(load)
 .label-with-tag {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
+}
+.secret-clear-btn {
+  height: 22px;
+  padding: 0 8px;
 }
 .pem-input :deep(textarea) {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;

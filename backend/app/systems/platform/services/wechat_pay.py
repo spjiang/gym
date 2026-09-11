@@ -54,6 +54,16 @@ def _authorization(cfg: EffectivePaymentSettings, method: str, path: str, body: 
     )
 
 
+def _request_headers(cfg: EffectivePaymentSettings, auth: str, *, json_body: bool) -> dict[str, str]:
+    headers = {"Accept": "application/json", "Authorization": auth}
+    if json_body:
+        headers["Content-Type"] = "application/json"
+    serial = (cfg.platform_serial_no or "").strip()
+    if serial:
+        headers["Wechatpay-Serial"] = serial
+    return headers
+
+
 def _jsapi_pay_sign(cfg: EffectivePaymentSettings, *, app_id: str, prepay_id: str) -> dict:
     timestamp = str(int(time.time()))
     nonce = uuid.uuid4().hex
@@ -168,11 +178,7 @@ def create_wechat_prepay(
         resp = client.post(
             f"https://api.mch.weixin.qq.com{path}",
             content=payload.encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "Authorization": auth,
-            },
+            headers=_request_headers(cfg, auth, json_body=True),
         )
     if resp.status_code >= 300:
         raise AppError("wechat_api_error", f"微信下单失败: {resp.text[:300]}", status_code=502)
@@ -357,7 +363,7 @@ def query_wechat_order(cfg: EffectivePaymentSettings, *, out_trade_no: str) -> W
         resp = client.get(
             f"https://api.mch.weixin.qq.com/v3/pay/transactions/out-trade-no/{out_trade_no}",
             params={"mchid": cfg.mch_id},
-            headers={"Accept": "application/json", "Authorization": auth},
+            headers=_request_headers(cfg, auth, json_body=False),
         )
     if resp.status_code >= 300:
         raise AppError("wechat_api_error", f"查单失败: {resp.text[:300]}", status_code=502)
@@ -383,11 +389,7 @@ def close_wechat_order(cfg: EffectivePaymentSettings, *, out_trade_no: str) -> b
         resp = client.post(
             f"https://api.mch.weixin.qq.com{path}",
             content=body.encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "Authorization": auth,
-            },
+            headers=_request_headers(cfg, auth, json_body=True),
         )
     if resp.status_code < 300:
         return False
@@ -445,11 +447,7 @@ def create_wechat_refund(
         resp = client.post(
             f"https://api.mch.weixin.qq.com{path}",
             content=payload.encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "Authorization": auth,
-            },
+            headers=_request_headers(cfg, auth, json_body=True),
         )
     if resp.status_code >= 300:
         raise AppError("wechat_api_error", f"微信退款失败: {resp.text[:300]}", status_code=502)

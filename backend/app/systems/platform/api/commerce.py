@@ -24,6 +24,7 @@ from app.systems.gym.services.retail_fulfillment import (
 )
 from app.systems.platform.models.commerce import Order, OrderStatus, Payment, PaymentChannel, PaymentKind
 from app.systems.platform.models.member import Member
+from app.systems.platform.models.org import Merchant
 from app.systems.platform.services.audit import write_audit
 from app.systems.platform.services.notifications import write_notification
 from app.systems.platform.services.order_pricing import price_order
@@ -38,6 +39,7 @@ def _order_out(db: Session, order: Order) -> OrderOut:
         m = db.get(Member, order.member_id)
         if m is not None:
             member_brief = MemberBrief(id=m.id, name=m.name, phone=m.phone)
+    merchant = db.get(Merchant, order.merchant_id)
     return OrderOut(
         id=order.id,
         site_id=order.site_id,
@@ -55,6 +57,7 @@ def _order_out(db: Session, order: Order) -> OrderOut:
         customer_note=order.customer_note,
         dining_status=order.dining_status,
         created_at=order.created_at,
+        merchant_name=merchant.name if merchant is not None else None,
         member=member_brief,
     )
 
@@ -110,6 +113,21 @@ def list_orders(
         page=page,
         page_size=page_size,
     )
+
+
+@router.get("/{order_id}", response_model=OrderOut)
+def get_order(
+    order_id: int,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    """订单详情，含下单会员姓名与手机号。"""
+    ctx.require_permission("order:read", "order:write", "promoter:read", "promoter:manage")
+    order = db.get(Order, order_id)
+    if order is None or order.site_id != ctx.site_id:
+        raise AppError("not_found", "订单不存在", status_code=404)
+    ctx.assert_merchant_access(order.merchant_id)
+    return _order_out(db, order)
 
 
 @router.post("", response_model=OrderOut)

@@ -119,7 +119,7 @@ def apply_settings_update(
     data: dict,
     staff_id: int | None,
 ) -> None:
-    """部分更新；密钥字段空串表示不修改。"""
+    """部分更新；密钥字段省略不改，空串表示清空已保存值。"""
     if "mode" in data and data["mode"] is not None:
         row.mode = normalize_payment_mode(data["mode"])
     if "dry_run" in data and data["dry_run"] is not None:
@@ -143,8 +143,10 @@ def apply_settings_update(
         "platform_public_key": "platform_public_key_enc",
     }
     for src, dest in secret_map.items():
-        if src in data and data[src]:
-            setattr(row, dest, encrypt_secret(data[src]))
+        if src not in data or data[src] is None:
+            continue
+        value = str(data[src]).strip()
+        setattr(row, dest, encrypt_secret(value) if value else None)
     row.updated_by_staff_id = staff_id
 
 
