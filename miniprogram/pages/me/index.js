@@ -14,7 +14,7 @@ Page({
     orders: [],
     events: [],
     uploading: false,
-    paying: false,
+    payingId: 0,
     icpBeian: '',
   },
   async onShow() {
@@ -121,11 +121,11 @@ Page({
     }
   },
   async payOrder(e) {
-    if (this.data.paying) return
+    if (this.data.payingId) return
     const orderId = Number(e.currentTarget.dataset.id)
     if (!orderId) return
     const { payOrder } = require('../../utils/pay')
-    this.setData({ paying: true })
+    this.setData({ payingId: orderId })
     try {
       await payOrder(orderId)
       wx.showToast({ title: '支付成功', icon: 'success' })
@@ -135,7 +135,7 @@ Page({
       const cancelled = /cancel/i.test(message)
       wx.showToast({ title: cancelled ? '已取消支付' : message, icon: 'none' })
     } finally {
-      this.setData({ paying: false })
+      this.setData({ payingId: 0 })
     }
   },
   goPromotion() {

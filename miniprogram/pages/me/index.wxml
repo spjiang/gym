@@ -59,7 +59,7 @@
       <text class="order-price">¥{{item.amountText}}</text>
     </view>
     <view wx:if="{{item.status === 'pending'}}" class="order-foot">
-      <view class="order-pay" catchtap="payOrder" data-id="{{item.id}}">{{paying ? '支付中…' : '去支付'}}</view>
+      <view class="order-pay" catchtap="payOrder" data-id="{{item.id}}">{{payingId === item.id ? '支付中…' : '去支付'}}</view>
     </view>
   </view>
 
