@@ -128,10 +128,6 @@ Page({
       this.setData({ paying: false })
     }
   },
-  goStores() {
-    const { goStores } = require('../../utils/merchant')
-    goStores()
-  },
   goPromotion() {
     wx.navigateTo({ url: '/pages/promotion/index' })
   },
