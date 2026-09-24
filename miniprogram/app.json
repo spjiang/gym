@@ -18,6 +18,7 @@
     "pages/catering/detail",
     "pages/coupons/index",
     "pages/promotion/index",
+    "pages/orders/detail",
     "pages/me/index"
   ],
   "window": {

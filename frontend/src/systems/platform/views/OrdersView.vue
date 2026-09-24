@@ -8,6 +8,7 @@ import { ORDER_TYPE_LABELS, orderTypeLabel as mapOrderType } from '../../../core
 type MemberBrief = { id: number; name: string; phone: string }
 type Order = {
   id: number
+  order_no?: string
   title: string
   amount: string
   status: string
@@ -99,6 +100,11 @@ function statusMeta(status: string) {
 
 function orderTypeLabel(t: string) {
   return allowedTypes.value.find((o) => o.value === t)?.label || mapOrderType(t)
+}
+
+function formatTime(iso?: string) {
+  if (!iso) return '—'
+  return iso.slice(0, 19).replace('T', ' ')
 }
 
 async function loadOrderTypes(merchantId: number) {
@@ -281,7 +287,7 @@ onMounted(load)
     </div>
 
     <el-table :data="orders" v-loading="loading" stripe>
-      <el-table-column prop="id" label="ID" width="70" />
+      <el-table-column prop="order_no" label="订单号" min-width="210" />
       <el-table-column prop="title" label="标题" min-width="140" />
       <el-table-column label="会员" min-width="150">
         <template #default="{ row }">{{ memberLabel(row) }}</template>
@@ -333,16 +339,17 @@ onMounted(load)
       />
     </div>
 
-    <el-drawer v-model="detailVisible" title="订单详情" size="440px">
+    <el-dialog v-model="detailVisible" title="订单详情" width="520px" align-center destroy-on-close>
       <template v-if="detail">
         <el-descriptions :column="1" border>
-          <el-descriptions-item label="订单号">{{ detail.id }}</el-descriptions-item>
+          <el-descriptions-item label="订单号">{{ detail.order_no || '—' }}</el-descriptions-item>
           <el-descriptions-item label="标题">{{ detail.title }}</el-descriptions-item>
           <el-descriptions-item label="金额">¥{{ detail.amount }}</el-descriptions-item>
           <el-descriptions-item label="状态">{{ statusMeta(detail.status).label }}</el-descriptions-item>
           <el-descriptions-item label="类型">{{ orderTypeLabel(detail.order_type) }}</el-descriptions-item>
           <el-descriptions-item label="商户">{{ merchantName(detail) }}</el-descriptions-item>
           <el-descriptions-item label="会员">{{ memberLabel(detail) }}</el-descriptions-item>
+          <el-descriptions-item label="下单时间">{{ formatTime(detail.created_at) }}</el-descriptions-item>
           <el-descriptions-item v-if="detail.pickup_code" label="取餐号">
             {{ detail.pickup_code }}
           </el-descriptions-item>
@@ -351,7 +358,7 @@ onMounted(load)
           </el-descriptions-item>
         </el-descriptions>
       </template>
-    </el-drawer>
+    </el-dialog>
 
     <el-dialog v-model="dialogVisible" title="创建订单（线下收款）" width="480px" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="90px">

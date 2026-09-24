@@ -41,7 +41,7 @@
 
   <view class="section">我的订单</view>
   <view wx:if="{{!orders.length}}" class="muted">暂无订单</view>
-  <view class="order-card" wx:for="{{orders}}" wx:key="id">
+  <view class="order-card" wx:for="{{orders}}" wx:key="id" bindtap="openOrder" data-id="{{item.id}}">
     <view class="order-head">
       <view class="order-shop">
         <view class="order-shop-mark">店</view>
@@ -54,6 +54,7 @@
       <view class="order-thumb">{{item.thumb}}</view>
       <view class="order-main">
         <view class="order-goods">{{item.title}}</view>
+        <view class="order-date">{{item.order_no || ''}}</view>
         <view class="order-date">下单：{{item.dateText}}</view>
       </view>
       <text class="order-price">¥{{item.amountText}}</text>

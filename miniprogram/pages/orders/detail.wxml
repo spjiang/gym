@@ -1,0 +1,50 @@
+<view class="wrap">
+  <view wx:if="{{err}}" class="muted">{{err}}</view>
+  <block wx:if="{{order}}">
+    <view class="card head">
+      <view class="shop">
+        <view class="mark">店</view>
+        <text class="shop-name">{{order.merchant_name || '门店'}}</text>
+      </view>
+      <text class="status">{{statusText}}</text>
+    </view>
+
+    <view class="card">
+      <view class="goods-row">
+        <view class="thumb">{{order.title[0] || '单'}}</view>
+        <view class="goods-main">
+          <view class="goods">{{order.title}}</view>
+        </view>
+        <text class="price">¥{{amountText}}</text>
+      </view>
+      <view class="pay-row">
+        <text>实付款</text>
+        <text class="pay-amount">¥{{amountText}}</text>
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="block-title">订单信息</view>
+      <view class="info-row" bindtap="copyNo">
+        <text class="label">订单号</text>
+        <text class="value">{{order.order_no}}</text>
+      </view>
+      <view class="info-row">
+        <text class="label">下单时间</text>
+        <text class="value">{{dateText}}</text>
+      </view>
+      <view class="info-row" wx:if="{{order.pickup_code}}">
+        <text class="label">取餐号</text>
+        <text class="value">{{order.pickup_code}}</text>
+      </view>
+      <view class="info-row" wx:if="{{order.customer_note}}">
+        <text class="label">备注</text>
+        <text class="value">{{order.customer_note}}</text>
+      </view>
+    </view>
+
+    <button wx:if="{{order.status === 'pending'}}" disabled="{{paying}}" bindtap="pay">
+      {{paying ? '支付中…' : '去支付'}}
+    </button>
+  </block>
+</view>

@@ -42,6 +42,7 @@ def _order_out(db: Session, order: Order) -> OrderOut:
     merchant = db.get(Merchant, order.merchant_id)
     return OrderOut(
         id=order.id,
+        order_no=order.order_no,
         site_id=order.site_id,
         merchant_id=order.merchant_id,
         member_id=order.member_id,
@@ -92,10 +93,13 @@ def list_orders(
         member_ids = select(Member.id).where(
             or_(Member.phone.ilike(like), Member.name.ilike(like))
         )
+        no_match = Order.order_no.ilike(like)
         if keyword.isdigit():
-            filters.append(or_(Order.id == int(keyword), Order.member_id.in_(member_ids), Order.title.ilike(like)))
+            filters.append(
+                or_(Order.id == int(keyword), no_match, Order.member_id.in_(member_ids), Order.title.ilike(like))
+            )
         else:
-            filters.append(or_(Order.title.ilike(like), Order.member_id.in_(member_ids)))
+            filters.append(or_(no_match, Order.title.ilike(like), Order.member_id.in_(member_ids)))
 
     total = db.scalar(select(func.count()).select_from(Order).where(*filters)) or 0
     rows = list(

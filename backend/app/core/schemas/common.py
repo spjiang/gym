@@ -339,6 +339,7 @@ class OrderCreateIn(BaseModel):
 
 class OrderOut(ORMModel):
     id: int
+    order_no: str = ""
     site_id: int
     merchant_id: int
     member_id: int | None

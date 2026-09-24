@@ -290,3 +290,5 @@ def test_member_lists_own_orders(client: TestClient, admin_headers: dict):
     hit = next(row for row in listed.json() if row["title"] == "我的零售单")
     assert hit["merchant_name"] == gym_name
     assert hit["status"] == "pending"
+    assert str(hit["order_no"]).startswith("GY")
+    assert len(hit["order_no"]) == 22

@@ -138,6 +138,11 @@ Page({
       this.setData({ payingId: 0 })
     }
   },
+  openOrder(e) {
+    const orderId = Number(e.currentTarget.dataset.id)
+    if (!orderId) return
+    wx.navigateTo({ url: `/pages/orders/detail?id=${orderId}` })
+  },
   goPromotion() {
     wx.navigateTo({ url: '/pages/promotion/index' })
   },

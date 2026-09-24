@@ -1,13 +1,17 @@
 """订单与支付流水骨架。"""
 
+import secrets
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text, event, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
+
+_SHANGHAI = ZoneInfo("Asia/Shanghai")
 
 
 class OrderStatus(str, Enum):
@@ -33,6 +37,8 @@ class Order(Base):
     __tablename__ = "orders"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # 平台订单号：GY + 北京时间到秒 + 6 位随机数，对外展示与对账用
+    order_no: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)
     site_id: Mapped[int] = mapped_column(ForeignKey("sites.id"), nullable=False, index=True)
     merchant_id: Mapped[int] = mapped_column(ForeignKey("merchants.id"), nullable=False, index=True)
     member_id: Mapped[int | None] = mapped_column(ForeignKey("members.id"), index=True)
@@ -59,6 +65,26 @@ class Order(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+def new_order_no() -> str:
+    """生成平台订单号，形如 GY20260924183530123456。"""
+    now = datetime.now(_SHANGHAI)
+    return f"GY{now.strftime('%Y%m%d%H%M%S')}{secrets.randbelow(1_000_000):06d}"
+
+
+@event.listens_for(Order, "before_insert")
+def _assign_order_no(_mapper, connection, target: Order) -> None:
+    """下单时写入平台订单号；同一秒内随机位冲突则重试。"""
+    if getattr(target, "order_no", None):
+        return
+    for _ in range(8):
+        candidate = new_order_no()
+        taken = connection.execute(text("SELECT 1 FROM orders WHERE order_no = :no"), {"no": candidate}).first()
+        if taken is None:
+            target.order_no = candidate
+            return
+    target.order_no = new_order_no()
 
 
 class Payment(Base):

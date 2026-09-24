@@ -1042,7 +1042,9 @@ def get_my_order(
     order = db.get(Order, order_id)
     if order is None or order.member_id != mctx.member.id:
         raise AppError("not_found", "订单不存在", status_code=404)
-    return order
+    merchant = db.get(Merchant, order.merchant_id)
+    item = OrderOut.model_validate(order)
+    return item.model_copy(update={"merchant_name": merchant.name if merchant is not None else None})
 
 
 @router.post("/orders/{order_id}/pay/online")
