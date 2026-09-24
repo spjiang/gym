@@ -1009,6 +1009,30 @@ def order_pt_package(
     return order
 
 
+@router.get("/orders", response_model=list[OrderOut])
+def list_my_orders(
+    db: Session = Depends(get_db),
+    mctx: MemberContext = Depends(get_current_member),
+):
+    """当前会员的订单，新的在前。门店名仅作下单来源展示。"""
+    rows = db.scalars(
+        select(Order)
+        .where(Order.site_id == mctx.site_id, Order.member_id == mctx.member.id)
+        .order_by(Order.id.desc())
+        .limit(50)
+    ).all()
+    merchant_ids = {row.merchant_id for row in rows}
+    names: dict[int, str] = {}
+    if merchant_ids:
+        merchants = db.scalars(select(Merchant).where(Merchant.id.in_(merchant_ids))).all()
+        names = {m.id: m.name for m in merchants}
+    result: list[OrderOut] = []
+    for row in rows:
+        item = OrderOut.model_validate(row)
+        result.append(item.model_copy(update={"merchant_name": names.get(row.merchant_id)}))
+    return result
+
+
 @router.get("/orders/{order_id}", response_model=OrderOut)
 def get_my_order(
     order_id: int,

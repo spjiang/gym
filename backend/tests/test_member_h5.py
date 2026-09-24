@@ -241,3 +241,52 @@ def test_member_portal_book_and_purchase(client: TestClient, admin_headers: dict
 
     os.environ["ONLINE_PAYMENT_MODE"] = "unconfigured"
     get_settings.cache_clear()
+
+
+def test_member_lists_own_orders(client: TestClient, admin_headers: dict):
+    gym_id = _gym_id(client, admin_headers)
+    merchants = client.get("/api/v1/merchants", headers=admin_headers).json()
+    gym_name = next(m["name"] for m in merchants if m["id"] == gym_id)
+    member = client.post(
+        "/api/v1/members",
+        headers=admin_headers,
+        json={"phone": "13880000031", "name": "订单会员", "merchant_id": gym_id},
+    ).json()
+    other = client.post(
+        "/api/v1/members",
+        headers=admin_headers,
+        json={"phone": "13880000032", "name": "其他会员", "merchant_id": gym_id},
+    ).json()
+    mine = client.post(
+        "/api/v1/orders",
+        headers=admin_headers,
+        json={
+            "merchant_id": gym_id,
+            "member_id": member["id"],
+            "order_type": "retail",
+            "title": "我的零售单",
+            "amount": "12.50",
+        },
+    )
+    assert mine.status_code == 200, mine.text
+    other_order = client.post(
+        "/api/v1/orders",
+        headers=admin_headers,
+        json={
+            "merchant_id": gym_id,
+            "member_id": other["id"],
+            "order_type": "retail",
+            "title": "别人的单",
+            "amount": "3.00",
+        },
+    )
+    assert other_order.status_code == 200, other_order.text
+
+    listed = client.get("/api/v1/member/orders", headers=_member_login(client, member["phone"]))
+    assert listed.status_code == 200, listed.text
+    titles = [row["title"] for row in listed.json()]
+    assert "我的零售单" in titles
+    assert "别人的单" not in titles
+    hit = next(row for row in listed.json() if row["title"] == "我的零售单")
+    assert hit["merchant_name"] == gym_name
+    assert hit["status"] == "pending"

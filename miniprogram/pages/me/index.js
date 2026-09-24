@@ -1,16 +1,20 @@
-/** 会员个人中心：人脸通行状态、可用门店、头像与推广入口。 */
+/** 会员个人中心：订单、来源标识、头像与推广入口。人脸通行暂时关闭。 */
+const SHOW_FACE_ACCESS = false
+
 Page({
   data: {
     name: '',
     phoneMasked: '',
     avatar: '会',
     avatarUrl: '',
+    showFaceAccess: SHOW_FACE_ACCESS,
     faceText: '未知',
     faceOk: false,
     sourceText: '综合运营平台',
-    merchants: [],
+    orders: [],
     events: [],
     uploading: false,
+    paying: false,
     icpBeian: '',
   },
   async onShow() {
@@ -24,29 +28,41 @@ Page({
     const { request, fileUrl } = require('../../utils/api')
     try {
       const me = await request({ url: '/member/me' })
-      const merchants = (me.merchants || []).map((m) => ({
-        ...m,
-        badge: this.systemLabel(m),
-      }))
-      let events = []
+      const { orderStatusLabel, diningOrderLabel } = require('../../utils/labels')
+      let orders = []
       try {
-        const rows = await request({ url: '/member/access-events' })
-        events = (rows || []).slice(0, 8).map((e) => ({
-          ...e,
-          timeText: this.fmtTime(e.created_at),
+        const rows = (await request({ url: '/member/orders' })) || []
+        orders = rows.map((item) => ({
+          ...item,
+          amountText: Number(item.amount || 0).toFixed(2),
+          timeText: this.fmtTime(item.created_at),
+          statusText: item.dining_status ? diningOrderLabel(item) : orderStatusLabel(item.status),
         }))
       } catch (err) {
-        events = []
+        orders = []
+      }
+      let events = []
+      if (SHOW_FACE_ACCESS) {
+        try {
+          const rows = await request({ url: '/member/access-events' })
+          events = (rows || []).slice(0, 8).map((e) => ({
+            ...e,
+            timeText: this.fmtTime(e.created_at),
+          }))
+        } catch (err) {
+          events = []
+        }
       }
       this.setData({
         name: me.name || '—',
         phoneMasked: this.maskPhone(me.phone),
         avatar: (me.name || '会').slice(0, 1),
         avatarUrl: fileUrl(me.avatar_url),
+        showFaceAccess: SHOW_FACE_ACCESS,
         faceText: me.face_status === 'enrolled' ? '已录入' : me.face_status === 'not_enrolled' ? '未录入' : me.face_status || '未知',
         faceOk: me.face_status === 'enrolled',
         sourceText: this.sourceText(me),
-        merchants,
+        orders,
         events,
       })
     } catch (e) {
@@ -56,12 +72,6 @@ Page({
   maskPhone(phone) {
     if (!phone || phone.length < 7) return phone || ''
     return `${phone.slice(0, 3)}****${phone.slice(-4)}`
-  },
-  systemLabel(m) {
-    const sys = m.primary_system || (m.subsystem_codes && m.subsystem_codes[0]) || ''
-    if (sys === 'gym') return '健身'
-    if (sys === 'catering') return '餐饮'
-    return sys || '门店'
   },
   sourceText(me) {
     if (me.acquisition_source === 'merchant') {
@@ -100,13 +110,23 @@ Page({
       this.setData({ uploading: false })
     }
   },
-  enterStore(e) {
-    const id = Number(e.currentTarget.dataset.id)
-    const me = getApp().globalData.memberMe
-    const m = (me && me.merchants || []).find((x) => x.id === id)
-    if (!m) return
-    const { enterMerchant } = require('../../utils/merchant')
-    enterMerchant(m)
+  async payOrder(e) {
+    if (this.data.paying) return
+    const orderId = Number(e.currentTarget.dataset.id)
+    if (!orderId) return
+    const { payOrder } = require('../../utils/pay')
+    this.setData({ paying: true })
+    try {
+      await payOrder(orderId)
+      wx.showToast({ title: '支付成功', icon: 'success' })
+      await this.loadMe()
+    } catch (err) {
+      const message = (err && (err.errMsg || err.message)) || '支付失败'
+      const cancelled = /cancel/i.test(message)
+      wx.showToast({ title: cancelled ? '已取消支付' : message, icon: 'none' })
+    } finally {
+      this.setData({ paying: false })
+    }
   },
   goStores() {
     const { goStores } = require('../../utils/merchant')

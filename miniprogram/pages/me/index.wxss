@@ -83,6 +83,19 @@
   font-size: 26rpx;
   color: #7d8389;
 }
+.order {
+  margin-bottom: 16rpx;
+}
+.order-title {
+  font-size: 28rpx;
+  font-weight: 600;
+}
+.pay-link {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #f36b21;
+}
 .store {
   display: flex;
   align-items: center;
