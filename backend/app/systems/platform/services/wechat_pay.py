@@ -301,6 +301,7 @@ def parse_pay_notify_payload(cfg: EffectivePaymentSettings, payload: dict) -> di
             "out_trade_no": data.get("out_trade_no"),
             "trade_state": data.get("trade_state") or "SUCCESS",
             "amount_fen": ((data.get("amount") or {}).get("total")),
+            "transaction_id": data.get("transaction_id"),
             "raw": data,
         }
     if cfg.dry_run:
@@ -308,6 +309,7 @@ def parse_pay_notify_payload(cfg: EffectivePaymentSettings, payload: dict) -> di
             "out_trade_no": payload.get("out_trade_no"),
             "trade_state": payload.get("trade_state") or "SUCCESS",
             "amount_fen": payload.get("amount_fen"),
+            "transaction_id": payload.get("transaction_id"),
             "raw": payload,
         }
     raise AppError(
@@ -345,6 +347,8 @@ class WechatQueryResult:
     out_trade_no: str
     amount_fen: int | None
     dry_run: bool
+    transaction_id: str | None = None
+    raw: dict | None = None
 
 
 def query_wechat_order(cfg: EffectivePaymentSettings, *, out_trade_no: str) -> WechatQueryResult:
@@ -373,6 +377,8 @@ def query_wechat_order(cfg: EffectivePaymentSettings, *, out_trade_no: str) -> W
         out_trade_no=out_trade_no,
         amount_fen=((data.get("amount") or {}).get("total")),
         dry_run=False,
+        transaction_id=data.get("transaction_id"),
+        raw=data,
     )
 
 

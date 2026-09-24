@@ -132,11 +132,28 @@ def test_paid_notify_is_idempotent_success(client: TestClient, admin_headers: di
 
     again = client.post(
         "/api/v1/payments/wechat/notify",
-        json={"out_trade_no": prepay["out_trade_no"], "trade_state": "SUCCESS", "amount_fen": 100},
+        json={
+            "out_trade_no": prepay["out_trade_no"],
+            "trade_state": "SUCCESS",
+            "amount_fen": 100,
+            "transaction_id": "4200001234567890123456789012",
+        },
     )
     assert again.status_code == 200, again.text
     assert again.json()["code"] == "SUCCESS"
     assert _charge_count(order["id"]) == 1
+    intents = _intents(order["id"])
+    assert intents[-1].wechat_transaction_id == "4200001234567890123456789012"
+    assert intents[-1].wechat_payload["transaction_id"] == "4200001234567890123456789012"
+    detail = client.get(f"/api/v1/orders/{order['id']}", headers=admin_headers)
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert body["wechat_transaction_id"] == "4200001234567890123456789012"
+    assert body["buyer"]["phone"] == "13981000001"
+    assert body["store"]["name"]
+    listed = client.get("/api/v1/orders", headers=admin_headers, params={"q": "4200001234567890123456789012"})
+    assert listed.status_code == 200, listed.text
+    assert any(item["id"] == order["id"] for item in listed.json()["items"])
 
 
 def test_repay_same_second_does_not_collide(client: TestClient, admin_headers: dict, monkeypatch):
@@ -179,7 +196,13 @@ def test_query_fulfills_older_paid_intent(client: TestClient, admin_headers: dic
 
     def fake_query(cfg, *, out_trade_no: str):
         if out_trade_no == first["out_trade_no"]:
-            return WechatQueryResult(trade_state="SUCCESS", out_trade_no=out_trade_no, amount_fen=100, dry_run=False)
+            return WechatQueryResult(
+                trade_state="SUCCESS",
+                out_trade_no=out_trade_no,
+                amount_fen=100,
+                dry_run=False,
+                transaction_id="420000999900001111",
+            )
         return WechatQueryResult(trade_state="NOTPAY", out_trade_no=out_trade_no, amount_fen=None, dry_run=False)
 
     monkeypatch.setattr("app.systems.platform.api.payment_notify.query_wechat_order", fake_query)
@@ -192,6 +215,10 @@ def test_query_fulfills_older_paid_intent(client: TestClient, admin_headers: dic
     assert queried.json()["status"] == "paid"
     assert queried.json()["out_trade_no"] == first["out_trade_no"]
     assert _charge_count(order["id"]) == 1
+    detail = client.get(f"/api/v1/orders/{order['id']}", headers=admin_headers)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["wechat_transaction_id"] == "420000999900001111"
+    assert detail.json()["out_trade_no"] == first["out_trade_no"]
 
 
 def test_cancelled_order_notify_acks_without_fulfill(client: TestClient, admin_headers: dict):

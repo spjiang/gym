@@ -337,6 +337,40 @@ class OrderCreateIn(BaseModel):
     amount: Decimal
 
 
+class OrderStoreOut(BaseModel):
+    id: int
+    name: str
+    status: str | None = None
+    legal_name: str | None = None
+    business_address: str | None = None
+    contact_phone: str | None = None
+    business_hours: str | None = None
+    tagline: str | None = None
+
+
+class OrderBuyerOut(BaseModel):
+    id: int
+    name: str
+    phone: str
+    gender: str | None = None
+    email: str | None = None
+    remark: str | None = None
+    created_at: datetime | None = None
+
+
+class OrderPaymentLineOut(BaseModel):
+    id: int
+    kind: str
+    channel: str
+    amount: Decimal
+    note: str | None = None
+    created_at: datetime
+
+    @field_serializer("amount")
+    def _money(self, value: Decimal) -> Decimal:
+        return Decimal(value).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
 class OrderOut(ORMModel):
     id: int
     order_no: str = ""
@@ -357,6 +391,16 @@ class OrderOut(ORMModel):
     created_at: datetime
     merchant_name: str | None = None
     member: MemberBrief | None = None
+    out_trade_no: str | None = None
+    wechat_transaction_id: str | None = None
+    paid_at: datetime | None = None
+
+
+class OrderDetailOut(OrderOut):
+    store: OrderStoreOut | None = None
+    buyer: OrderBuyerOut | None = None
+    payments: list[OrderPaymentLineOut] = Field(default_factory=list)
+    wechat_payload: dict | None = None
 
     @field_serializer(
         "amount", "original_amount", "promotion_discount_amount", "refunded_amount"

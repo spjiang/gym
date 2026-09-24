@@ -15,7 +15,7 @@ from app.systems.platform.models.payment_settings import PaymentIntent
 from app.systems.platform.services.order_fulfill import fulfill_paid_order, mark_intent_succeeded
 from app.systems.platform.services.order_lock import lock_order
 from app.systems.platform.services.payment_settings import EffectivePaymentSettings, resolve_payment_settings
-from app.systems.platform.services.wechat_pay import close_wechat_order
+from app.systems.platform.services.wechat_pay import close_wechat_order, query_wechat_order
 
 
 def new_out_trade_no(order_id: int) -> str:
@@ -64,6 +64,8 @@ def capture_wechat_success(
     amount_fen: int | None,
     require_amount: bool,
     actor_staff_id: int | None = None,
+    transaction_id: str | None = None,
+    wechat_payload: dict | None = None,
 ) -> CaptureOutcome:
     """将微信 SUCCESS 落入本地；调用方须已对订单加行锁。
 
@@ -79,7 +81,9 @@ def capture_wechat_success(
 
     if order.status == OrderStatus.PAID.value:
         was_new = intent.status != "succeeded"
-        mark_intent_succeeded(db, intent, provider_ref=intent.out_trade_no)
+        mark_intent_succeeded(
+            db, intent, provider_ref=intent.out_trade_no, wechat_transaction_id=transaction_id, wechat_payload=wechat_payload
+        )
         return CaptureOutcome(
             order=order,
             fulfilled=False,
@@ -87,14 +91,18 @@ def capture_wechat_success(
         )
 
     if order.status == OrderStatus.CANCELLED.value:
-        mark_intent_succeeded(db, intent, provider_ref=intent.out_trade_no)
+        mark_intent_succeeded(
+            db, intent, provider_ref=intent.out_trade_no, wechat_transaction_id=transaction_id, wechat_payload=wechat_payload
+        )
         return CaptureOutcome(order=order, fulfilled=False, skipped_reason="cancelled")
 
     if order.status == OrderStatus.REFUNDED.value:
-        mark_intent_succeeded(db, intent, provider_ref=intent.out_trade_no)
+        mark_intent_succeeded(
+            db, intent, provider_ref=intent.out_trade_no, wechat_transaction_id=transaction_id, wechat_payload=wechat_payload
+        )
         return CaptureOutcome(order=order, fulfilled=False, skipped_reason="refunded")
 
-    mark_intent_succeeded(db, intent, provider_ref=intent.out_trade_no)
+    mark_intent_succeeded(db, intent, provider_ref=intent.out_trade_no, wechat_transaction_id=transaction_id, wechat_payload=wechat_payload)
     fulfill_paid_order(db, order, provider_ref=intent.out_trade_no, actor_staff_id=actor_staff_id)
     return CaptureOutcome(order=order, fulfilled=True)
 
@@ -116,6 +124,14 @@ def close_open_intents(
     for old in rows:
         paid = close_wechat_order(cfg, out_trade_no=old.out_trade_no)
         if paid:
+            try:
+                queried = query_wechat_order(cfg, out_trade_no=old.out_trade_no)
+            except AppError:
+                queried = None
+            if queried is not None and queried.transaction_id:
+                old.wechat_transaction_id = queried.transaction_id
+            if queried is not None and queried.raw:
+                old.wechat_payload = queried.raw
             return old
         old.status = "closed"
     return None

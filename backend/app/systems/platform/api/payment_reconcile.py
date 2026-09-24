@@ -57,6 +57,7 @@ def list_reconcile_items(
                         "intent_id": it.id,
                         "order_id": order.id,
                         "out_trade_no": it.out_trade_no,
+                        "wechat_transaction_id": it.wechat_transaction_id,
                         "amount": str(it.amount),
                         "created_at": it.created_at,
                     }
@@ -78,6 +79,7 @@ def list_reconcile_items(
                         "order_id": order.id,
                         "status": order.status,
                         "out_trade_no": it.out_trade_no,
+                        "wechat_transaction_id": it.wechat_transaction_id,
                     }
                 )
         paid_orders = db.scalars(

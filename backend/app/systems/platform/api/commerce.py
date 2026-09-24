@@ -11,7 +11,17 @@ from app.core.db import get_db
 from app.core.deps import RequestContext, get_current_context
 from app.core.domain.subsystems import assert_order_type_allowed
 from app.core.errors import AppError
-from app.core.schemas.common import MemberBrief, OfflinePayIn, OnlinePayIn, OrderCreateIn, OrderOut
+from app.core.schemas.common import (
+    MemberBrief,
+    OfflinePayIn,
+    OnlinePayIn,
+    OrderBuyerOut,
+    OrderCreateIn,
+    OrderDetailOut,
+    OrderOut,
+    OrderPaymentLineOut,
+    OrderStoreOut,
+)
 from app.core.schemas.paging import PageOut
 from app.systems.gym.services.activity_fulfillment import fulfill_activity_order
 from app.systems.gym.services.commission import accrue_order_commissions
@@ -23,6 +33,7 @@ from app.systems.gym.services.retail_fulfillment import (
     fulfill_retail_order,
 )
 from app.systems.platform.models.commerce import Order, OrderStatus, Payment, PaymentChannel, PaymentKind
+from app.systems.platform.models.payment_settings import PaymentIntent
 from app.systems.platform.models.member import Member
 from app.systems.platform.models.org import Merchant
 from app.systems.platform.services.audit import write_audit
@@ -33,7 +44,26 @@ from app.systems.platform.services.payments import get_online_provider
 router = APIRouter(prefix="/orders", tags=["commerce"])
 
 
-def _order_out(db: Session, order: Order) -> OrderOut:
+def _trade_by_order(db: Session, order_ids: list[int]) -> dict[int, PaymentIntent]:
+    """每个订单取最近一笔成功支付；没有成功记录时取最新一笔意图。"""
+    if not order_ids:
+        return {}
+    rows = list(
+        db.scalars(
+            select(PaymentIntent).where(PaymentIntent.order_id.in_(order_ids)).order_by(PaymentIntent.id)
+        ).all()
+    )
+    grouped: dict[int, list[PaymentIntent]] = {}
+    for row in rows:
+        grouped.setdefault(row.order_id, []).append(row)
+    picked: dict[int, PaymentIntent] = {}
+    for order_id, intents in grouped.items():
+        succeeded = [it for it in intents if it.status == "succeeded"]
+        picked[order_id] = (succeeded or intents)[-1]
+    return picked
+
+
+def _order_out(db: Session, order: Order, trade: PaymentIntent | None = None) -> OrderOut:
     member_brief = None
     if order.member_id is not None:
         m = db.get(Member, order.member_id)
@@ -60,6 +90,9 @@ def _order_out(db: Session, order: Order) -> OrderOut:
         created_at=order.created_at,
         merchant_name=merchant.name if merchant is not None else None,
         member=member_brief,
+        out_trade_no=trade.out_trade_no if trade is not None else None,
+        wechat_transaction_id=trade.wechat_transaction_id if trade is not None else None,
+        paid_at=trade.succeeded_at if trade is not None and trade.status == "succeeded" else None,
     )
 
 
@@ -93,13 +126,25 @@ def list_orders(
         member_ids = select(Member.id).where(
             or_(Member.phone.ilike(like), Member.name.ilike(like))
         )
-        no_match = Order.order_no.ilike(like)
-        if keyword.isdigit():
-            filters.append(
-                or_(Order.id == int(keyword), no_match, Order.member_id.in_(member_ids), Order.title.ilike(like))
+        trade_order_ids = select(PaymentIntent.order_id).where(
+            PaymentIntent.site_id == ctx.site_id,
+            or_(
+                PaymentIntent.out_trade_no.ilike(like),
+                PaymentIntent.wechat_transaction_id.ilike(like),
+            ),
+        )
+        id_match = []
+        if keyword.isdigit() and int(keyword) <= 2_147_483_647:
+            id_match.append(Order.id == int(keyword))
+        filters.append(
+            or_(
+                *id_match,
+                Order.order_no.ilike(like),
+                Order.title.ilike(like),
+                Order.member_id.in_(member_ids),
+                Order.id.in_(trade_order_ids),
             )
-        else:
-            filters.append(or_(no_match, Order.title.ilike(like), Order.member_id.in_(member_ids)))
+        )
 
     total = db.scalar(select(func.count()).select_from(Order).where(*filters)) or 0
     rows = list(
@@ -111,27 +156,79 @@ def list_orders(
             .limit(page_size)
         ).all()
     )
+    trades = _trade_by_order(db, [o.id for o in rows])
     return PageOut(
-        items=[_order_out(db, o) for o in rows],
+        items=[_order_out(db, o, trades.get(o.id)) for o in rows],
         total=total,
         page=page,
         page_size=page_size,
     )
 
 
-@router.get("/{order_id}", response_model=OrderOut)
+def _order_detail(db: Session, order: Order) -> OrderDetailOut:
+    trade = _trade_by_order(db, [order.id]).get(order.id)
+    base = _order_out(db, order, trade)
+    merchant = db.get(Merchant, order.merchant_id)
+    store = None
+    if merchant is not None:
+        store = OrderStoreOut(
+            id=merchant.id,
+            name=merchant.name,
+            status=merchant.status,
+            legal_name=merchant.legal_name,
+            business_address=merchant.business_address,
+            contact_phone=merchant.contact_phone,
+            business_hours=merchant.business_hours,
+            tagline=merchant.tagline,
+        )
+    buyer = None
+    if order.member_id is not None:
+        member = db.get(Member, order.member_id)
+        if member is not None:
+            buyer = OrderBuyerOut(
+                id=member.id,
+                name=member.name,
+                phone=member.phone,
+                gender=member.gender,
+                email=member.email,
+                remark=member.remark,
+                created_at=member.created_at,
+            )
+    payments = list(
+        db.scalars(select(Payment).where(Payment.order_id == order.id).order_by(Payment.id)).all()
+    )
+    return OrderDetailOut(
+        **base.model_dump(),
+        store=store,
+        buyer=buyer,
+        payments=[
+            OrderPaymentLineOut(
+                id=pay.id,
+                kind=pay.kind,
+                channel=pay.channel,
+                amount=pay.amount,
+                note=pay.note,
+                created_at=pay.created_at,
+            )
+            for pay in payments
+        ],
+        wechat_payload=trade.wechat_payload if trade is not None else None,
+    )
+
+
+@router.get("/{order_id}", response_model=OrderDetailOut)
 def get_order(
     order_id: int,
     db: Session = Depends(get_db),
     ctx: RequestContext = Depends(get_current_context),
 ):
-    """订单详情，含下单会员姓名与手机号。"""
+    """订单详情：订单、支付、店铺与下单用户。"""
     ctx.require_permission("order:read", "order:write", "promoter:read", "promoter:manage")
     order = db.get(Order, order_id)
     if order is None or order.site_id != ctx.site_id:
         raise AppError("not_found", "订单不存在", status_code=404)
     ctx.assert_merchant_access(order.merchant_id)
-    return _order_out(db, order)
+    return _order_detail(db, order)
 
 
 @router.post("", response_model=OrderOut)

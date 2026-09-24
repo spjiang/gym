@@ -85,6 +85,8 @@ async def wechat_pay_notify(request: Request, db: Session = Depends(get_db)):
             intent=intent,
             amount_fen=amount_fen,
             require_amount=not cfg.dry_run,
+            transaction_id=parsed.get("transaction_id"),
+            wechat_payload=parsed.get("raw") if isinstance(parsed.get("raw"), dict) else None,
         )
     except AppError as exc:
         return record_notify_failure(
@@ -183,12 +185,26 @@ def sync_pay_query(db: Session, order: Order) -> dict:
         return {"order_id": order.id, "status": order.status, "trade_state": None, "message": "无支付意图"}
 
     if order.status == OrderStatus.PAID.value:
-        latest = intents[-1]
+        succeeded = [it for it in intents if it.status == "succeeded"]
+        latest = (succeeded or intents)[-1]
+        cfg = resolve_payment_settings(db, order.site_id)
+        if not latest.wechat_transaction_id and not cfg.dry_run and is_wechat_payment_mode(cfg.mode):
+            try:
+                result = query_wechat_order(cfg, out_trade_no=latest.out_trade_no)
+            except AppError:
+                result = None
+            if result is not None and (result.transaction_id or result.raw):
+                if result.transaction_id:
+                    latest.wechat_transaction_id = result.transaction_id
+                if result.raw:
+                    latest.wechat_payload = result.raw
+                db.commit()
         return {
             "order_id": order.id,
             "status": order.status,
             "trade_state": "SUCCESS",
             "out_trade_no": latest.out_trade_no,
+            "wechat_transaction_id": latest.wechat_transaction_id,
         }
 
     cfg = resolve_payment_settings(db, order.site_id)
@@ -216,6 +232,8 @@ def sync_pay_query(db: Session, order: Order) -> dict:
                 intent=intent,
                 amount_fen=result.amount_fen,
                 require_amount=True,
+                transaction_id=result.transaction_id,
+                wechat_payload=result.raw,
             )
             paid_trade = intent.out_trade_no
             db.refresh(order)

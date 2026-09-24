@@ -7,6 +7,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, 
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
+from app.systems.platform.models.identity import JSONType
 
 
 class SitePaymentSettings(Base):
@@ -63,6 +64,8 @@ class PaymentIntent(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     provider_prepay_id: Mapped[str | None] = mapped_column(String(128))
     provider_ref: Mapped[str | None] = mapped_column(String(128))
+    wechat_transaction_id: Mapped[str | None] = mapped_column(String(64))
+    wechat_payload: Mapped[dict | None] = mapped_column(JSONType)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     succeeded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

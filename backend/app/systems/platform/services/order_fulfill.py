@@ -64,7 +64,19 @@ def fulfill_paid_order(
     return order
 
 
-def mark_intent_succeeded(db: Session, intent: PaymentIntent, *, provider_ref: str | None = None) -> None:
+def mark_intent_succeeded(
+    db: Session,
+    intent: PaymentIntent,
+    *,
+    provider_ref: str | None = None,
+    wechat_transaction_id: str | None = None,
+    wechat_payload: dict | None = None,
+) -> None:
+    txid = (wechat_transaction_id or "").strip() or None
+    if txid:
+        intent.wechat_transaction_id = txid
+    if wechat_payload:
+        intent.wechat_payload = wechat_payload
     if intent.status == "succeeded":
         return
     intent.status = "succeeded"

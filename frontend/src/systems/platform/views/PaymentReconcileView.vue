@@ -17,7 +17,7 @@ const filteredItems = computed(() => {
   return items.value.filter((row) => {
     if (query.status && String(row.status || '') !== query.status) return false
     if (!kw) return true
-    const hay = [row.order_id, row.intent_id, row.refund_intent_id, row.out_trade_no, row.status, row.amount]
+    const hay = [row.order_id, row.intent_id, row.refund_intent_id, row.out_trade_no, row.wechat_transaction_id, row.status, row.amount]
       .map((v) => String(v ?? ''))
       .join(' ')
     return hay.includes(kw)
@@ -103,7 +103,7 @@ onMounted(load)
       <el-button @click="load">刷新</el-button>
     </div>
     <div class="filters">
-      <el-input v-model="query.q" clearable placeholder="订单号 / 商户单号 / 意图" style="width: 240px" />
+      <el-input v-model="query.q" clearable placeholder="订单号 / 商户单号 / 微信账单号" style="width: 280px" />
       <el-select v-model="query.status" clearable placeholder="订单状态" style="width: 140px">
         <el-option label="待支付" value="pending" />
         <el-option label="已收款" value="paid" />
@@ -117,6 +117,7 @@ onMounted(load)
       <el-table-column prop="intent_id" label="支付意图" width="100" />
       <el-table-column prop="refund_intent_id" label="退款意图" width="100" />
       <el-table-column prop="out_trade_no" label="商户单号" min-width="160" />
+      <el-table-column prop="wechat_transaction_id" label="微信账单号" min-width="180" />
       <el-table-column label="状态" width="100">
         <template #default="{ row }">{{ orderStatusLabel(String(row.status || '')) || row.status || '—' }}</template>
       </el-table-column>

@@ -6,11 +6,41 @@ import RowActions from '../../../core/components/RowActions.vue'
 import { ORDER_TYPE_LABELS, orderTypeLabel as mapOrderType } from '../../../core/labels'
 
 type MemberBrief = { id: number; name: string; phone: string }
+type OrderStore = {
+  id: number
+  name: string
+  status?: string | null
+  legal_name?: string | null
+  business_address?: string | null
+  contact_phone?: string | null
+  business_hours?: string | null
+  tagline?: string | null
+}
+type OrderBuyer = {
+  id: number
+  name: string
+  phone: string
+  gender?: string | null
+  email?: string | null
+  remark?: string | null
+  created_at?: string | null
+}
+type OrderPayment = {
+  id: number
+  kind: string
+  channel: string
+  amount: string
+  note?: string | null
+  created_at?: string
+}
 type Order = {
   id: number
   order_no?: string
   title: string
   amount: string
+  original_amount?: string | null
+  promotion_discount_amount?: string
+  refunded_amount?: string
   status: string
   merchant_id: number
   merchant_name?: string | null
@@ -18,8 +48,16 @@ type Order = {
   member_id?: number | null
   pickup_code?: string | null
   customer_note?: string | null
+  dining_status?: string | null
   created_at?: string
   member?: MemberBrief | null
+  out_trade_no?: string | null
+  wechat_transaction_id?: string | null
+  paid_at?: string | null
+  store?: OrderStore | null
+  buyer?: OrderBuyer | null
+  payments?: OrderPayment[]
+  wechat_payload?: Record<string, unknown> | null
 }
 type Merchant = { id: number; name: string; subsystem_codes: string[] }
 type OrderTypeOpt = { value: string; label: string }
@@ -34,6 +72,7 @@ const page = ref(1)
 const pageSize = ref(20)
 const dialogVisible = ref(false)
 const detailVisible = ref(false)
+const detailLoading = ref(false)
 const detail = ref<Order | null>(null)
 const submitting = ref(false)
 const formRef = ref<FormInstance>()
@@ -102,10 +141,55 @@ function orderTypeLabel(t: string) {
   return allowedTypes.value.find((o) => o.value === t)?.label || mapOrderType(t)
 }
 
-function formatTime(iso?: string) {
-  if (!iso) return '—'
-  return iso.slice(0, 19).replace('T', ' ')
+function formatTime(value?: string | null) {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
+
+function genderLabel(value?: string | null) {
+  return { male: '男', female: '女', unknown: '未填' }[value || ''] || value || '—'
+}
+
+function payChannelLabel(channel: string) {
+  return (
+    {
+      offline_cash: '线下现金',
+      offline_transfer: '线下转账',
+      online: '线上支付',
+      wechat_original: '微信原路',
+    }[channel] || channel
+  )
+}
+
+function payKindLabel(kind: string) {
+  return { charge: '收款', refund: '退款' }[kind] || kind
+}
+
+function merchantStatusLabel(status?: string | null) {
+  return { active: '营业中', preparing: '筹备中', disabled: '已停用' }[status || ''] || status || '—'
+}
+
+function showText(value?: string | null) {
+  return value && value.trim() ? value : '—'
+}
+
+const wechatSummary = computed(() => {
+  const raw = detail.value?.wechat_payload
+  if (!raw) return []
+  const amount = raw.amount as { total?: number; payer_total?: number } | undefined
+  const payer = raw.payer as { openid?: string } | undefined
+  const fen = amount?.payer_total ?? amount?.total
+  return [
+    ['交易状态', String(raw.trade_state_desc || raw.trade_state || '—')],
+    ['支付完成时间', String(raw.success_time || '—')],
+    ['付款银行', String(raw.bank_type || '—')],
+    ['用户支付', fen == null ? '—' : `¥${(Number(fen) / 100).toFixed(2)}`],
+    ['付款人 OpenID', String(payer?.openid || '—')],
+  ]
+})
 
 async function loadOrderTypes(merchantId: number) {
   const { data } = await http.get(`/merchants/${merchantId}/order-types`)
@@ -155,9 +239,18 @@ function resetSearch() {
   void load()
 }
 
-function openDetail(row: Order) {
+async function openDetail(row: Order) {
   detail.value = row
   detailVisible.value = true
+  detailLoading.value = true
+  try {
+    const { data } = await http.get<Order>(`/orders/${row.id}`)
+    detail.value = data
+  } catch (e: unknown) {
+    ElMessage.error(e instanceof Error ? e.message : '加载订单详情失败')
+  } finally {
+    detailLoading.value = false
+  }
 }
 
 async function openDialog() {
@@ -266,7 +359,7 @@ onMounted(load)
       <el-input
         v-model="query.q"
         clearable
-        placeholder="单号 / 标题 / 会员"
+        placeholder="订单号 / 微信账单号 / 标题 / 会员"
         style="width: 200px"
         @keyup.enter="search"
       />
@@ -300,6 +393,9 @@ onMounted(load)
       </el-table-column>
       <el-table-column label="金额" width="100">
         <template #default="{ row }"><b>¥{{ row.amount }}</b></template>
+      </el-table-column>
+      <el-table-column label="微信账单号" min-width="180">
+        <template #default="{ row }">{{ row.wechat_transaction_id || '—' }}</template>
       </el-table-column>
       <el-table-column label="状态" width="100">
         <template #default="{ row }">
@@ -339,26 +435,102 @@ onMounted(load)
       />
     </div>
 
-    <el-dialog v-model="detailVisible" title="订单详情" width="520px" align-center destroy-on-close>
-      <template v-if="detail">
-        <el-descriptions :column="1" border>
-          <el-descriptions-item label="订单号">{{ detail.order_no || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="标题">{{ detail.title }}</el-descriptions-item>
-          <el-descriptions-item label="金额">¥{{ detail.amount }}</el-descriptions-item>
-          <el-descriptions-item label="状态">{{ statusMeta(detail.status).label }}</el-descriptions-item>
-          <el-descriptions-item label="类型">{{ orderTypeLabel(detail.order_type) }}</el-descriptions-item>
-          <el-descriptions-item label="商户">{{ merchantName(detail) }}</el-descriptions-item>
-          <el-descriptions-item label="会员">{{ memberLabel(detail) }}</el-descriptions-item>
-          <el-descriptions-item label="下单时间">{{ formatTime(detail.created_at) }}</el-descriptions-item>
-          <el-descriptions-item v-if="detail.pickup_code" label="取餐号">
-            {{ detail.pickup_code }}
-          </el-descriptions-item>
-          <el-descriptions-item v-if="detail.customer_note" label="备注">
-            {{ detail.customer_note }}
-          </el-descriptions-item>
-        </el-descriptions>
-      </template>
-    </el-dialog>
+    <el-drawer v-model="detailVisible" title="订单详情" size="760px" destroy-on-close>
+      <div v-loading="detailLoading">
+        <template v-if="detail">
+          <header class="detail-head">
+            <div>
+              <p class="detail-no">{{ detail.order_no || '—' }}</p>
+              <p class="detail-sub">{{ detail.title }} · {{ orderTypeLabel(detail.order_type) }}</p>
+            </div>
+            <div class="detail-amount">
+              <el-tag :type="statusMeta(detail.status).type">{{ statusMeta(detail.status).label }}</el-tag>
+              <strong>¥{{ detail.amount }}</strong>
+            </div>
+          </header>
+
+          <section class="detail-block">
+            <h4>订单信息</h4>
+            <el-descriptions :column="2" border>
+              <el-descriptions-item label="下单时间">{{ formatTime(detail.created_at) }}</el-descriptions-item>
+              <el-descriptions-item label="支付时间">{{ formatTime(detail.paid_at) }}</el-descriptions-item>
+              <el-descriptions-item label="订单金额">¥{{ detail.original_amount || detail.amount }}</el-descriptions-item>
+              <el-descriptions-item label="优惠">¥{{ detail.promotion_discount_amount || '0.00' }}</el-descriptions-item>
+              <el-descriptions-item label="实付">¥{{ detail.amount }}</el-descriptions-item>
+              <el-descriptions-item label="已退">¥{{ detail.refunded_amount || '0.00' }}</el-descriptions-item>
+              <el-descriptions-item v-if="detail.pickup_code" label="取餐号">{{ detail.pickup_code }}</el-descriptions-item>
+              <el-descriptions-item v-if="detail.customer_note" label="顾客备注" :span="2">
+                {{ detail.customer_note }}
+              </el-descriptions-item>
+            </el-descriptions>
+          </section>
+
+          <section class="detail-block">
+            <h4>支付信息</h4>
+            <el-descriptions :column="1" border>
+              <el-descriptions-item label="商户订单号">{{ detail.out_trade_no || '—' }}</el-descriptions-item>
+              <el-descriptions-item label="微信支付订单号">{{ detail.wechat_transaction_id || '—' }}</el-descriptions-item>
+            </el-descriptions>
+            <el-table v-if="detail.payments?.length" :data="detail.payments" size="small" class="pay-table">
+              <el-table-column label="类型" width="80">
+                <template #default="{ row }">{{ payKindLabel(row.kind) }}</template>
+              </el-table-column>
+              <el-table-column label="渠道" width="120">
+                <template #default="{ row }">{{ payChannelLabel(row.channel) }}</template>
+              </el-table-column>
+              <el-table-column label="金额" width="100">
+                <template #default="{ row }">¥{{ row.amount }}</template>
+              </el-table-column>
+              <el-table-column label="时间" min-width="160">
+                <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
+              </el-table-column>
+              <el-table-column prop="note" label="备注" min-width="120" />
+            </el-table>
+            <p v-else class="empty-line">暂无收退款流水</p>
+            <template v-if="wechatSummary.length">
+              <h5>微信返回</h5>
+              <el-descriptions :column="1" border>
+                <el-descriptions-item v-for="item in wechatSummary" :key="item[0]" :label="item[0]">
+                  {{ item[1] }}
+                </el-descriptions-item>
+              </el-descriptions>
+              <el-collapse class="raw-fold">
+                <el-collapse-item title="查看微信原始数据" name="raw">
+                  <pre class="raw-json">{{ JSON.stringify(detail.wechat_payload, null, 2) }}</pre>
+                </el-collapse-item>
+              </el-collapse>
+            </template>
+          </section>
+
+          <div class="detail-grid">
+            <section class="detail-block">
+              <h4>店铺</h4>
+              <el-descriptions v-if="detail.store" :column="1" border>
+                <el-descriptions-item label="名称">{{ detail.store.name }}</el-descriptions-item>
+                <el-descriptions-item label="状态">{{ merchantStatusLabel(detail.store.status) }}</el-descriptions-item>
+                <el-descriptions-item label="主体">{{ showText(detail.store.legal_name) }}</el-descriptions-item>
+                <el-descriptions-item label="地址">{{ showText(detail.store.business_address) }}</el-descriptions-item>
+                <el-descriptions-item label="电话">{{ showText(detail.store.contact_phone) }}</el-descriptions-item>
+                <el-descriptions-item label="营业时间">{{ showText(detail.store.business_hours) }}</el-descriptions-item>
+              </el-descriptions>
+              <p v-else class="empty-line">{{ merchantName(detail) }}</p>
+            </section>
+            <section class="detail-block">
+              <h4>用户</h4>
+              <el-descriptions v-if="detail.buyer" :column="1" border>
+                <el-descriptions-item label="姓名">{{ detail.buyer.name }}</el-descriptions-item>
+                <el-descriptions-item label="手机">{{ detail.buyer.phone }}</el-descriptions-item>
+                <el-descriptions-item label="性别">{{ genderLabel(detail.buyer.gender) }}</el-descriptions-item>
+                <el-descriptions-item label="邮箱">{{ showText(detail.buyer.email) }}</el-descriptions-item>
+                <el-descriptions-item label="注册时间">{{ formatTime(detail.buyer.created_at) }}</el-descriptions-item>
+                <el-descriptions-item label="备注">{{ showText(detail.buyer.remark) }}</el-descriptions-item>
+              </el-descriptions>
+              <p v-else class="empty-line">{{ memberLabel(detail) }}</p>
+            </section>
+          </div>
+        </template>
+      </div>
+    </el-drawer>
 
     <el-dialog v-model="dialogVisible" title="创建订单（线下收款）" width="480px" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="90px">
@@ -414,5 +586,59 @@ onMounted(load)
   margin: 6px 0 0;
   font-size: 12px;
   color: var(--admin-ink-muted);
+}
+.detail-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.detail-no {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.detail-sub {
+  margin: 6px 0 0;
+  color: var(--admin-ink-muted);
+}
+.detail-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.detail-amount strong {
+  font-size: 22px;
+}
+.detail-block {
+  margin-bottom: 18px;
+}
+.detail-block h4,
+.detail-block h5 {
+  margin: 0 0 8px;
+}
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.pay-table {
+  margin-top: 10px;
+}
+.empty-line {
+  margin: 8px 0 0;
+  color: var(--admin-ink-muted);
+}
+.raw-fold {
+  margin-top: 10px;
+}
+.raw-json {
+  margin: 0;
+  max-height: 240px;
+  overflow: auto;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 </style>
