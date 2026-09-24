@@ -167,7 +167,7 @@ def _upsert_article(
     mark_published(row)
 
 
-SPACE_BODY = """晨曦观野SPACE 是回龙观公园综合场地的公共客厅。白天是训练与散步的过路点，傍晚是社区活动，夜里把人送到 BAR。我们把健身房、清吧和户外场地放在同一座园子里，方便邻居下班后来训练、吃饭、偶遇朋友。
+SPACE_BODY = """观野SPACE 是回龙观公园综合场地的公共客厅。白天是训练与散步的过路点，傍晚是社区活动，夜里把人送到 BAR。我们把健身房、清吧和户外场地放在同一座园子里，方便邻居下班后来训练、吃饭、偶遇朋友。
 
 ## 一座园子，三种节奏
 
@@ -185,7 +185,7 @@ SPACE_BODY = """晨曦观野SPACE 是回龙观公园综合场地的公共客厅�
 
 ## 怎么到店
 
-地址见页脚。建议地铁或骑行，机动车请按公园停车指引。到店后可先到前台问当日课表与 BAR 是否有驻场。办卡、约课、看菜单请走会员中心或微信小程序「晨曦观野SPACE」。
+地址见页脚。建议地铁或骑行，机动车请按公园停车指引。到店后可先到前台问当日课表与 BAR 是否有驻场。办卡、约课、看菜单请走会员中心或微信小程序「观野SPACE」。
 """
 
 FIT_BODY = """观野FIT 面向想稳定训练的邻居，也欢迎第一次走进健身房的人。力量区、有氧、团课与私教在同一屋檐下；办卡、预约、门禁走同一套会员体系，不用在多个小程序之间来回跳。
@@ -236,12 +236,12 @@ def seed_official_website(db: Session, *, site: Site) -> None:
     already = bool(row.home_json or row.site_json or row.brands_json)
     if not already:
         row.site_json = {
-            "display_name": "晨曦观野SPACE",
-            "seo_title": "晨曦观野SPACE · 回龙观公园 · 健身 / 清吧 / 社区",
+            "display_name": "观野SPACE",
+            "seo_title": "观野SPACE · 回龙观公园 · 健身 / 清吧 / 社区",
             "seo_description": "回龙观公园综合场地：观野FIT 训练、观野BAR 夜生活、SPACE 社区客厅。办卡约课点餐请到会员中心。",
             "logo_url": urls["logo"],
             "member_web_url": member_url,
-            "miniprogram_hint": "微信搜索「晨曦观野SPACE」进入会员小程序",
+            "miniprogram_hint": "微信搜索「观野SPACE」进入会员小程序",
             "footer_note": f"回龙观公园综合经营场地 · 版权所有 {COPYRIGHT_OWNER}",
             "icp_beian": "京ICP备2026060130号",
         }
@@ -255,7 +255,7 @@ def seed_official_website(db: Session, *, site: Site) -> None:
         }
         row.brands_json = {
             "space": {
-                "title": "晨曦观野SPACE",
+                "title": "观野SPACE",
                 "cover_image_url": urls["space"],
                 "body": SPACE_BODY.strip(),
                 "gallery_image_urls": [
@@ -307,12 +307,12 @@ def seed_official_website(db: Session, *, site: Site) -> None:
     articles = [
         dict(
             channel="news",
-            title="晨曦观野SPACE 园区开放，健身与夜生活在同一座园子",
+            title="观野SPACE 园区开放，健身与夜生活在同一座园子",
             summary="回龙观公园综合场地对邻居开放：白天 FIT 训练，傍晚 SPACE 社区，夜里 BAR。办卡约课点餐走会员中心。",
             cover=urls["news"],
             sort_order=60,
             contact_hint=None,
-            body="""晨曦观野SPACE 位于回龙观公园，把观野FIT、观野BAR 和公共空间放在一起。开放后，邻居可以按自己的节奏使用场地：晨练、下班力量训练、周末市集，或只是在中庭坐一会儿。
+            body="""观野SPACE 位于回龙观公园，把观野FIT、观野BAR 和公共空间放在一起。开放后，邻居可以按自己的节奏使用场地：晨练、下班力量训练、周末市集，或只是在中庭坐一会儿。
 
 ## 开放意味着什么
 
@@ -324,7 +324,7 @@ def seed_official_website(db: Session, *, site: Site) -> None:
 2. 到前台了解当日是否有体验课或驻场。
 3. 把朋友带来走一圈，不必先办卡。
 
-欢迎带朋友来坐坐。地址、电话与营业时间见页脚，与「晨曦观野SPACE 介绍」保持一致。
+欢迎带朋友来坐坐。地址、电话与营业时间见页脚，与「观野SPACE 介绍」保持一致。
 """,
         ),
         dict(
@@ -396,7 +396,7 @@ def seed_official_website(db: Session, *, site: Site) -> None:
             contact_hint="前台咨询或致电页脚电话",
             body="""请把官网当成了解场地的窗口，把办业务放到会员中心或小程序。
 
-- **办卡 / 约课 / 点餐**：会员中心或微信搜索「晨曦观野SPACE」。
+- **办卡 / 约课 / 点餐**：会员中心或微信搜索「观野SPACE」。
 - **门禁**：入会后采集人脸，保持照片清晰。不要尾随。
 - **临访**：前台登记，按时离场。
 - **停车**：按回龙观公园停车与限行提示，场地不设独立收费承诺。
@@ -456,7 +456,7 @@ def seed_official_website(db: Session, *, site: Site) -> None:
             cover=urls["space"],
             sort_order=10,
             contact_hint="前台咨询或致电页脚电话",
-            body="""前台是晨曦观野SPACE 的第一句话。工作包括问路、当日课表说明、临访登记、失物与快递代收（按现场制度）。
+            body="""前台是观野SPACE 的第一句话。工作包括问路、当日课表说明、临访登记、失物与快递代收（按现场制度）。
 
 需要倒班与周末出勤。会用电脑处理登记即可，复杂会员问题转会籍或 BAR 当值。
 """,
@@ -468,7 +468,7 @@ def seed_official_website(db: Session, *, site: Site) -> None:
             cover=urls["partners"],
             sort_order=30,
             contact_hint="到店洽谈，电话见页脚",
-            body="""晨曦观野SPACE 欢迎与训练、夜生活互补的品牌：轻餐、运动零售、康复理疗等。我们提供铺位与共同客流，不承诺保底营业额。
+            body="""观野SPACE 欢迎与训练、夜生活互补的品牌：轻餐、运动零售、康复理疗等。我们提供铺位与共同客流，不承诺保底营业额。
 
 ## 合作方式
 

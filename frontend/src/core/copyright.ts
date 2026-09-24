@@ -6,5 +6,5 @@ export function copyrightLine(year = new Date().getFullYear()) {
 }
 
 export function copyrightNotice() {
-  return `本服务由${COPYRIGHT_OWNER}运营。晨曦观野SPACE 及相关软件、页面与内容之版权归${COPYRIGHT_OWNER}所有。`
+  return `本服务由${COPYRIGHT_OWNER}运营。观野SPACE 及相关软件、页面与内容之版权归${COPYRIGHT_OWNER}所有。`
 }

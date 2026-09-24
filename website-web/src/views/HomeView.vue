@@ -76,7 +76,7 @@ onMounted(() => {
     <section class="hero">
       <HeroCarousel :urls="slideUrls" />
       <div class="hero-copy">
-        <p class="kicker">{{ site.data?.site.display_name || '晨曦观野SPACE' }}</p>
+        <p class="kicker">{{ site.data?.site.display_name || '观野SPACE' }}</p>
         <h1>{{ site.data?.home.headline || '运动 · 夜生活 · 社区' }}</h1>
         <p v-if="site.data?.home.subheadline" class="sub">{{ site.data.home.subheadline }}</p>
         <div class="hero-actions">

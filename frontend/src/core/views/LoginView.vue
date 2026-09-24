@@ -164,7 +164,7 @@ async function onSubmit() {
       <section class="hero-copy">
         <BrandMark variant="space" show-tagline />
         <h1 class="system-name">综合管理平台</h1>
-        <p class="lead">晨曦观野SPACE · 观野FIT · 观野BAR<br />会籍与门禁、课程与酒吧，同归一处。</p>
+        <p class="lead">观野SPACE · 观野FIT · 观野BAR<br />会籍与门禁、课程与酒吧，同归一处。</p>
         <p class="hero-foot">{{ COPYRIGHT_OWNER }} · 版权所有</p>
       </section>
 

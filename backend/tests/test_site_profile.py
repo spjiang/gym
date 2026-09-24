@@ -1,4 +1,4 @@
-"""场地门户资料：晨曦观野SPACE 介绍与会员端读取。"""
+"""场地门户资料：观野SPACE 介绍与会员端读取。"""
 
 from fastapi.testclient import TestClient
 
@@ -47,7 +47,7 @@ def test_site_profile_save_and_member_portal(client: TestClient, admin_headers: 
             "/api/v1/site/profile",
             headers=admin_headers,
             json={
-                "name": "晨曦观野SPACE",
+                "name": "观野SPACE",
                 "tagline": "运动 · 夜生活 · 社区",
                 "description": "回龙观公园综合经营场地。",
                 "address": "北京市昌平区回龙观公园",
@@ -66,7 +66,7 @@ def test_site_profile_save_and_member_portal(client: TestClient, admin_headers: 
             "/api/v1/site/profile",
             headers=admin_headers,
             json={
-                "name": "晨曦观野SPACE",
+                "name": "观野SPACE",
                 "cover_image_url": "https://example.com/a.jpg",
                 "banner_image_urls": [],
                 "gallery_image_urls": [],
@@ -86,7 +86,7 @@ def test_site_profile_save_and_member_portal(client: TestClient, admin_headers: 
     portal = client.get("/api/v1/member/site", headers=_member_headers(client, "13880000901"))
     assert portal.status_code == 200, portal.text
     data = portal.json()
-    assert data["name"] == "晨曦观野SPACE"
+    assert data["name"] == "观野SPACE"
     assert data["address"]
     assert data["service_phone"] == "010-88881001"
     assert data["cover_image_url"]

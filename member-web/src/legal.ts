@@ -2,7 +2,7 @@ import { COPYRIGHT_OWNER } from './copyright'
 
 export type LegalDoc = 'terms' | 'privacy'
 
-const BRAND = '晨曦观野SPACE'
+const BRAND = '观野SPACE'
 
 export const LEGAL_DOCS: Record<
   LegalDoc,

@@ -6,7 +6,7 @@ COPYRIGHT_OWNER = "北京晨曦坤泽科技有限公司"
 def copyright_notice() -> str:
     return (
         f"本服务由{COPYRIGHT_OWNER}运营。"
-        f"晨曦观野SPACE 及相关软件、页面与内容之版权归{COPYRIGHT_OWNER}所有。"
+        f"观野SPACE 及相关软件、页面与内容之版权归{COPYRIGHT_OWNER}所有。"
     )
 
 

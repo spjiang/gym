@@ -6,7 +6,7 @@
     <view wx:else class="hero-fallback"></view>
     <view class="hero-veil"></view>
     <view class="hero-bar">
-      <view class="hero-brand">晨曦观野<text class="hero-brand-en">SPACE</text></view>
+      <view class="hero-brand">观野<text class="hero-brand-en">SPACE</text></view>
       <view class="hero-me" bindtap="goMe">我的</view>
     </view>
     <view class="hero-copy">

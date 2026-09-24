@@ -2,7 +2,7 @@ Page({
   data: {
     loading: true,
     err: '',
-    siteName: '晨曦观野SPACE',
+    siteName: '观野SPACE',
     siteTagline: '选择门店，进入对应业态',
     memberName: '',
     phoneMasked: '',
@@ -96,7 +96,7 @@ Page({
         loading: false,
         memberName: me.name || '',
         phoneMasked: this.maskPhone(me.phone),
-        siteName: (site && site.name) || '晨曦观野SPACE',
+        siteName: (site && site.name) || '观野SPACE',
         siteTagline: (site && site.tagline) || '选择门店，进入对应业态',
         slides,
         slide: 0,

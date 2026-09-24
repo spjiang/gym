@@ -14,8 +14,8 @@ BUSINESS_SYSTEMS = ("gym", "catering")
 SYSTEM_CATALOG: dict[str, dict] = {
     "platform": {
         "code": "platform",
-        "name": "晨曦观野SPACE 综合管理平台",
-        "short_name": "晨曦观野SPACE",
+        "name": "观野SPACE 综合管理平台",
+        "short_name": "观野SPACE",
         "description": "商户组织、员工权限、会员主档、门禁、跨业态订单与报表。",
         "permission": "system:platform",
     },

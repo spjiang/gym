@@ -499,7 +499,7 @@ def _bookable_sessions(
 
 @router.get("/site", response_model=SiteProfileOut)
 def member_site(db: Session = Depends(get_db), mctx: MemberContext = Depends(get_current_member)):
-    """会员门户：晨曦观野SPACE 整体介绍、客服与广告图。"""
+    """会员门户：观野SPACE 整体介绍、客服与广告图。"""
     row = db.get(Site, mctx.site_id)
     if row is None:
         raise AppError("not_found", "场地不存在", status_code=404)

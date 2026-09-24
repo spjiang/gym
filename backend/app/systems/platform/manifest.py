@@ -2,12 +2,12 @@
 
 SYSTEM = {
     "code": "platform",
-    "name": "晨曦观野SPACE 综合管理平台",
+    "name": "观野SPACE 综合管理平台",
     "description": "商户组织、员工权限、会员档案、门禁、跨业态订单与报表、子系统与 RBAC 配置。",
     "is_business": False,
     "sort_order": 10,
     "permissions": [
-        {"code": "system:platform", "name": "进入晨曦观野SPACE"},
+        {"code": "system:platform", "name": "进入观野SPACE"},
         {"code": "org:read", "name": "查看组织"},
         {"code": "org:write", "name": "配置组织"},
         {"code": "staff:manage", "name": "员工与角色管理"},
@@ -37,7 +37,7 @@ SYSTEM = {
         {
             "code": "platform.site_profile",
             "path": "/platform/site-profile",
-            "name": "晨曦观野SPACE 介绍",
+            "name": "观野SPACE 介绍",
             "required_any": ["org:write", "org:read", "*"],
             "sort_order": 99,
         },

@@ -17,8 +17,8 @@ from app.systems.platform.models.website import WebsiteArticle, WebsiteSettings
 CHANNELS = ("news", "jobs", "partners")
 STATUSES = ("draft", "published", "archived")
 BRAND_KEYS = ("space", "fit", "bar")
-DEFAULT_BRAND_TITLES = {"space": "晨曦观野SPACE", "fit": "观野FIT", "bar": "观野BAR"}
-DEFAULT_DISPLAY_NAME = "晨曦观野SPACE"
+DEFAULT_BRAND_TITLES = {"space": "观野SPACE", "fit": "观野FIT", "bar": "观野BAR"}
+DEFAULT_DISPLAY_NAME = "观野SPACE"
 DEFAULT_SUBHEADLINE = "SPORTS · EVENTS · COMMUNITY"
 MAX_GALLERY = 9
 LATEST_NEWS = 3

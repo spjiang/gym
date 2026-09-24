@@ -1,4 +1,4 @@
-"""场地门户资料：晨曦观野SPACE 整体介绍、客服与广告位。"""
+"""场地门户资料：观野SPACE 整体介绍、客服与广告位。"""
 
 from __future__ import annotations
 
@@ -105,7 +105,7 @@ def put_site_profile(
     """场地级门户资料，仅超管可改。"""
     ctx.require_permission("org:write", "*")
     if not ctx.is_site_admin:
-        raise AppError("forbidden", "仅场地超管可编辑晨曦观野SPACE 介绍", status_code=403)
+        raise AppError("forbidden", "仅场地超管可编辑观野SPACE 介绍", status_code=403)
     row = db.get(Site, ctx.site_id)
     if row is None:
         raise AppError("not_found", "场地不存在", status_code=404)
@@ -123,7 +123,7 @@ def put_site_profile(
         action="site.profile_update",
         target_type="site",
         target_id=row.id,
-        summary="更新晨曦观野SPACE 门户介绍",
+        summary="更新观野SPACE 门户介绍",
         actor_staff_id=ctx.staff.id,
         site_id=row.id,
     )

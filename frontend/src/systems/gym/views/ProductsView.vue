@@ -442,7 +442,7 @@ onMounted(refresh)
     >
       <template #title>当前商户还没有可用门禁点</template>
       <p style="margin: 4px 0 10px">
-        在售卡种必须绑定门禁点。请先在「晨曦观野SPACE → 门禁设备」创建门禁点，或先以停售保存，绑定门禁后再改为在售。
+        在售卡种必须绑定门禁点。请先在「观野SPACE → 门禁设备」创建门禁点，或先以停售保存，绑定门禁后再改为在售。
       </p>
       <el-button size="small" type="warning" @click="goAccess">去创建门禁点</el-button>
     </el-alert>
