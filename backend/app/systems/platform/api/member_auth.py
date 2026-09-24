@@ -280,6 +280,22 @@ class WechatBindIn(BaseModel):
     code: str = Field(min_length=1, max_length=128)
 
 
+def _assign_wechat_openid(db: Session, member_id: int, *, field: str, openid: str) -> None:
+    """把 openid 挂到当前会员。同一微信号已绑在别人身上时改挂过来，避免唯一约束 500。"""
+    column = getattr(MemberWechatBinding, field)
+    taken = db.scalar(select(MemberWechatBinding).where(column == openid))
+    if taken is not None and taken.member_id == member_id:
+        return
+    if taken is not None:
+        setattr(taken, field, None)
+        db.flush()
+    row = db.scalar(select(MemberWechatBinding).where(MemberWechatBinding.member_id == member_id))
+    if row is None:
+        row = MemberWechatBinding(member_id=member_id)
+        db.add(row)
+    setattr(row, field, openid)
+
+
 @router.post("/wechat/mini/bind")
 def bind_mini_openid(
     body: WechatBindIn,
@@ -289,11 +305,7 @@ def bind_mini_openid(
     """登录后绑定小程序 openid。"""
     cfg = resolve_payment_settings(db, mctx.site_id)
     openid = exchange_mini_openid(cfg, body.code)
-    row = db.scalar(select(MemberWechatBinding).where(MemberWechatBinding.member_id == mctx.member.id))
-    if row is None:
-        row = MemberWechatBinding(member_id=mctx.member.id)
-        db.add(row)
-    row.mp_openid = openid
+    _assign_wechat_openid(db, mctx.member.id, field="mp_openid", openid=openid)
     db.commit()
     return {"mp_openid": openid, "bound": True}
 
@@ -307,11 +319,7 @@ def bind_oa_openid(
     """登录后绑定公众号/网页 openid。"""
     cfg = resolve_payment_settings(db, mctx.site_id)
     openid = exchange_oa_openid(cfg, body.code)
-    row = db.scalar(select(MemberWechatBinding).where(MemberWechatBinding.member_id == mctx.member.id))
-    if row is None:
-        row = MemberWechatBinding(member_id=mctx.member.id)
-        db.add(row)
-    row.oa_openid = openid
+    _assign_wechat_openid(db, mctx.member.id, field="oa_openid", openid=openid)
     db.commit()
     return {"oa_openid": openid, "bound": True}
 

@@ -70,6 +70,65 @@ def test_payment_settings_clear_secret(client: TestClient, admin_headers: dict):
     assert cleared.json()["mch_id"] == "1900000099"
 
 
+def _member_token(client: TestClient, admin_headers: dict, *, phone: str, name: str) -> tuple[dict, int]:
+    from app.core.config import get_settings
+
+    gym_id = client.get("/api/v1/merchants", headers=admin_headers).json()[0]["id"]
+    member = client.post(
+        "/api/v1/members",
+        headers=admin_headers,
+        json={"phone": phone, "name": name, "merchant_id": gym_id},
+    )
+    assert member.status_code == 200, member.text
+    client.post("/api/v1/member/auth/otp/send", json={"phone": phone})
+    verify = client.post(
+        "/api/v1/member/auth/otp/verify",
+        json={"phone": phone, "code": get_settings().member_otp_mock_code},
+    )
+    assert verify.status_code == 200, verify.text
+    return {"Authorization": f"Bearer {verify.json()['access_token']}"}, member.json()["id"]
+
+
+def test_mini_bind_moves_openid_to_current_member(client: TestClient, admin_headers: dict):
+    client.put(
+        "/api/v1/site/payment-settings",
+        headers=admin_headers,
+        json={"mode": "wechat", "dry_run": True, "mp_app_id": "wx_app", "mch_id": "mch1", "api_v3_key": "k" * 32},
+    )
+    headers_a, member_a = _member_token(client, admin_headers, phone="13980009911", name="绑定甲")
+    headers_b, _member_b = _member_token(client, admin_headers, phone="13980009912", name="绑定乙")
+    code = {"code": "samewxcode0001"}
+    first = client.post("/api/v1/member/auth/wechat/mini/bind", headers=headers_a, json=code)
+    assert first.status_code == 200, first.text
+    again = client.post("/api/v1/member/auth/wechat/mini/bind", headers=headers_a, json=code)
+    assert again.status_code == 200, again.text
+    assert again.json()["mp_openid"] == first.json()["mp_openid"]
+
+    moved = client.post("/api/v1/member/auth/wechat/mini/bind", headers=headers_b, json=code)
+    assert moved.status_code == 200, moved.text
+    assert moved.json()["mp_openid"] == first.json()["mp_openid"]
+
+    gym_id = client.get("/api/v1/merchants", headers=admin_headers).json()[0]["id"]
+    order = client.post(
+        "/api/v1/orders",
+        headers=admin_headers,
+        json={
+            "merchant_id": gym_id,
+            "member_id": member_a,
+            "order_type": "retail",
+            "title": "原会员已无 openid",
+            "amount": "1.00",
+        },
+    ).json()
+    prepay = client.post(
+        f"/api/v1/member/orders/{order['id']}/pay/online",
+        headers=headers_a,
+        json={"pay_scene": "miniprogram"},
+    )
+    assert prepay.status_code == 400, prepay.text
+    assert prepay.json()["code"] == "openid_required"
+
+
 def test_member_wechat_dry_run_pay_flow(client: TestClient, admin_headers: dict):
     client.put(
         "/api/v1/site/payment-settings",
