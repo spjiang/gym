@@ -80,9 +80,10 @@
 .order-card {
   margin-bottom: 16rpx;
   padding: 24rpx;
-  background: #fff;
-  border-radius: 16rpx;
-  color: #171b1f;
+  background: #22282e;
+  border: 1rpx solid #343b42;
+  border-radius: 8rpx;
+  color: #f2e6d2;
 }
 .order-head,
 .order-body,
@@ -104,7 +105,7 @@
   height: 36rpx;
   border-radius: 8rpx;
   background: #f36b21;
-  color: #fff;
+  color: #f2e6d2;
   font-size: 20rpx;
   font-weight: 700;
   line-height: 36rpx;
@@ -118,17 +119,17 @@
   text-overflow: ellipsis;
   font-size: 28rpx;
   font-weight: 700;
-  color: #171b1f;
+  color: #f2e6d2;
 }
 .order-shop-arrow {
-  color: #9aa0a6;
+  color: #7d8389;
   font-size: 32rpx;
   line-height: 1;
 }
 .order-status {
   flex-shrink: 0;
   font-size: 24rpx;
-  color: #8b9198;
+  color: #7d8389;
 }
 .order-body {
   margin-top: 20rpx;
@@ -139,7 +140,7 @@
   width: 96rpx;
   height: 96rpx;
   border-radius: 12rpx;
-  background: #f3f4f6;
+  background: #1f2429;
   color: #f36b21;
   font-size: 36rpx;
   font-weight: 700;
@@ -156,18 +157,18 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   font-size: 28rpx;
-  color: #171b1f;
+  color: #f2e6d2;
 }
 .order-date {
   margin-top: 8rpx;
   font-size: 22rpx;
-  color: #8b9198;
+  color: #7d8389;
 }
 .order-price {
   flex-shrink: 0;
   font-size: 32rpx;
   font-weight: 700;
-  color: #171b1f;
+  color: #f2e6d2;
 }
 .order-foot {
   display: flex;
