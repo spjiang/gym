@@ -41,18 +41,26 @@
 
   <view class="section">我的订单</view>
   <view wx:if="{{!orders.length}}" class="muted">暂无订单</view>
-  <view class="card order" wx:for="{{orders}}" wx:key="id">
-    <view class="row">
-      <text class="order-title">{{item.title}}</text>
-      <text class="pill {{item.status === 'paid' ? 'ok' : ''}}">{{item.statusText}}</text>
+  <view class="order-card" wx:for="{{orders}}" wx:key="id">
+    <view class="order-head">
+      <view class="order-shop">
+        <view class="order-shop-mark">店</view>
+        <text class="order-shop-name">{{item.merchant_name || '门店'}}</text>
+        <text class="order-shop-arrow">›</text>
+      </view>
+      <text class="order-status">{{item.statusText}}</text>
     </view>
-    <view class="muted tight">{{item.merchant_name || '—'}} · ¥{{item.amountText}} · {{item.timeText}}</view>
-    <view
-      wx:if="{{item.status === 'pending'}}"
-      class="pay-link"
-      catchtap="payOrder"
-      data-id="{{item.id}}"
-    >{{paying ? '支付中…' : '去支付'}}</view>
+    <view class="order-body">
+      <view class="order-thumb">{{item.thumb}}</view>
+      <view class="order-main">
+        <view class="order-goods">{{item.title}}</view>
+        <view class="order-date">下单：{{item.dateText}}</view>
+      </view>
+      <text class="order-price">¥{{item.amountText}}</text>
+    </view>
+    <view wx:if="{{item.status === 'pending'}}" class="order-foot">
+      <view class="order-pay" catchtap="payOrder" data-id="{{item.id}}">{{paying ? '支付中…' : '去支付'}}</view>
+    </view>
   </view>
 
   <button bindtap="goCatering">扫码点餐</button>

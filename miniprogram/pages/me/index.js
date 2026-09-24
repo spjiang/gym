@@ -34,8 +34,9 @@ Page({
         const rows = (await request({ url: '/member/orders' })) || []
         orders = rows.map((item) => ({
           ...item,
-          amountText: Number(item.amount || 0).toFixed(2),
-          timeText: this.fmtTime(item.created_at),
+          amountText: this.moneyText(item.amount),
+          dateText: this.fmtDate(item.created_at),
+          thumb: (item.title || '单').slice(0, 1),
           statusText: item.dining_status ? diningOrderLabel(item) : orderStatusLabel(item.status),
         }))
       } catch (err) {
@@ -82,6 +83,15 @@ Page({
   fmtTime(iso) {
     if (!iso) return '—'
     return String(iso).slice(0, 16).replace('T', ' ')
+  },
+  fmtDate(iso) {
+    if (!iso) return '—'
+    return String(iso).slice(0, 10)
+  },
+  moneyText(amount) {
+    const value = Number(amount || 0)
+    if (!Number.isFinite(value)) return '0'
+    return Number.isInteger(value) ? String(value) : value.toFixed(2)
   },
   pickAvatar() {
     if (this.data.uploading) return

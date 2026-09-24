@@ -77,15 +77,107 @@
   font-size: 26rpx;
   color: #7d8389;
 }
-.order {
+.order-card {
   margin-bottom: 16rpx;
+  padding: 24rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  color: #171b1f;
 }
-.order-title {
+.order-head,
+.order-body,
+.order-shop {
+  display: flex;
+  align-items: center;
+}
+.order-head {
+  justify-content: space-between;
+  gap: 16rpx;
+}
+.order-shop {
+  min-width: 0;
+  flex: 1;
+  gap: 8rpx;
+}
+.order-shop-mark {
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 8rpx;
+  background: #f36b21;
+  color: #fff;
+  font-size: 20rpx;
+  font-weight: 700;
+  line-height: 36rpx;
+  text-align: center;
+  flex-shrink: 0;
+}
+.order-shop-name {
+  max-width: 380rpx;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: 28rpx;
-  font-weight: 600;
+  font-weight: 700;
+  color: #171b1f;
 }
-.pay-link {
-  margin-top: 12rpx;
+.order-shop-arrow {
+  color: #9aa0a6;
+  font-size: 32rpx;
+  line-height: 1;
+}
+.order-status {
+  flex-shrink: 0;
+  font-size: 24rpx;
+  color: #8b9198;
+}
+.order-body {
+  margin-top: 20rpx;
+  gap: 16rpx;
+  align-items: flex-start;
+}
+.order-thumb {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 12rpx;
+  background: #f3f4f6;
+  color: #f36b21;
+  font-size: 36rpx;
+  font-weight: 700;
+  line-height: 96rpx;
+  text-align: center;
+  flex-shrink: 0;
+}
+.order-main {
+  min-width: 0;
+  flex: 1;
+}
+.order-goods {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 28rpx;
+  color: #171b1f;
+}
+.order-date {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #8b9198;
+}
+.order-price {
+  flex-shrink: 0;
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #171b1f;
+}
+.order-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16rpx;
+}
+.order-pay {
+  padding: 8rpx 24rpx;
+  border: 1rpx solid #f36b21;
+  border-radius: 999rpx;
   font-size: 24rpx;
   font-weight: 600;
   color: #f36b21;
