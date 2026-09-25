@@ -8,6 +8,12 @@ import { useSiteStore } from '../stores/site'
 const site = useSiteStore()
 const route = useRoute()
 const overHero = computed(() => route.name === 'home')
+const addressText = computed(() => site.data?.contact.address || '回龙观公园')
+const phoneText = computed(() => site.data?.contact.service_phone || '')
+const navHref = computed(
+  () => `https://uri.amap.com/search?keyword=${encodeURIComponent(addressText.value)}&src=guanyespace&callnative=1`,
+)
+const telHref = computed(() => `tel:${phoneText.value.replace(/[^\d+]/g, '')}`)
 
 onMounted(() => {
   void site.load()
@@ -53,11 +59,11 @@ onMounted(() => {
         <RouterLink to="/jobs">招聘</RouterLink>
         <RouterLink to="/partners">招商</RouterLink>
       </nav>
-      <p class="place">{{ site.data?.contact.address || '回龙观公园' }}</p>
+      <p class="place">
+        <a class="tap" :href="navHref" target="_blank" rel="noreferrer">{{ addressText }}</a>
+      </p>
       <p class="meta">
-        <a v-if="site.data?.contact.service_phone" :href="`tel:${site.data.contact.service_phone}`">
-          {{ site.data.contact.service_phone }}
-        </a>
+        <a v-if="phoneText" class="tap" :href="telHref">{{ phoneText }}</a>
         <span v-if="site.data?.contact.service_phone && site.data?.contact.business_hours">·</span>
         <span v-if="site.data?.contact.business_hours">{{ site.data.contact.business_hours }}</span>
       </p>
@@ -159,8 +165,10 @@ onMounted(() => {
   color: var(--muted);
   font-size: 14px;
 }
-.meta a {
+.tap {
   color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 .legal {
   margin: 28px 0 0;
