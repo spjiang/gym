@@ -71,7 +71,11 @@ Page({
       await request({
         url: '/member/auth/otp/send',
         method: 'POST',
-        data: { phone: this.data.phone, merchant_id: this.data.merchantId || null },
+        data: {
+          phone: this.data.phone,
+          merchant_id: this.data.merchantId || null,
+          scene: this.data.scene === 'register' ? 'register' : this.data.scene === 'reset' ? 'reset' : 'login',
+        },
       })
       wx.showToast({ title: '已发送', icon: 'success' })
     } catch (e) {

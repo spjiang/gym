@@ -45,3 +45,48 @@ def test_aliyun_otp_sends_template_code(client: TestClient, admin_headers: dict,
     assert code != "123456"
     verified = client.post("/api/v1/member/auth/otp/verify", json={"phone": phone, "code": code})
     assert verified.status_code == 200, verified.text
+
+
+def test_aliyun_otp_uses_scene_template(client: TestClient, admin_headers: dict, monkeypatch):
+    sent: dict = {}
+
+    def fake_send(**kwargs):
+        sent.update(kwargs)
+
+    monkeypatch.setattr("app.systems.platform.services.otp.send_aliyun_sms", fake_send)
+    client.put(
+        "/api/v1/site/sms/settings",
+        headers=admin_headers,
+        json={
+            "provider": "aliyun",
+            "enabled": True,
+            "sign_name": "观野SPACE",
+            "api_key": "ak-test",
+            "api_secret": "sk-test",
+        },
+    )
+    client.post(
+        "/api/v1/site/sms/templates",
+        headers=admin_headers,
+        json={
+            "code": "SMS_LOGIN",
+            "name": "登录验证码",
+            "content": "您正在登录，验证码${code}",
+            "scene": "login",
+            "is_enabled": True,
+        },
+    )
+    client.post(
+        "/api/v1/site/sms/templates",
+        headers=admin_headers,
+        json={
+            "code": "SMS_REGISTER",
+            "name": "注册验证码",
+            "content": "您正在注册账号，验证码${code}",
+            "scene": "register",
+            "is_enabled": True,
+        },
+    )
+    send = client.post("/api/v1/member/auth/otp/send", json={"phone": "13881116602", "scene": "register"})
+    assert send.status_code == 200, send.text
+    assert sent["template_code"] == "SMS_REGISTER"

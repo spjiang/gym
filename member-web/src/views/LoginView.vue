@@ -173,6 +173,7 @@ async function send() {
     await http.post('/member/auth/otp/send', {
       phone: phone.value.trim(),
       merchant_id: merchantId.value ?? null,
+      scene: 'login',
     })
     tip.value = '验证码已发送，请查收短信'
   } catch (e: unknown) {

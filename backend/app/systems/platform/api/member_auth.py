@@ -27,6 +27,8 @@ router = APIRouter(prefix="/member/auth", tags=["member-auth"])
 class OtpSendIn(BaseModel):
     phone: str = Field(min_length=5, max_length=32)
     merchant_id: int | None = None
+    # login 登录验证码，register 注册，reset 忘记密码
+    scene: str = Field(default="login", max_length=32)
 
 
 class OtpVerifyIn(BaseModel):
@@ -169,15 +171,21 @@ def send_otp(body: OtpSendIn, db: Session = Depends(get_db)):
     if site_id is None:
         site = db.scalar(select(Site).order_by(Site.id.asc()))
         site_id = site.id if site is not None else None
+    scene = body.scene if body.scene in {"login", "register", "reset", "otp"} else "login"
     message = send_member_otp(
-        db, phone=body.phone, member_id=member.id if member else None, site_id=site_id
+        db,
+        phone=body.phone,
+        member_id=member.id if member else None,
+        site_id=site_id,
+        scene=scene,
     )
+    scene_label = {"login": "登录", "register": "注册", "reset": "找回密码", "otp": "验证码"}[scene]
     write_audit(
         db,
         action="member.otp_send",
         target_type="member",
         target_id=member.id if member else body.phone,
-        summary=f"发送登录验证码 phone={body.phone}",
+        summary=f"发送{scene_label}验证码 phone={body.phone}",
         site_id=member.site_id if member else None,
         merchant_id=body.merchant_id,
     )

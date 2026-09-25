@@ -49,21 +49,48 @@ def _aliyun_otp_ready(db: Session, site_id: int | None) -> SiteSmsSettings | Non
     return row
 
 
-def send_member_otp(db: Session, *, phone: str, member_id: int | None = None, site_id: int | None = None) -> str:
-    """按手机号发送验证码；未注册也可发（member_id 可空）。"""
-    aliyun = _aliyun_otp_ready(db, site_id)
-    if aliyun is not None:
+OTP_SCENES = ("login", "register", "reset", "otp")
+
+
+def _otp_template(db: Session, *, site_id: int, scene: str) -> SmsTemplate | None:
+    """按场景取启用模版；登录/注册/找回没有专属模版时，回退到通用验证码。"""
+    wanted = scene if scene in OTP_SCENES else "login"
+    template = db.scalar(
+        select(SmsTemplate)
+        .where(
+            SmsTemplate.site_id == site_id,
+            SmsTemplate.scene == wanted,
+            SmsTemplate.is_enabled.is_(True),
+        )
+        .order_by(SmsTemplate.id.desc())
+    )
+    if template is None and wanted != "otp":
         template = db.scalar(
             select(SmsTemplate)
             .where(
-                SmsTemplate.site_id == aliyun.site_id,
+                SmsTemplate.site_id == site_id,
                 SmsTemplate.scene == "otp",
                 SmsTemplate.is_enabled.is_(True),
             )
             .order_by(SmsTemplate.id.desc())
         )
+    return template
+
+
+def send_member_otp(
+    db: Session,
+    *,
+    phone: str,
+    member_id: int | None = None,
+    site_id: int | None = None,
+    scene: str = "login",
+) -> str:
+    """按手机号发送验证码；未注册也可发（member_id 可空）。"""
+    aliyun = _aliyun_otp_ready(db, site_id)
+    if aliyun is not None:
+        template = _otp_template(db, site_id=aliyun.site_id, scene=scene)
         if template is None:
-            raise AppError("otp_unavailable", "请先启用一条验证码短信模版，编码填阿里云模板 CODE", status_code=503)
+            raise AppError("otp_unavailable", "请先启用对应场景的短信模版，编码填阿里云模板 CODE", status_code=503)
         code = _gen_code()
         send_aliyun_sms(
             access_key_id=decrypt_secret(aliyun.api_key_enc) or "",

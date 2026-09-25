@@ -101,12 +101,26 @@ async function saveSettings() {
   }
 }
 
+const sceneLabels: Record<string, string> = {
+  login: '登录',
+  register: '注册',
+  reset: '忘记密码',
+  otp: '通用验证码',
+  membership: '开卡通知',
+  booking: '预约提醒',
+  other: '其他',
+}
+
+function sceneLabel(scene: string) {
+  return sceneLabels[scene] || scene
+}
+
 function openTpl(row?: Template) {
   editingId.value = row?.id ?? null
   tpl.code = row?.code || ''
   tpl.name = row?.name || ''
   tpl.content = row?.content || ''
-  tpl.scene = row?.scene || 'otp'
+  tpl.scene = row?.scene || 'login'
   tpl.is_enabled = row?.is_enabled ?? true
   dialogVisible.value = true
 }
@@ -151,7 +165,7 @@ onMounted(load)
       :closable="false"
       show-icon
       style="margin-bottom: 16px"
-      title="阿里云：AccessKey、签名、以及一条场景为「验证码」的模版。模版编码填阿里云模板 CODE，变量名用 code。密钥只写入、不回显。"
+      title="阿里云：AccessKey、签名，以及登录、注册、忘记密码三条模版。编码填阿里云审核通过后的模板 CODE，正文变量用 ${code}。密钥只写入、不回显。"
     />
 
     <h4>短信 API 接口</h4>
@@ -190,7 +204,10 @@ onMounted(load)
       </el-form-item>
       <el-form-item label="场景">
         <el-select v-model="tplQuery.scene" clearable placeholder="全部" style="width: 130px" @change="page = 1">
-          <el-option label="验证码" value="otp" />
+          <el-option label="登录" value="login" />
+          <el-option label="注册" value="register" />
+          <el-option label="忘记密码" value="reset" />
+          <el-option label="通用验证码" value="otp" />
           <el-option label="开卡通知" value="membership" />
           <el-option label="预约提醒" value="booking" />
           <el-option label="其他" value="other" />
@@ -206,7 +223,9 @@ onMounted(load)
     <el-table :data="pagedTemplates" stripe>
       <el-table-column prop="code" label="编码" width="140" />
       <el-table-column prop="name" label="名称" min-width="140" />
-      <el-table-column prop="scene" label="场景" width="100" />
+      <el-table-column label="场景" width="110">
+        <template #default="{ row }">{{ sceneLabel(row.scene) }}</template>
+      </el-table-column>
       <el-table-column prop="content" label="内容" min-width="240" />
       <el-table-column label="启用" width="80">
         <template #default="{ row }">{{ row.is_enabled ? '是' : '否' }}</template>
@@ -233,21 +252,24 @@ onMounted(load)
     <el-dialog v-model="dialogVisible" :title="editingId ? '编辑模版' : '新建模版'" width="520px">
       <el-form label-width="80px">
         <el-form-item label="编码">
-          <el-input v-model="tpl.code" placeholder="如 otp_login" />
+          <el-input v-model="tpl.code" placeholder="阿里云模板 CODE，如 SMS_123456789" />
         </el-form-item>
         <el-form-item label="名称">
           <el-input v-model="tpl.name" />
         </el-form-item>
         <el-form-item label="场景">
           <el-select v-model="tpl.scene" style="width: 100%">
-            <el-option label="验证码" value="otp" />
+            <el-option label="登录" value="login" />
+            <el-option label="注册" value="register" />
+            <el-option label="忘记密码" value="reset" />
+            <el-option label="通用验证码" value="otp" />
             <el-option label="开卡通知" value="membership" />
             <el-option label="预约提醒" value="booking" />
             <el-option label="其他" value="other" />
           </el-select>
         </el-form-item>
         <el-form-item label="内容">
-          <el-input v-model="tpl.content" type="textarea" :rows="4" placeholder="您的验证码是 {code}，5 分钟内有效。" />
+          <el-input v-model="tpl.content" type="textarea" :rows="4" placeholder="您正在登录，验证码${code}，10分钟内有效，请勿泄露。" />
         </el-form-item>
         <el-form-item label="启用">
           <el-switch v-model="tpl.is_enabled" />
