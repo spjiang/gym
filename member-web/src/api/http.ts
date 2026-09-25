@@ -18,7 +18,18 @@ http.interceptors.request.use((config) => {
 http.interceptors.response.use(
   (resp) => resp,
   (error) => {
+    const status = error.response?.status
+    const url = String(error.config?.url || '')
     const message = error.response?.data?.message || error.message || '请求失败'
+    if (status === 401 && !url.includes('/member/auth/')) {
+      const auth = useAuthStore()
+      auth.logout()
+      void import('../router').then(({ default: router }) => {
+        if (router.currentRoute.value.name !== 'login') {
+          void router.replace({ name: 'login' })
+        }
+      })
+    }
     return Promise.reject(new Error(message))
   },
 )
