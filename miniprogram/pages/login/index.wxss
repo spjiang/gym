@@ -31,6 +31,13 @@
   flex: 1;
   margin-bottom: 0;
 }
+.links {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 28rpx;
+  font-size: 26rpx;
+  color: #f36b21;
+}
 .beian {
   margin-top: 48rpx;
   text-align: center;

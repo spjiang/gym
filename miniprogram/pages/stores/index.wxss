@@ -106,14 +106,14 @@
 }
 
 .body {
-  padding: 0 32rpx 48rpx;
+  padding: 24rpx 32rpx 48rpx;
 }
 
 .facts {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16rpx;
-  margin: -16rpx 0 32rpx;
+  margin: 0 0 32rpx;
 }
 
 .fact {

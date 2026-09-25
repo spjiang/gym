@@ -295,14 +295,14 @@ onUnmounted(() => {
 }
 
 .body {
-  padding: 0 16px 40px;
+  padding: 12px 16px 40px;
 }
 
 .facts {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  margin: -8px 0 20px;
+  margin: 0 0 20px;
 }
 
 .fact {

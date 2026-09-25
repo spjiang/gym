@@ -89,7 +89,7 @@ Page({
         facts.push({ key: '营业', value: site.business_hours })
       }
       if (site && site.address) {
-        facts.push({ key: '地址', value: site.address, wide: true })
+        facts.push({ key: '地址', value: site.address, wide: true, address: site.address })
       }
       facts.push({ key: '会员', value: this.maskPhone(me.phone) })
       this.setData({
@@ -138,10 +138,25 @@ Page({
   pickSlide(e) {
     this.setData({ slide: Number(e.currentTarget.dataset.index) })
   },
-  callPhone(e) {
+  onFactTap(e) {
     const phone = e.currentTarget.dataset.phone
-    if (!phone) return
-    wx.makePhoneCall({ phoneNumber: String(phone) })
+    const address = e.currentTarget.dataset.address
+    if (phone) {
+      wx.makePhoneCall({ phoneNumber: String(phone) })
+      return
+    }
+    if (!address) return
+    // 回龙观体育文化公园北区，GCJ-02，供微信打开地图后跳转导航 App
+    wx.openLocation({
+      latitude: 40.080856,
+      longitude: 116.319512,
+      name: '观野FIT',
+      address: String(address),
+      scale: 16,
+      fail() {
+        wx.showToast({ title: '无法打开地图', icon: 'none' })
+      },
+    })
   },
   goMe() {
     wx.reLaunch({ url: '/pages/me/index' })

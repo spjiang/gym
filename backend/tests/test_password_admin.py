@@ -2,6 +2,8 @@
 
 from fastapi.testclient import TestClient
 
+from app.core.config import get_settings
+
 
 def _gym_id(client: TestClient, headers: dict) -> int:
     return client.get("/api/v1/merchants", headers=headers).json()[0]["id"]
@@ -247,3 +249,48 @@ def test_front_desk_cannot_reset_member_password(client: TestClient, admin_heade
         json={"phone": "13900009999", "password": "Keep@123"},
     )
     assert unset.status_code == 401
+
+
+def test_member_registers_and_resets_own_password(client: TestClient):
+    phone = "13881118821"
+    code = get_settings().member_otp_mock_code
+    assert client.post("/api/v1/member/auth/otp/send", json={"phone": phone}).status_code == 200
+    registered = client.post(
+        "/api/v1/member/auth/register",
+        json={"phone": phone, "code": code, "password": "Hello@123"},
+    )
+    assert registered.status_code == 200, registered.text
+    assert client.post(
+        "/api/v1/member/auth/password",
+        json={"phone": phone, "password": "Hello@123"},
+    ).status_code == 200
+
+    again = client.post("/api/v1/member/auth/otp/send", json={"phone": phone})
+    assert again.status_code == 200
+    duplicate = client.post(
+        "/api/v1/member/auth/register",
+        json={"phone": phone, "code": code, "password": "Hello@123"},
+    )
+    assert duplicate.status_code == 409
+
+    assert client.post("/api/v1/member/auth/otp/send", json={"phone": phone}).status_code == 200
+    reset = client.post(
+        "/api/v1/member/auth/password/reset",
+        json={"phone": phone, "code": code, "password": "Reset@123"},
+    )
+    assert reset.status_code == 200, reset.text
+    assert client.post(
+        "/api/v1/member/auth/password",
+        json={"phone": phone, "password": "Hello@123"},
+    ).status_code == 401
+    assert client.post(
+        "/api/v1/member/auth/password",
+        json={"phone": phone, "password": "Reset@123"},
+    ).status_code == 200
+    unknown = "13880000999"
+    assert client.post("/api/v1/member/auth/otp/send", json={"phone": unknown}).status_code == 200
+    missing = client.post(
+        "/api/v1/member/auth/password/reset",
+        json={"phone": unknown, "code": code, "password": "Reset@123"},
+    )
+    assert missing.status_code == 404

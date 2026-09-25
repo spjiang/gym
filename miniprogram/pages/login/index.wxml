@@ -10,24 +10,36 @@
       <view class="bar-cyan"></view>
     </view>
   </view>
-  <view class="title">会员登录</view>
-  <view wx:if="{{referralCode}}" class="promoter">推广码 {{referralCode}} · 首次注册自动绑定推荐人</view>
-  <view class="modes">
+  <view class="title">{{scene === 'register' ? '注册账号' : scene === 'reset' ? '忘记密码' : '会员登录'}}</view>
+  <view wx:if="{{referralCode && scene !== 'reset'}}" class="promoter">推广码 {{referralCode}} · 首次注册自动绑定推荐人</view>
+  <view wx:if="{{scene === 'login'}}" class="modes">
     <view class="mode {{mode === 'otp' ? 'is-active' : ''}}" data-mode="otp" bindtap="setMode">验证码</view>
     <view class="mode {{mode === 'password' ? 'is-active' : ''}}" data-mode="password" bindtap="setMode">密码</view>
   </view>
   <input placeholder="手机号" placeholder-class="muted" bindinput="onPhone" />
-  <view wx:if="{{mode === 'otp'}}" class="row">
+  <view wx:if="{{scene !== 'login' || mode === 'otp'}}" class="row">
     <input placeholder="验证码" placeholder-class="muted" bindinput="onCode" />
     <button size="mini" bindtap="send">获取</button>
   </view>
   <input
-    wx:else
+    wx:if="{{scene !== 'login' || mode === 'password'}}"
     password
-    placeholder="登录密码（由超管设置）"
+    placeholder="{{scene === 'reset' ? '新密码（至少 6 位）' : '登录密码（至少 6 位）'}}"
     placeholder-class="muted"
     bindinput="onPassword"
   />
-  <button bindtap="login">登录</button>
+  <input
+    wx:if="{{scene !== 'login'}}"
+    password
+    placeholder="再次输入密码"
+    placeholder-class="muted"
+    bindinput="onPassword2"
+  />
+  <button bindtap="submit">{{scene === 'register' ? '注册并登录' : scene === 'reset' ? '重置并登录' : '登录'}}</button>
+  <view class="links">
+    <text wx:if="{{scene === 'login'}}" bindtap="openScene" data-scene="register">注册账号</text>
+    <text wx:if="{{scene === 'login'}}" bindtap="openScene" data-scene="reset">忘记密码</text>
+    <text wx:else bindtap="openScene" data-scene="login">返回登录</text>
+  </view>
   <view class="beian">{{icpBeian}}</view>
 </view>

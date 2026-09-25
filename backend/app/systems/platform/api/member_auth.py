@@ -10,7 +10,7 @@ from app.core.db import get_db
 from app.core.deps import MemberContext, get_current_member
 from app.core.errors import AppError
 from app.core.schemas.common import TokenOut
-from app.core.security import create_access_token, decode_access_token, verify_password
+from app.core.security import create_access_token, decode_access_token, hash_password, verify_password
 from app.systems.platform.models.member import AcquisitionSource, FaceStatus, Member, MerchantMember
 from app.systems.platform.models.org import Merchant, MerchantStatus, Site
 from app.systems.platform.models.payment_settings import MemberWechatBinding, SitePaymentSettings
@@ -273,6 +273,124 @@ def login_with_password(body: PasswordLoginIn, db: Session = Depends(get_db)):
         merchant_id=body.merchant_id,
         summary="会员密码登录成功",
         wechat_ticket=body.wechat_ticket,
+    )
+
+
+class PasswordWithOtpIn(BaseModel):
+    phone: str = Field(min_length=5, max_length=32)
+    code: str = Field(min_length=4, max_length=8)
+    password: str = Field(min_length=6, max_length=64)
+    merchant_id: int | None = None
+    referral_code: str | None = Field(default=None, max_length=32)
+    name: str | None = Field(default=None, max_length=128)
+
+
+def _require_otp_channel() -> None:
+    settings = get_settings()
+    if settings.member_otp_mode.lower() == "mock" and not settings.member_otp_mock_enabled:
+        raise AppError("otp_unavailable", "验证码通道未配置", status_code=503)
+
+
+def _create_member_from_phone(
+    db: Session,
+    *,
+    phone: str,
+    merchant_id: int | None,
+    referral_code: str | None,
+    name: str | None,
+) -> tuple[Member, int | None]:
+    """验证码通过后创建会员，规则与验证码登录首次注册一致。"""
+    site = db.scalar(select(Site).order_by(Site.id.asc()))
+    if site is None:
+        raise AppError("misconfigured", "场地未初始化", status_code=500)
+    merchant = _resolve_merchant(db, merchant_id, site_id=site.id)
+    if merchant is not None and merchant.site_id != site.id:
+        raise AppError("forbidden", "商户不属于当前场地", status_code=403)
+    src = AcquisitionSource.MERCHANT.value if merchant else AcquisitionSource.PLATFORM.value
+    promoter = _resolve_promoter(db, referral_code, site_id=site.id)
+    display = (name or "").strip() or f"会员{phone[-4:]}"
+    member = Member(
+        site_id=site.id,
+        phone=phone,
+        name=display,
+        face_status=FaceStatus.NOT_ENROLLED.value,
+        acquisition_source=src,
+        first_merchant_id=merchant.id if merchant else None,
+        referral_code=promoter.code if promoter else None,
+        referrer_member_id=promoter.subject_member_id if promoter else None,
+    )
+    db.add(member)
+    db.flush()
+    ensure_member_promoter_code(db, member)
+    if merchant is not None:
+        _ensure_link(db, member_id=member.id, merchant_id=merchant.id)
+    write_audit(
+        db,
+        action="member.register",
+        target_type="member",
+        target_id=member.id,
+        summary=f"会员自助注册 source={src}" + (f" 推广码={promoter.code}" if promoter else ""),
+        site_id=member.site_id,
+        merchant_id=merchant.id if merchant else None,
+    )
+    return member, merchant.id if merchant else None
+
+
+@router.post("/register", response_model=TokenOut)
+def register_with_password(body: PasswordWithOtpIn, db: Session = Depends(get_db)):
+    """手机号验证码注册并设置登录密码。"""
+    _require_otp_channel()
+    phone = body.phone.strip()
+    verify_member_otp(db, phone=phone, code=body.code.strip())
+    member = db.scalar(select(Member).where(Member.phone == phone))
+    merchant_id = body.merchant_id
+    if member is not None and member.password_hash:
+        raise AppError("already_registered", "该手机号已注册，请登录或找回密码", status_code=409)
+    if member is None:
+        member, merchant_id = _create_member_from_phone(
+            db,
+            phone=phone,
+            merchant_id=body.merchant_id,
+            referral_code=body.referral_code,
+            name=body.name,
+        )
+    else:
+        display = (body.name or "").strip()
+        if display:
+            member.name = display
+    member.password_hash = hash_password(body.password)
+    return _issue_member_login(
+        db,
+        member,
+        merchant_id=merchant_id,
+        summary="会员注册并设置密码",
+    )
+
+
+@router.post("/password/reset", response_model=TokenOut)
+def reset_password_with_otp(body: PasswordWithOtpIn, db: Session = Depends(get_db)):
+    """短信验证码找回并重设登录密码。"""
+    _require_otp_channel()
+    phone = body.phone.strip()
+    verify_member_otp(db, phone=phone, code=body.code.strip())
+    member = db.scalar(select(Member).where(Member.phone == phone))
+    if member is None:
+        raise AppError("not_found", "该手机号尚未注册", status_code=404)
+    member.password_hash = hash_password(body.password)
+    write_audit(
+        db,
+        action="member.password_reset",
+        target_type="member",
+        target_id=member.id,
+        summary=f"会员自助找回密码 {member.phone}",
+        site_id=member.site_id,
+        merchant_id=body.merchant_id,
+    )
+    return _issue_member_login(
+        db,
+        member,
+        merchant_id=body.merchant_id,
+        summary="会员找回密码后登录",
     )
 
 

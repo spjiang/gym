@@ -243,7 +243,7 @@ def seed_official_website(db: Session, *, site: Site) -> None:
             "member_web_url": member_url,
             "miniprogram_hint": "微信搜索「观野SPACE」进入会员小程序",
             "footer_note": f"回龙观公园综合经营场地 · 版权所有 {COPYRIGHT_OWNER}",
-            "icp_beian": "京ICP备2026060130号",
+            "icp_beian": "京ICP备2026060130",
         }
         row.home_json = {
             "hero_image_url": urls["hero"],

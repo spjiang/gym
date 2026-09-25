@@ -3,7 +3,9 @@ Page({
     phone: '',
     code: '',
     password: '',
+    password2: '',
     mode: 'otp',
+    scene: 'login',
     referralCode: '',
     merchantId: null,
     table: '',
@@ -57,6 +59,12 @@ Page({
   onPassword(e) {
     this.setData({ password: e.detail.value })
   },
+  onPassword2(e) {
+    this.setData({ password2: e.detail.value })
+  },
+  openScene(e) {
+    this.setData({ scene: e.currentTarget.dataset.scene, code: '', password: '', password2: '' })
+  },
   async send() {
     const { request } = require('../../utils/api')
     try {
@@ -70,28 +78,63 @@ Page({
       wx.showToast({ title: (e && e.message) || '发送失败', icon: 'none' })
     }
   },
-  async login() {
+  async submit() {
+    if (this.data.scene !== 'login') {
+      if ((this.data.password || '').length < 6) {
+        wx.showToast({ title: '密码至少 6 位', icon: 'none' })
+        return
+      }
+      if (this.data.password !== this.data.password2) {
+        wx.showToast({ title: '两次密码不一致', icon: 'none' })
+        return
+      }
+    }
     const { request } = require('../../utils/api')
     const cart = require('../../utils/cateringCart')
     const app = getApp()
     try {
-      const data =
-        this.data.mode === 'password'
-          ? await request({
-              url: '/member/auth/password',
-              method: 'POST',
-              data: { phone: this.data.phone, password: this.data.password, merchant_id: this.data.merchantId || null },
-            })
-          : await request({
-              url: '/member/auth/otp/verify',
-              method: 'POST',
-              data: {
-                phone: this.data.phone,
-                code: this.data.code,
-                merchant_id: this.data.merchantId || null,
-                referral_code: this.data.referralCode || null,
-              },
-            })
+      let data
+      if (this.data.scene === 'register') {
+        data = await request({
+          url: '/member/auth/register',
+          method: 'POST',
+          data: {
+            phone: this.data.phone,
+            code: this.data.code,
+            password: this.data.password,
+            merchant_id: this.data.merchantId || null,
+            referral_code: this.data.referralCode || null,
+          },
+        })
+      } else if (this.data.scene === 'reset') {
+        data = await request({
+          url: '/member/auth/password/reset',
+          method: 'POST',
+          data: {
+            phone: this.data.phone,
+            code: this.data.code,
+            password: this.data.password,
+            merchant_id: this.data.merchantId || null,
+          },
+        })
+      } else if (this.data.mode === 'password') {
+        data = await request({
+          url: '/member/auth/password',
+          method: 'POST',
+          data: { phone: this.data.phone, password: this.data.password, merchant_id: this.data.merchantId || null },
+        })
+      } else {
+        data = await request({
+          url: '/member/auth/otp/verify',
+          method: 'POST',
+          data: {
+            phone: this.data.phone,
+            code: this.data.code,
+            merchant_id: this.data.merchantId || null,
+            referral_code: this.data.referralCode || null,
+          },
+        })
+      }
       app.globalData.token = data.access_token
       wx.setStorageSync('member_token', data.access_token)
       try {

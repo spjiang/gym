@@ -35,8 +35,9 @@
           wx:for="{{facts}}"
           wx:key="key"
           class="fact {{item.wide ? 'wide' : ''}}"
-          bindtap="callPhone"
+          bindtap="onFactTap"
           data-phone="{{item.phone}}"
+          data-address="{{item.address}}"
         >
           <text class="fact-k">{{item.key}}</text>
           <text>{{item.value}}</text>

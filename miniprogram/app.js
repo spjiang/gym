@@ -2,7 +2,7 @@ App({
   globalData: {
     // 生产联调。本机改回：http://127.0.0.1:18000/api/v1
     apiBase: 'https://api.guanyespace.com/api/v1',
-    icpBeian: '京ICP备2026060130号-1X',
+    icpBeian: '京ICP备2026060130',
     token: '',
     merchantId: null,
     systemMode: 'gym',
