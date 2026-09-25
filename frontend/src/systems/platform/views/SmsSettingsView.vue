@@ -151,7 +151,7 @@ onMounted(load)
       :closable="false"
       show-icon
       style="margin-bottom: 16px"
-      title="配置短信 HTTP API 与签名；密钥仅写入不回显。模版用于验证码、开卡通知等场景。"
+      title="阿里云：AccessKey、签名、以及一条场景为「验证码」的模版。模版编码填阿里云模板 CODE，变量名用 code。密钥只写入、不回显。"
     />
 
     <h4>短信 API 接口</h4>
@@ -166,17 +166,17 @@ onMounted(load)
       <el-form-item label="启用">
         <el-switch v-model="form.enabled" />
       </el-form-item>
-      <el-form-item label="API 地址">
+      <el-form-item v-if="form.provider === 'http'" label="API 地址">
         <el-input v-model="form.api_base_url" placeholder="https://sms.example.com/send" />
       </el-form-item>
-      <el-form-item :label="`API Key${meta.api_key ? '（已配置）' : ''}`">
+      <el-form-item :label="`${form.provider === 'aliyun' ? 'AccessKey ID' : 'API Key'}${meta.api_key ? '（已配置）' : ''}`">
         <el-input v-model="form.api_key" type="password" show-password placeholder="留空不修改" />
       </el-form-item>
-      <el-form-item :label="`API Secret${meta.api_secret ? '（已配置）' : ''}`">
+      <el-form-item :label="`${form.provider === 'aliyun' ? 'AccessKey Secret' : 'API Secret'}${meta.api_secret ? '（已配置）' : ''}`">
         <el-input v-model="form.api_secret" type="password" show-password placeholder="留空不修改" />
       </el-form-item>
       <el-form-item label="短信签名">
-        <el-input v-model="form.sign_name" placeholder="如：观野SPACE" />
+        <el-input v-model="form.sign_name" placeholder="如：观野SPACE，不要加【】" />
       </el-form-item>
     </el-form>
 

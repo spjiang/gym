@@ -165,7 +165,13 @@ def send_otp(body: OtpSendIn, db: Session = Depends(get_db)):
         _resolve_merchant(db, body.merchant_id)
 
     member = db.scalar(select(Member).where(Member.phone == body.phone))
-    message = send_member_otp(db, phone=body.phone, member_id=member.id if member else None)
+    site_id = member.site_id if member is not None else None
+    if site_id is None:
+        site = db.scalar(select(Site).order_by(Site.id.asc()))
+        site_id = site.id if site is not None else None
+    message = send_member_otp(
+        db, phone=body.phone, member_id=member.id if member else None, site_id=site_id
+    )
     write_audit(
         db,
         action="member.otp_send",
