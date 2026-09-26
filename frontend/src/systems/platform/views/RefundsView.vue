@@ -88,6 +88,7 @@ const pageSize = ref(20)
 const total = ref(0)
 const detailVisible = ref(false)
 const detailLoading = ref(false)
+const exporting = ref(false)
 const detail = ref<RefundRow | null>(null)
 const query = reactive({
   q: '',
@@ -306,6 +307,39 @@ async function openDetail(row: RefundRow) {
   }
 }
 
+function fileStamp() {
+  const date = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`
+}
+
+async function exportExcel() {
+  exporting.value = true
+  try {
+    const { data } = await http.get<Blob>('/orders/refunds/export.xlsx', {
+      params: {
+        q: query.q || undefined,
+        status: query.status || undefined,
+        merchant_id: query.merchant_id,
+        created_from: query.createdRange?.[0],
+        created_to: query.createdRange?.[1],
+      },
+      responseType: 'blob',
+      timeout: 60000,
+    })
+    const url = URL.createObjectURL(data)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `退款记录-${fileStamp()}.xlsx`
+    link.click()
+    URL.revokeObjectURL(url)
+  } catch (e: unknown) {
+    ElMessage.error(e instanceof Error ? e.message : '导出失败')
+  } finally {
+    exporting.value = false
+  }
+}
+
 onMounted(() => {
   loadMerchants()
   load()
@@ -316,7 +350,10 @@ onMounted(() => {
   <div>
     <div class="toolbar">
       <h3>退款记录</h3>
-      <el-button @click="router.push('/orders')">返回订单收款</el-button>
+      <div>
+        <el-button :loading="exporting" @click="exportExcel">导出 Excel</el-button>
+        <el-button @click="router.push('/orders')">返回订单收款</el-button>
+      </div>
     </div>
 
     <div class="filters">

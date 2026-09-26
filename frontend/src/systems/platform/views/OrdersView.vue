@@ -78,6 +78,7 @@ const detailVisible = ref(false)
 const detailLoading = ref(false)
 const detail = ref<Order | null>(null)
 const submitting = ref(false)
+const exporting = ref(false)
 const formRef = ref<FormInstance>()
 
 const query = reactive({
@@ -362,6 +363,46 @@ async function refund(row: Order) {
   }
 }
 
+function downloadBlob(data: Blob, filename: string) {
+  const url = URL.createObjectURL(data)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+function fileStamp() {
+  const date = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`
+}
+
+async function exportExcel() {
+  exporting.value = true
+  try {
+    const { data } = await http.get<Blob>('/orders/export.xlsx', {
+      params: {
+        q: query.q.trim() || undefined,
+        status: query.status || undefined,
+        merchant_id: query.merchant_id,
+        order_type: query.order_type || undefined,
+        created_from: query.createdRange?.[0],
+        created_to: query.createdRange?.[1],
+        paid_from: query.paidRange?.[0],
+        paid_to: query.paidRange?.[1],
+      },
+      responseType: 'blob',
+      timeout: 60000,
+    })
+    downloadBlob(data, `订单收款-${fileStamp()}.xlsx`)
+  } catch (e: unknown) {
+    ElMessage.error(e instanceof Error ? e.message : '导出失败')
+  } finally {
+    exporting.value = false
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -370,6 +411,7 @@ onMounted(load)
     <div class="toolbar">
       <h3>订单收款</h3>
       <div>
+        <el-button :loading="exporting" @click="exportExcel">导出 Excel</el-button>
         <el-button @click="router.push('/orders/refunds')">退款记录</el-button>
         <el-button type="primary" @click="openDialog">创建订单</el-button>
       </div>

@@ -2,9 +2,11 @@
 
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -42,7 +44,19 @@ from app.systems.platform.models.org import Merchant
 from app.systems.platform.services.audit import write_audit
 from app.systems.platform.services.notifications import write_notification
 from app.systems.platform.services.order_pricing import price_order
+from app.systems.platform.services.commerce_export import (
+    ORDER_STATUS_LABELS,
+    ORDER_TYPE_LABELS,
+    REFUND_CHANNEL_LABELS,
+    REFUND_STATUS_LABELS,
+    build_table_xlsx,
+    label_of,
+    shanghai_text,
+)
+from app.systems.platform.services.member_import import XLSX_MIME
 from app.systems.platform.services.payments import get_online_provider
+
+_EXPORT_LIMIT = 10000
 
 router = APIRouter(prefix="/orders", tags=["commerce"])
 _SHANGHAI = ZoneInfo("Asia/Shanghai")
@@ -152,23 +166,19 @@ def _order_out(
     )
 
 
-@router.get("", response_model=PageOut[OrderOut])
-def list_orders(
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-    merchant_id: int | None = None,
-    order_type: str | None = None,
-    status: str | None = None,
-    dining_status: str | None = None,
-    q: str | None = None,
-    created_from: date | None = None,
-    created_to: date | None = None,
-    paid_from: date | None = None,
-    paid_to: date | None = None,
-    db: Session = Depends(get_db),
-    ctx: RequestContext = Depends(get_current_context),
-):
-    ctx.require_permission("order:read", "order:write")
+def _order_list_filters(
+    ctx: RequestContext,
+    *,
+    merchant_id: int | None,
+    order_type: str | None,
+    status: str | None,
+    dining_status: str | None,
+    q: str | None,
+    created_from: date | None,
+    created_to: date | None,
+    paid_from: date | None,
+    paid_to: date | None,
+) -> list:
     filters = [Order.site_id == ctx.site_id]
     if not ctx.is_site_wide:
         filters.append(Order.merchant_id == ctx.resolve_merchant_id())
@@ -214,7 +224,48 @@ def list_orders(
         paid_at = _paid_at_expr()
         filters.append(paid_at >= start)
         filters.append(paid_at < end)
+    return filters
 
+
+def _xlsx_response(filename: str, payload: bytes) -> StreamingResponse:
+    return StreamingResponse(
+        iter([payload]),
+        media_type=XLSX_MIME,
+        headers={
+            "Content-Disposition": f"attachment; filename=\"export.xlsx\"; filename*=UTF-8''{quote(filename)}"
+        },
+    )
+
+
+@router.get("", response_model=PageOut[OrderOut])
+def list_orders(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    merchant_id: int | None = None,
+    order_type: str | None = None,
+    status: str | None = None,
+    dining_status: str | None = None,
+    q: str | None = None,
+    created_from: date | None = None,
+    created_to: date | None = None,
+    paid_from: date | None = None,
+    paid_to: date | None = None,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    ctx.require_permission("order:read", "order:write")
+    filters = _order_list_filters(
+        ctx,
+        merchant_id=merchant_id,
+        order_type=order_type,
+        status=status,
+        dining_status=dining_status,
+        q=q,
+        created_from=created_from,
+        created_to=created_to,
+        paid_from=paid_from,
+        paid_to=paid_to,
+    )
     total = db.scalar(select(func.count()).select_from(Order).where(*filters)) or 0
     rows = list(
         db.scalars(
@@ -234,6 +285,74 @@ def list_orders(
         page=page,
         page_size=page_size,
     )
+
+
+@router.get("/export.xlsx")
+def export_orders(
+    merchant_id: int | None = None,
+    order_type: str | None = None,
+    status: str | None = None,
+    dining_status: str | None = None,
+    q: str | None = None,
+    created_from: date | None = None,
+    created_to: date | None = None,
+    paid_from: date | None = None,
+    paid_to: date | None = None,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    """按当前筛选导出订单收款，不受分页限制。"""
+    ctx.require_permission("order:read", "order:write")
+    filters = _order_list_filters(
+        ctx,
+        merchant_id=merchant_id,
+        order_type=order_type,
+        status=status,
+        dining_status=dining_status,
+        q=q,
+        created_from=created_from,
+        created_to=created_to,
+        paid_from=paid_from,
+        paid_to=paid_to,
+    )
+    rows = list(
+        db.scalars(
+            select(Order).where(*filters).order_by(Order.id.desc()).limit(_EXPORT_LIMIT + 1)
+        ).all()
+    )
+    if len(rows) > _EXPORT_LIMIT:
+        raise AppError("too_many", "导出结果超过 10000 条，请缩小筛选范围", status_code=400)
+    order_ids = [order.id for order in rows]
+    trades = _trade_by_order(db, order_ids)
+    charges = _charge_paid_at(db, order_ids)
+    table: list[list] = []
+    for order in rows:
+        item = _order_out(db, order, trades.get(order.id), charges.get(order.id))
+        member = item.member
+        table.append(
+            [
+                item.order_no,
+                item.title,
+                member.name if member is not None else "",
+                member.phone if member is not None else "",
+                item.merchant_name or "",
+                label_of(ORDER_TYPE_LABELS, item.order_type),
+                item.amount,
+                item.refunded_amount,
+                item.wechat_transaction_id or "",
+                item.out_trade_no or "",
+                shanghai_text(item.created_at),
+                shanghai_text(item.paid_at),
+                label_of(ORDER_STATUS_LABELS, item.status),
+            ]
+        )
+    payload = build_table_xlsx(
+        "订单收款",
+        ["订单号", "标题", "会员", "手机", "商户", "类型", "金额", "已退金额", "微信账单号", "商户订单号", "创建时间", "支付时间", "状态"],
+        table,
+    )
+    stamp = datetime.now(_SHANGHAI).strftime("%Y%m%d")
+    return _xlsx_response(f"订单收款-{stamp}.xlsx", payload)
 
 
 def _order_detail(db: Session, order: Order) -> OrderDetailOut:
@@ -307,20 +426,15 @@ class RefundRecordOut(BaseModel):
     succeeded_at: datetime | None = None
 
 
-@router.get("/refunds", response_model=PageOut[RefundRecordOut])
-def list_refunds(
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-    merchant_id: int | None = None,
-    status: str | None = None,
-    q: str | None = None,
-    created_from: date | None = None,
-    created_to: date | None = None,
-    db: Session = Depends(get_db),
-    ctx: RequestContext = Depends(get_current_context),
-):
-    """退款记录：按退款单列出，含处理中与已到账。"""
-    ctx.require_permission("order:read", "order:write")
+def _refund_list_filters(
+    ctx: RequestContext,
+    *,
+    merchant_id: int | None,
+    status: str | None,
+    q: str | None,
+    created_from: date | None,
+    created_to: date | None,
+) -> list:
     filters = [RefundIntent.site_id == ctx.site_id]
     if not ctx.is_site_wide:
         filters.append(Order.merchant_id == ctx.resolve_merchant_id())
@@ -345,8 +459,11 @@ def list_refunds(
         start, end = _shanghai_bounds(created_from or created_to, created_to or created_from)
         filters.append(RefundIntent.created_at >= start)
         filters.append(RefundIntent.created_at < end)
+    return filters
 
-    base = (
+
+def _refund_query(filters: list):
+    return (
         select(RefundIntent, Order, Merchant, Member, StaffUser)
         .join(Order, Order.id == RefundIntent.order_id)
         .outerjoin(Merchant, Merchant.id == Order.merchant_id)
@@ -354,6 +471,31 @@ def list_refunds(
         .outerjoin(StaffUser, StaffUser.id == RefundIntent.actor_staff_id)
         .where(*filters)
     )
+
+
+@router.get("/refunds", response_model=PageOut[RefundRecordOut])
+def list_refunds(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    merchant_id: int | None = None,
+    status: str | None = None,
+    q: str | None = None,
+    created_from: date | None = None,
+    created_to: date | None = None,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    """退款记录：按退款单列出，含处理中与已到账。"""
+    ctx.require_permission("order:read", "order:write")
+    filters = _refund_list_filters(
+        ctx,
+        merchant_id=merchant_id,
+        status=status,
+        q=q,
+        created_from=created_from,
+        created_to=created_to,
+    )
+    base = _refund_query(filters)
     total = db.scalar(select(func.count()).select_from(base.order_by(None).subquery())) or 0
     rows = db.execute(
         base.order_by(RefundIntent.id.desc()).offset((page - 1) * page_size).limit(page_size)
@@ -385,6 +527,61 @@ def list_refunds(
         for intent, order, merchant, member, staff in rows
     ]
     return PageOut(items=items, total=total, page=page, page_size=page_size)
+
+
+@router.get("/refunds/export.xlsx")
+def export_refunds(
+    merchant_id: int | None = None,
+    status: str | None = None,
+    q: str | None = None,
+    created_from: date | None = None,
+    created_to: date | None = None,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    """按当前筛选导出退款记录，不受分页限制。"""
+    ctx.require_permission("order:read", "order:write")
+    filters = _refund_list_filters(
+        ctx,
+        merchant_id=merchant_id,
+        status=status,
+        q=q,
+        created_from=created_from,
+        created_to=created_to,
+    )
+    rows = db.execute(_refund_query(filters).order_by(RefundIntent.id.desc()).limit(_EXPORT_LIMIT + 1)).all()
+    if len(rows) > _EXPORT_LIMIT:
+        raise AppError("too_many", "导出结果超过 10000 条，请缩小筛选范围", status_code=400)
+    from app.systems.platform.services.refunds import refresh_processing_refunds
+
+    if refresh_processing_refunds(db, [intent for intent, *_rest in rows]):
+        db.commit()
+    table = [
+        [
+            order.order_no,
+            order.title,
+            member.name if member is not None else "",
+            member.phone if member is not None else "",
+            merchant.name if merchant is not None else "",
+            intent.amount,
+            label_of(REFUND_CHANNEL_LABELS, intent.channel),
+            intent.reason or "",
+            intent.out_refund_no,
+            intent.provider_ref or "",
+            staff.display_name if staff is not None else "",
+            shanghai_text(intent.created_at),
+            shanghai_text(intent.succeeded_at),
+            label_of(REFUND_STATUS_LABELS, intent.status),
+        ]
+        for intent, order, merchant, member, staff in rows
+    ]
+    payload = build_table_xlsx(
+        "退款记录",
+        ["订单号", "标题", "会员", "手机", "商户", "退款金额", "退款方式", "原因", "退款单号", "微信退款单号", "操作人", "发起时间", "到账时间", "状态"],
+        table,
+    )
+    stamp = datetime.now(_SHANGHAI).strftime("%Y%m%d")
+    return _xlsx_response(f"退款记录-{stamp}.xlsx", payload)
 
 
 class RefundDetailOut(RefundRecordOut):

@@ -137,6 +137,31 @@ def test_orders_page_with_member(client: TestClient, admin_headers: dict):
     )
     assert all(r["order_id"] != order["id"] for r in missed_refund.json()["items"])
 
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    exported = client.get(
+        "/api/v1/orders/export.xlsx",
+        headers=admin_headers,
+        params={"q": "分页订单样例"},
+    )
+    assert exported.status_code == 200, exported.content[:200]
+    book = load_workbook(BytesIO(exported.content))
+    titles = [book.active.cell(row, 2).value for row in range(2, book.active.max_row + 1)]
+    assert "分页订单样例" in titles
+    assert book.active.cell(1, 1).value == "订单号"
+
+    refund_file = client.get(
+        "/api/v1/orders/refunds/export.xlsx",
+        headers=admin_headers,
+        params={"q": "分页订单样例"},
+    )
+    assert refund_file.status_code == 200, refund_file.content[:200]
+    refund_book = load_workbook(BytesIO(refund_file.content))
+    reasons = [refund_book.active.cell(row, 8).value for row in range(2, refund_book.active.max_row + 1)]
+    assert "管理端退款" in reasons
+
 
 def test_memberships_and_access_events_page(client: TestClient, admin_headers: dict):
     gym_id = client.get("/api/v1/merchants", headers=admin_headers).json()[0]["id"]
