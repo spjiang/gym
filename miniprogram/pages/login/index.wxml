@@ -19,7 +19,7 @@
   <input placeholder="手机号" placeholder-class="muted" bindinput="onPhone" />
   <view wx:if="{{scene !== 'login' || mode === 'otp'}}" class="row">
     <input placeholder="验证码" placeholder-class="muted" bindinput="onCode" />
-    <button size="mini" bindtap="send">获取</button>
+    <button class="send-btn" size="mini" bindtap="send" disabled="{{cooldown > 0}}">{{cooldown > 0 ? cooldown + '秒' : '获取'}}</button>
   </view>
   <input
     wx:if="{{scene !== 'login' || mode === 'password'}}"

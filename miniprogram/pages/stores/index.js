@@ -107,6 +107,7 @@ Page({
       })
       this.startSlide()
     } catch (e) {
+      if (e && e.statusCode === 401) return
       this.setData({ loading: false, err: (e && e.message) || '加载失败' })
     }
   },

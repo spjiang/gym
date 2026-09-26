@@ -31,6 +31,15 @@
   flex: 1;
   margin-bottom: 0;
 }
+.send-btn {
+  flex: none;
+  min-width: 140rpx;
+  margin: 0;
+}
+.send-btn[disabled] {
+  color: #7d8389;
+  background: #2a3036;
+}
 .links {
   display: flex;
   justify-content: space-between;

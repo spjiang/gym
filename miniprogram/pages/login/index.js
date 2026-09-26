@@ -11,7 +11,9 @@ Page({
     table: '',
     redirect: '',
     icpBeian: '',
+    cooldown: 0,
   },
+  _cooldownTimer: null,
   onLoad(options) {
     const app = getApp()
     const fromPage = app.resolveReferralCode((options && options.query) || options)
@@ -62,22 +64,51 @@ Page({
   onPassword2(e) {
     this.setData({ password2: e.detail.value })
   },
+  onUnload() {
+    this.clearCooldown()
+  },
+  clearCooldown() {
+    if (this._cooldownTimer) {
+      clearInterval(this._cooldownTimer)
+      this._cooldownTimer = null
+    }
+  },
+  startCooldown() {
+    this.clearCooldown()
+    this.setData({ cooldown: 60 })
+    this._cooldownTimer = setInterval(() => {
+      const next = this.data.cooldown - 1
+      if (next <= 0) {
+        this.clearCooldown()
+        this.setData({ cooldown: 0 })
+        return
+      }
+      this.setData({ cooldown: next })
+    }, 1000)
+  },
   openScene(e) {
     this.setData({ scene: e.currentTarget.dataset.scene, code: '', password: '', password2: '' })
   },
   async send() {
+    if (this.data.cooldown > 0) return
+    const phone = (this.data.phone || '').trim()
+    if (!/^1\d{10}$/.test(phone)) {
+      wx.showToast({ title: '请填写 11 位手机号', icon: 'none' })
+      return
+    }
     const { request } = require('../../utils/api')
     try {
       await request({
         url: '/member/auth/otp/send',
         method: 'POST',
         data: {
-          phone: this.data.phone,
+          phone,
           merchant_id: this.data.merchantId || null,
           scene: this.data.scene === 'register' ? 'register' : this.data.scene === 'reset' ? 'reset' : 'login',
         },
       })
       wx.showToast({ title: '已发送', icon: 'success' })
+      this.startCooldown()
     } catch (e) {
       wx.showToast({ title: (e && e.message) || '发送失败', icon: 'none' })
     }

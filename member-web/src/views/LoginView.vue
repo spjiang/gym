@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import http from '../api/http'
 import { pathForMerchant, useAuthStore } from '../stores/auth'
@@ -18,6 +18,26 @@ const mode = ref<'otp' | 'password'>('otp')
 const tip = ref('')
 const err = ref('')
 const sending = ref(false)
+const cooldown = ref(0)
+let cooldownTimer: ReturnType<typeof setInterval> | null = null
+
+function clearCooldown() {
+  if (cooldownTimer) {
+    clearInterval(cooldownTimer)
+    cooldownTimer = null
+  }
+}
+
+function startCooldown() {
+  clearCooldown()
+  cooldown.value = 60
+  cooldownTimer = setInterval(() => {
+    cooldown.value -= 1
+    if (cooldown.value <= 0) clearCooldown()
+  }, 1000)
+}
+
+onUnmounted(clearCooldown)
 const logging = ref(false)
 const wechatBusy = ref(false)
 const promoterName = ref('')
@@ -164,6 +184,7 @@ onMounted(async () => {
 async function send() {
   err.value = ''
   tip.value = ''
+  if (cooldown.value > 0) return
   if (!phone.value.trim()) {
     err.value = '请填写手机号'
     return
@@ -176,6 +197,7 @@ async function send() {
       scene: 'login',
     })
     tip.value = '验证码已发送，请查收短信'
+    startCooldown()
   } catch (e: unknown) {
     err.value = e instanceof Error ? e.message : '发送失败'
   } finally {
@@ -268,8 +290,8 @@ async function login() {
             maxlength="8"
             placeholder="请输入验证码"
           />
-          <button class="pill__action" type="button" :disabled="sending" @click="send">
-            {{ sending ? '发送中' : '发送验证码' }}
+          <button class="pill__action" type="button" :disabled="sending || cooldown > 0" @click="send">
+            {{ sending ? '发送中' : cooldown > 0 ? cooldown + '秒后重发' : '发送验证码' }}
           </button>
         </div>
         <div v-else class="pill">

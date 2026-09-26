@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import http from '../../../core/api/http'
 import RowActions from '../../../core/components/RowActions.vue'
@@ -71,6 +71,26 @@ const logDetailVisible = computed({
 })
 const testVisible = ref(false)
 const testing = ref(false)
+const testCooldown = ref(0)
+let testCooldownTimer: ReturnType<typeof setInterval> | null = null
+
+function clearTestCooldown() {
+  if (testCooldownTimer) {
+    clearInterval(testCooldownTimer)
+    testCooldownTimer = null
+  }
+}
+
+function startTestCooldown() {
+  clearTestCooldown()
+  testCooldown.value = 60
+  testCooldownTimer = setInterval(() => {
+    testCooldown.value -= 1
+    if (testCooldown.value <= 0) clearTestCooldown()
+  }, 1000)
+}
+
+onUnmounted(clearTestCooldown)
 const testPhone = ref('')
 const testRow = ref<Template | null>(null)
 const testResult = ref<{ sent: boolean; message: string; request: unknown; response: unknown } | null>(null)
@@ -248,6 +268,7 @@ async function sendTest() {
       request: data.request,
       response: data.response,
     }
+    if (data.sent) startTestCooldown()
   } catch (e: unknown) {
     testResult.value = {
       sent: false,
@@ -466,7 +487,9 @@ onMounted(load)
       </template>
       <template #footer>
         <el-button @click="testVisible = false">取消</el-button>
-        <el-button type="primary" :loading="testing" @click="sendTest">发送</el-button>
+        <el-button type="primary" :loading="testing" :disabled="testCooldown > 0" @click="sendTest">
+          {{ testCooldown > 0 ? testCooldown + '秒后重发' : '发送' }}
+        </el-button>
       </template>
     </el-dialog>
 
