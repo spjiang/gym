@@ -22,6 +22,9 @@ def test_aliyun_otp_sends_template_code(client: TestClient, admin_headers: dict,
         },
     )
     assert saved.status_code == 200, saved.text
+    assert saved.json()["api_key"] == "ak-test"
+    assert saved.json()["api_secret"] == "sk-test"
+    assert saved.json()["sign_name"] == "观野SPACE"
     created = client.post(
         "/api/v1/site/sms/templates",
         headers=admin_headers,

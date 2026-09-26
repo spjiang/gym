@@ -22,8 +22,8 @@ class SmsSettingsOut(BaseModel):
     api_base_url: str
     sign_name: str
     enabled: bool
-    api_key: dict
-    api_secret: dict
+    api_key: str
+    api_secret: str
 
 
 class SmsSettingsIn(BaseModel):
@@ -38,7 +38,7 @@ class SmsSettingsIn(BaseModel):
 class SmsTemplateIn(BaseModel):
     code: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=128)
-    content: str = Field(min_length=1)
+    content: str = ""
     scene: str = "otp"
     is_enabled: bool = True
 
@@ -62,16 +62,16 @@ def _settings_out(row: SiteSmsSettings | None) -> SmsSettingsOut:
             api_base_url="",
             sign_name="",
             enabled=False,
-            api_key={"configured": False},
-            api_secret={"configured": False},
+            api_key="",
+            api_secret="",
         )
     return SmsSettingsOut(
         provider=row.provider or "http",
         api_base_url=row.api_base_url or "",
         sign_name=row.sign_name or "",
         enabled=bool(row.enabled),
-        api_key={"configured": bool(decrypt_secret(row.api_key_enc))},
-        api_secret={"configured": bool(decrypt_secret(row.api_secret_enc))},
+        api_key=decrypt_secret(row.api_key_enc) or "",
+        api_secret=decrypt_secret(row.api_secret_enc) or "",
     )
 
 
