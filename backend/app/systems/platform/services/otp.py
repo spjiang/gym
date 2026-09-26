@@ -15,7 +15,8 @@ from app.core.crypto_secrets import decrypt_secret
 from app.core.errors import AppError
 from app.systems.platform.models.otp import MemberOtpChallenge
 from app.systems.platform.models.sms import SiteSmsSettings, SmsTemplate
-from app.systems.platform.services.aliyun_sms import send_aliyun_sms
+from app.systems.platform.services.aliyun_sms import call_aliyun_sms
+from app.systems.platform.services.sms_log import record_sms_send
 
 
 def _now() -> datetime:
@@ -92,14 +93,58 @@ def send_member_otp(
         if template is None:
             raise AppError("otp_unavailable", "请先启用对应场景的短信模版，编码填阿里云模板 CODE", status_code=503)
         code = _gen_code()
-        send_aliyun_sms(
-            access_key_id=decrypt_secret(aliyun.api_key_enc) or "",
-            access_key_secret=decrypt_secret(aliyun.api_secret_enc) or "",
+        access_key_id = decrypt_secret(aliyun.api_key_enc) or ""
+        sign_name = aliyun.sign_name or ""
+        template_param = {"code": code}
+        request_view = {
+            "Url": "https://dysmsapi.aliyuncs.com/",
+            "Action": "SendSms",
+            "Version": "2017-05-25",
+            "PhoneNumbers": phone,
+            "SignName": sign_name,
+            "TemplateCode": template.code,
+            "TemplateParam": template_param,
+            "AccessKeyId": access_key_id,
+        }
+        try:
+            provider = call_aliyun_sms(
+                access_key_id=access_key_id,
+                access_key_secret=decrypt_secret(aliyun.api_secret_enc) or "",
+                phone=phone,
+                sign_name=sign_name,
+                template_code=template.code,
+                template_param=template_param,
+            )
+        except AppError as exc:
+            record_sms_send(
+                site_id=aliyun.site_id,
+                phone=phone,
+                scene=scene,
+                provider="aliyun",
+                status="failed",
+                template_code=template.code,
+                sign_name=sign_name,
+                provider_message=exc.message,
+                request_json=request_view,
+            )
+            raise
+        sent = provider.get("Code") == "OK"
+        record_sms_send(
+            site_id=aliyun.site_id,
             phone=phone,
-            sign_name=aliyun.sign_name or "",
+            scene=scene,
+            provider="aliyun",
+            status="success" if sent else "failed",
             template_code=template.code,
-            template_param={"code": code},
+            sign_name=sign_name,
+            provider_code=str(provider.get("Code") or "") or None,
+            provider_message=str(provider.get("Message") or "") or None,
+            request_json=request_view,
+            response_json=provider,
         )
+        if not sent:
+            message = provider.get("Message") or provider.get("Code") or "发送失败"
+            raise AppError("otp_send_failed", f"阿里云短信失败: {message}", status_code=502)
         _store_challenge(db, phone=phone, member_id=member_id, code=code)
         return "验证码已发送"
 
@@ -107,6 +152,15 @@ def send_member_otp(
     mode = settings.member_otp_mode.lower()
     if mode == "mock":
         code = settings.member_otp_mock_code
+        record_sms_send(
+            site_id=site_id,
+            phone=phone,
+            scene=scene,
+            provider="mock",
+            status="success",
+            provider_message="开发环境未调用短信网关",
+            request_json={"PhoneNumbers": phone, "TemplateParam": {"code": code}},
+        )
         _store_challenge(db, phone=phone, member_id=member_id, code=code)
         return "验证码已发送（开发环境请使用配置的 mock 码）"
 
@@ -114,6 +168,7 @@ def send_member_otp(
         if not settings.member_otp_sms_url:
             raise AppError("otp_unavailable", "短信网关未配置 MEMBER_OTP_SMS_URL", status_code=503)
         code = _gen_code()
+        request_view = {"PhoneNumbers": phone, "TemplateParam": {"code": code}, "Url": settings.member_otp_sms_url}
         try:
             resp = httpx.post(
                 settings.member_otp_sms_url,
@@ -122,9 +177,37 @@ def send_member_otp(
                 headers={"Authorization": settings.member_otp_sms_token or ""},
             )
             if resp.status_code >= 400:
+                record_sms_send(
+                    site_id=site_id,
+                    phone=phone,
+                    scene=scene,
+                    provider="http",
+                    status="failed",
+                    provider_code=str(resp.status_code),
+                    provider_message=f"短信网关失败: HTTP {resp.status_code}",
+                    request_json=request_view,
+                )
                 raise AppError("otp_send_failed", f"短信网关失败: HTTP {resp.status_code}", status_code=502)
         except httpx.HTTPError as exc:
+            record_sms_send(
+                site_id=site_id,
+                phone=phone,
+                scene=scene,
+                provider="http",
+                status="failed",
+                provider_message=f"短信网关不可达: {exc}",
+                request_json=request_view,
+            )
             raise AppError("otp_send_failed", f"短信网关不可达: {exc}", status_code=502) from exc
+        record_sms_send(
+            site_id=site_id,
+            phone=phone,
+            scene=scene,
+            provider="http",
+            status="success",
+            provider_code=str(resp.status_code),
+            request_json=request_view,
+        )
         _store_challenge(db, phone=phone, member_id=member_id, code=code)
         return "验证码已发送"
 

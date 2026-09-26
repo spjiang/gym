@@ -8,8 +8,9 @@ def test_aliyun_otp_sends_template_code(client: TestClient, admin_headers: dict,
 
     def fake_send(**kwargs):
         sent.update(kwargs)
+        return {"Code": "OK", "Message": "OK", "BizId": "100000", "RequestId": "req-1"}
 
-    monkeypatch.setattr("app.systems.platform.services.otp.send_aliyun_sms", fake_send)
+    monkeypatch.setattr("app.systems.platform.services.otp.call_aliyun_sms", fake_send)
     saved = client.put(
         "/api/v1/site/sms/settings",
         headers=admin_headers,
@@ -55,8 +56,9 @@ def test_aliyun_otp_uses_scene_template(client: TestClient, admin_headers: dict,
 
     def fake_send(**kwargs):
         sent.update(kwargs)
+        return {"Code": "OK", "Message": "OK", "BizId": "100000", "RequestId": "req-1"}
 
-    monkeypatch.setattr("app.systems.platform.services.otp.send_aliyun_sms", fake_send)
+    monkeypatch.setattr("app.systems.platform.services.otp.call_aliyun_sms", fake_send)
     client.put(
         "/api/v1/site/sms/settings",
         headers=admin_headers,
@@ -138,6 +140,14 @@ def test_sms_template_test_send(client: TestClient, admin_headers: dict, monkeyp
     assert tested.json()["request"]["TemplateCode"] == "SMS_TEST_SEND"
     assert tested.json()["request"]["PhoneNumbers"] == "13800138000"
     assert tested.json()["request"]["AccessKeyId"] == "ak-test"
+    logs = client.get("/api/v1/site/sms/logs", headers=admin_headers, params={"q": "13800138000"})
+    assert logs.status_code == 200, logs.text
+    assert logs.json()["total"] >= 1
+    item = logs.json()["items"][0]
+    assert item["phone"] == "13800138000"
+    assert item["template_code"] == "SMS_TEST_SEND"
+    assert item["scene"] == "test"
+    assert item["request_json"]["TemplateParam"]["code"] == "******"
     assert "AccessKeySecret" not in tested.json()["request"]
     assert tested.json()["response"]["BizId"] == "100000"
     assert tested.json()["response"]["RequestId"] == "req-1"

@@ -4,18 +4,20 @@ import random
 import string
 from datetime import datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.crypto_secrets import decrypt_secret, encrypt_secret
 from app.core.db import get_db
 from app.core.deps import RequestContext, get_current_context
 from app.core.errors import AppError
-from app.systems.platform.models.sms import SiteSmsSettings, SmsTemplate
+from app.core.schemas.paging import PageOut, paginate
+from app.systems.platform.models.sms import SiteSmsSettings, SmsSendLog, SmsTemplate
 from app.systems.platform.services.aliyun_sms import call_aliyun_sms
 from app.systems.platform.services.audit import write_audit
+from app.systems.platform.services.sms_log import record_sms_send
 
 router = APIRouter(prefix="/site/sms", tags=["sms"])
 
@@ -56,6 +58,23 @@ class SmsTemplateTestOut(BaseModel):
     message: str
     request: dict
     response: dict
+
+
+class SmsSendLogOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    phone: str
+    scene: str
+    provider: str
+    template_code: str | None
+    sign_name: str | None
+    status: str
+    provider_code: str | None
+    provider_message: str | None
+    request_json: dict | None
+    response_json: dict | None
+    created_at: datetime
 
 
 class SmsTemplateOut(BaseModel):
@@ -255,15 +274,42 @@ def test_sms_template(
         "TemplateParam": template_param,
         "AccessKeyId": access_key_id,
     }
-    provider = call_aliyun_sms(
-        access_key_id=access_key_id,
-        access_key_secret=access_key_secret,
-        phone=phone,
-        sign_name=sign_name,
-        template_code=row.code,
-        template_param=template_param,
-    )
+    try:
+        provider = call_aliyun_sms(
+            access_key_id=access_key_id,
+            access_key_secret=access_key_secret,
+            phone=phone,
+            sign_name=sign_name,
+            template_code=row.code,
+            template_param=template_param,
+        )
+    except AppError as exc:
+        record_sms_send(
+            site_id=ctx.site_id,
+            phone=phone,
+            scene="test",
+            provider="aliyun",
+            status="failed",
+            template_code=row.code,
+            sign_name=sign_name,
+            provider_message=exc.message,
+            request_json=request_view,
+        )
+        raise
     sent = provider.get("Code") == "OK"
+    record_sms_send(
+        site_id=ctx.site_id,
+        phone=phone,
+        scene="test",
+        provider="aliyun",
+        status="success" if sent else "failed",
+        template_code=row.code,
+        sign_name=sign_name,
+        provider_code=str(provider.get("Code") or "") or None,
+        provider_message=str(provider.get("Message") or "") or None,
+        request_json=request_view,
+        response_json=provider,
+    )
     write_audit(
         db,
         action="sms_template.test",
@@ -277,6 +323,44 @@ def test_sms_template(
     provider_message = str(provider.get("Message") or provider.get("Code") or "")
     message = f"已向 {phone} 发送，验证码 {code}" if sent else f"阿里云未发送：{provider_message}"
     return SmsTemplateTestOut(sent=sent, code=code, message=message, request=request_view, response=provider)
+
+
+@router.get("/logs", response_model=PageOut[SmsSendLogOut])
+def list_sms_logs(
+    q: str | None = None,
+    scene: str | None = None,
+    status: str | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    """分页检索本场地的短信发送记录。"""
+    ctx.require_permission("sms:config", "*")
+    stmt = select(SmsSendLog).where(SmsSendLog.site_id == ctx.site_id)
+    keyword = (q or "").strip()
+    if keyword:
+        like = f"%{keyword}%"
+        stmt = stmt.where(
+            or_(
+                SmsSendLog.phone.ilike(like),
+                SmsSendLog.template_code.ilike(like),
+                SmsSendLog.sign_name.ilike(like),
+                SmsSendLog.provider_code.ilike(like),
+                SmsSendLog.provider_message.ilike(like),
+            )
+        )
+    if scene:
+        stmt = stmt.where(SmsSendLog.scene == scene)
+    if status:
+        stmt = stmt.where(SmsSendLog.status == status)
+    rows, total = paginate(db, stmt.order_by(SmsSendLog.id.desc()), page=page, page_size=page_size)
+    return PageOut[SmsSendLogOut](
+        items=[SmsSendLogOut.model_validate(row) for row in rows],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.delete("/templates/{template_id}")

@@ -24,7 +24,7 @@ from app.systems.platform.models.rebate import (
     SitePromotionSettings,
 )
 from app.systems.platform.models.rbac_catalog import MenuDef, PermissionDef, RoleMenu, RolePermission, Subsystem
-from app.systems.platform.models.sms import SiteSmsSettings, SmsTemplate
+from app.systems.platform.models.sms import SiteSmsSettings, SmsSendLog, SmsTemplate
 from app.systems.platform.models.visit import VisitPass
 from app.systems.platform.models.website import WebsiteArticle, WebsiteSettings
 from app.systems.gym.models.activity import Activity, ActivityRegistration
@@ -142,6 +142,7 @@ __all__ = [
     "WebsiteArticle",
     "SiteSmsSettings",
     "SmsTemplate",
+    "SmsSendLog",
     "Notification",
     "SitePaymentSettings",
     "MemberWechatBinding",

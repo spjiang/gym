@@ -12,6 +12,20 @@ type Settings = {
   api_key: string
   api_secret: string
 }
+type SmsLog = {
+  id: number
+  phone: string
+  scene: string
+  provider: string
+  template_code: string | null
+  sign_name: string | null
+  status: string
+  provider_code: string | null
+  provider_message: string | null
+  request_json: unknown
+  response_json: unknown
+  created_at: string
+}
 type Template = {
   id: number
   code: string
@@ -41,6 +55,20 @@ const pagedTemplates = computed(() => {
   return filteredTemplates.value.slice(start, start + pageSize.value)
 })
 const dialogVisible = ref(false)
+const logVisible = ref(false)
+const logLoading = ref(false)
+const logRows = ref<SmsLog[]>([])
+const logTotal = ref(0)
+const logPage = ref(1)
+const logPageSize = ref(20)
+const logQuery = reactive({ q: '', scene: '', status: '' })
+const logDetail = ref<SmsLog | null>(null)
+const logDetailVisible = computed({
+  get: () => logDetail.value !== null,
+  set: (open: boolean) => {
+    if (!open) logDetail.value = null
+  },
+})
 const testVisible = ref(false)
 const testing = ref(false)
 const testPhone = ref('')
@@ -106,6 +134,7 @@ const sceneLabels: Record<string, string> = {
   register: '注册',
   reset: '忘记密码',
   otp: '通用验证码',
+  test: '测试',
   membership: '开卡通知',
   booking: '预约提醒',
   other: '其他',
@@ -113,6 +142,56 @@ const sceneLabels: Record<string, string> = {
 
 function sceneLabel(scene: string) {
   return sceneLabels[scene] || scene
+}
+
+const providerLabels: Record<string, string> = {
+  aliyun: '阿里云',
+  http: 'HTTP 网关',
+  mock: '模拟',
+}
+
+function providerLabel(provider: string) {
+  return providerLabels[provider] || provider
+}
+
+function formatTime(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+async function loadLogs() {
+  logLoading.value = true
+  try {
+    const { data } = await http.get<{ items: SmsLog[]; total: number }>('/site/sms/logs', {
+      params: {
+        q: logQuery.q.trim() || undefined,
+        scene: logQuery.scene || undefined,
+        status: logQuery.status || undefined,
+        page: logPage.value,
+        page_size: logPageSize.value,
+      },
+    })
+    logRows.value = data.items
+    logTotal.value = data.total
+  } catch (e: unknown) {
+    ElMessage.error(e instanceof Error ? e.message : '加载发送记录失败')
+  } finally {
+    logLoading.value = false
+  }
+}
+
+function openLogs() {
+  logPage.value = 1
+  logDetail.value = null
+  logVisible.value = true
+  loadLogs()
+}
+
+function searchLogs() {
+  logPage.value = 1
+  loadLogs()
 }
 
 function openTpl(row?: Template) {
@@ -198,7 +277,10 @@ onMounted(load)
 <template>
   <div v-loading="loading">
     <div class="toolbar">
-      <h3>短信配置</h3>
+      <div class="toolbar-title">
+        <h3>短信配置</h3>
+        <el-button @click="openLogs">短信发送记录</el-button>
+      </div>
       <el-button type="primary" :loading="saving" @click="saveSettings">保存接口配置</el-button>
     </div>
     <el-alert
@@ -290,6 +372,80 @@ onMounted(load)
       />
     </div>
 
+    <el-dialog v-model="logVisible" title="短信发送记录" width="980px">
+      <el-form inline class="filters" @submit.prevent="searchLogs">
+        <el-form-item label="关键词">
+          <el-input v-model="logQuery.q" clearable placeholder="手机号 / 模板 / 签名 / 返回" style="width: 220px" @keyup.enter="searchLogs" />
+        </el-form-item>
+        <el-form-item label="场景">
+          <el-select v-model="logQuery.scene" clearable placeholder="全部" style="width: 130px" @change="searchLogs">
+            <el-option label="登录" value="login" />
+            <el-option label="注册" value="register" />
+            <el-option label="忘记密码" value="reset" />
+            <el-option label="测试" value="test" />
+            <el-option label="通用验证码" value="otp" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="结果">
+          <el-select v-model="logQuery.status" clearable placeholder="全部" style="width: 110px" @change="searchLogs">
+            <el-option label="成功" value="success" />
+            <el-option label="失败" value="failed" />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="searchLogs">检索</el-button>
+        </el-form-item>
+      </el-form>
+      <el-table v-loading="logLoading" :data="logRows" stripe>
+        <el-table-column label="时间" min-width="170">
+          <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
+        </el-table-column>
+        <el-table-column prop="phone" label="手机号" width="130" />
+        <el-table-column label="场景" width="110">
+          <template #default="{ row }">{{ sceneLabel(row.scene) }}</template>
+        </el-table-column>
+        <el-table-column prop="template_code" label="模板" min-width="140" />
+        <el-table-column prop="sign_name" label="签名" min-width="160" />
+        <el-table-column label="通道" width="100">
+          <template #default="{ row }">{{ providerLabel(row.provider) }}</template>
+        </el-table-column>
+        <el-table-column label="结果" width="80">
+          <template #default="{ row }">{{ row.status === 'success' ? '成功' : '失败' }}</template>
+        </el-table-column>
+        <el-table-column prop="provider_message" label="返回说明" min-width="180" show-overflow-tooltip />
+        <el-table-column label="操作" width="80" fixed="right">
+          <template #default="{ row }">
+            <el-button size="small" @click="logDetail = row">详情</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div class="pager">
+        <el-pagination
+          v-model:current-page="logPage"
+          v-model:page-size="logPageSize"
+          :total="logTotal"
+          :page-sizes="[10, 20, 50, 100]"
+          layout="total, sizes, prev, pager, next"
+          background
+          @current-change="loadLogs"
+          @size-change="searchLogs"
+        />
+      </div>
+    </el-dialog>
+
+    <el-dialog v-model="logDetailVisible" title="发送详情" width="640px">
+      <template v-if="logDetail">
+        <div class="test-block">
+          <div class="test-label">输入</div>
+          <pre class="test-response">{{ JSON.stringify(logDetail.request_json, null, 2) }}</pre>
+        </div>
+        <div class="test-block">
+          <div class="test-label">输出</div>
+          <pre class="test-response">{{ JSON.stringify(logDetail.response_json, null, 2) }}</pre>
+        </div>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="testVisible" title="测试短信" width="520px">
       <p class="test-tip">使用模版 {{ testRow?.name }}（{{ testRow?.code }}）向该手机号发送一条验证码。</p>
       <el-form label-width="80px">
@@ -351,6 +507,11 @@ onMounted(load)
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+}
+.toolbar-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 .toolbar h3,
 .toolbar h4 {
