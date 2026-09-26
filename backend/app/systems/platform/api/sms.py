@@ -1,5 +1,7 @@
 """短信 API 与模版配置。"""
 
+import random
+import string
 from datetime import datetime
 
 from fastapi import APIRouter, Depends
@@ -12,6 +14,7 @@ from app.core.db import get_db
 from app.core.deps import RequestContext, get_current_context
 from app.core.errors import AppError
 from app.systems.platform.models.sms import SiteSmsSettings, SmsTemplate
+from app.systems.platform.services.aliyun_sms import send_aliyun_sms
 from app.systems.platform.services.audit import write_audit
 
 router = APIRouter(prefix="/site/sms", tags=["sms"])
@@ -41,6 +44,16 @@ class SmsTemplateIn(BaseModel):
     content: str = ""
     scene: str = "otp"
     is_enabled: bool = True
+
+
+class SmsTemplateTestIn(BaseModel):
+    phone: str = Field(min_length=1, max_length=20)
+
+
+class SmsTemplateTestOut(BaseModel):
+    sent: bool
+    code: str
+    message: str
 
 
 class SmsTemplateOut(BaseModel):
@@ -197,6 +210,55 @@ def patch_sms_template(
     db.commit()
     db.refresh(row)
     return row
+
+
+@router.post("/templates/{template_id}/test", response_model=SmsTemplateTestOut)
+def test_sms_template(
+    template_id: int,
+    body: SmsTemplateTestIn,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    """用指定模版向手机号发一条验证码，便于核对阿里云模板 CODE 与签名。"""
+    ctx.require_permission("sms:config", "*")
+    row = db.get(SmsTemplate, template_id)
+    if row is None or row.site_id != ctx.site_id:
+        raise AppError("not_found", "模版不存在", status_code=404)
+    phone = "".join(ch for ch in body.phone if ch.isdigit())
+    if len(phone) != 11 or not phone.startswith("1"):
+        raise AppError("invalid_phone", "请填写 11 位手机号", status_code=400)
+    settings = db.get(SiteSmsSettings, ctx.site_id)
+    access_key_id = decrypt_secret(settings.api_key_enc) if settings is not None else ""
+    access_key_secret = decrypt_secret(settings.api_secret_enc) if settings is not None else ""
+    if (
+        settings is None
+        or (settings.provider or "") != "aliyun"
+        or not settings.enabled
+        or not (settings.sign_name or "").strip()
+        or not access_key_id
+        or not access_key_secret
+    ):
+        raise AppError("sms_not_ready", "请先启用阿里云通道，并填写 AccessKey 与短信签名", status_code=503)
+    code = "".join(random.choices(string.digits, k=6))
+    send_aliyun_sms(
+        access_key_id=access_key_id,
+        access_key_secret=access_key_secret,
+        phone=phone,
+        sign_name=(settings.sign_name or "").strip(),
+        template_code=row.code,
+        template_param={"code": code},
+    )
+    write_audit(
+        db,
+        action="sms_template.test",
+        target_type="sms_template",
+        target_id=row.id,
+        summary=f"测试短信模版 {row.code} phone={phone}",
+        actor_staff_id=ctx.staff.id,
+        site_id=ctx.site_id,
+    )
+    db.commit()
+    return SmsTemplateTestOut(sent=True, code=code, message=f"已向 {phone} 发送，验证码 {code}")
 
 
 @router.delete("/templates/{template_id}")

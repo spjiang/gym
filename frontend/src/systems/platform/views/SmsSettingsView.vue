@@ -41,6 +41,10 @@ const pagedTemplates = computed(() => {
   return filteredTemplates.value.slice(start, start + pageSize.value)
 })
 const dialogVisible = ref(false)
+const testVisible = ref(false)
+const testing = ref(false)
+const testPhone = ref('')
+const testRow = ref<Template | null>(null)
 const editingId = ref<number | null>(null)
 const form = reactive({
   provider: 'http',
@@ -134,6 +138,34 @@ async function saveTpl() {
   }
 }
 
+function openTest(row: Template) {
+  testRow.value = row
+  testPhone.value = ''
+  testVisible.value = true
+}
+
+async function sendTest() {
+  if (!testRow.value) return
+  const phone = testPhone.value.trim()
+  if (!/^1\d{10}$/.test(phone)) {
+    ElMessage.error('请填写 11 位手机号')
+    return
+  }
+  testing.value = true
+  try {
+    const { data } = await http.post<{ sent: boolean; code: string; message: string }>(
+      `/site/sms/templates/${testRow.value.id}/test`,
+      { phone },
+    )
+    testVisible.value = false
+    ElMessage.success(data.message || '测试短信已发送')
+  } catch (e: unknown) {
+    ElMessage.error(e instanceof Error ? e.message : '发送失败')
+  } finally {
+    testing.value = false
+  }
+}
+
 async function removeTpl(row: Template) {
   try {
     await ElMessageBox.confirm(`删除模版「${row.name}」？`, '确认', { type: 'warning' })
@@ -223,9 +255,10 @@ onMounted(load)
       <el-table-column label="启用" width="80">
         <template #default="{ row }">{{ row.is_enabled ? '是' : '否' }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="160" fixed="right">
+      <el-table-column label="操作" width="230" fixed="right">
         <template #default="{ row }">
           <RowActions :more="[{ command: 'del', label: '删除', danger: true }]" @more="removeTpl(row)">
+            <el-button size="small" @click="openTest(row)">测试</el-button>
             <el-button size="small" type="primary" @click="openTpl(row)">编辑</el-button>
           </RowActions>
         </template>
@@ -241,6 +274,19 @@ onMounted(load)
         background
       />
     </div>
+
+    <el-dialog v-model="testVisible" title="测试短信" width="420px">
+      <p class="test-tip">使用模版 {{ testRow?.name }}（{{ testRow?.code }}）向该手机号发送一条验证码。</p>
+      <el-form label-width="80px">
+        <el-form-item label="手机号">
+          <el-input v-model="testPhone" maxlength="11" placeholder="11 位手机号" @keyup.enter="sendTest" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="testVisible = false">取消</el-button>
+        <el-button type="primary" :loading="testing" @click="sendTest">发送</el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog v-model="dialogVisible" :title="editingId ? '编辑模版' : '新建模版'" width="520px">
       <el-form label-width="80px">
@@ -294,6 +340,11 @@ h4 {
   white-space: nowrap;
   height: 32px;
   line-height: 32px;
+}
+.test-tip {
+  margin: 0 0 16px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.5;
 }
 .filters {
   margin-bottom: 4px;
