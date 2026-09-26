@@ -178,10 +178,10 @@ onMounted(load)
         <el-input v-model="form.api_base_url" placeholder="https://sms.example.com/send" />
       </el-form-item>
       <el-form-item :label="form.provider === 'aliyun' ? 'AccessKey ID' : 'API Key'">
-        <el-input v-model="form.api_key" :placeholder="form.provider === 'aliyun' ? '阿里云 AccessKey ID' : 'API Key'" />
+        <el-input v-model="form.api_key" type="password" show-password :placeholder="form.provider === 'aliyun' ? '阿里云 AccessKey ID' : 'API Key'" />
       </el-form-item>
       <el-form-item :label="form.provider === 'aliyun' ? 'AccessKey Secret' : 'API Secret'">
-        <el-input v-model="form.api_secret" :placeholder="form.provider === 'aliyun' ? '阿里云 AccessKey Secret' : 'API Secret'" />
+        <el-input v-model="form.api_secret" type="password" show-password :placeholder="form.provider === 'aliyun' ? '阿里云 AccessKey Secret' : 'API Secret'" />
       </el-form-item>
       <el-form-item label="短信签名">
         <el-input v-model="form.sign_name" placeholder="如：观野SPACE，不要加【】" />
