@@ -21,7 +21,7 @@ def _percent(value: str) -> str:
     return quote(str(value), safe="-_.~")
 
 
-def send_aliyun_sms(
+def call_aliyun_sms(
     *,
     access_key_id: str,
     access_key_secret: str,
@@ -29,8 +29,8 @@ def send_aliyun_sms(
     sign_name: str,
     template_code: str,
     template_param: dict,
-) -> None:
-    """按阿里云 RPC 签名调用 SendSms。"""
+) -> dict:
+    """调用 SendSms 并返回阿里云 JSON。网络失败或返回非 JSON 时抛出错误。"""
     params = {
         "AccessKeyId": access_key_id,
         "Action": "SendSms",
@@ -62,6 +62,30 @@ def send_aliyun_sms(
         body = resp.json()
     except ValueError as exc:
         raise AppError("otp_send_failed", "阿里云短信返回无法解析", status_code=502) from exc
-    if resp.status_code >= 400 or body.get("Code") != "OK":
-        message = body.get("Message") or body.get("Code") or f"HTTP {resp.status_code}"
+    if not isinstance(body, dict):
+        raise AppError("otp_send_failed", "阿里云短信返回无法解析", status_code=502)
+    return body
+
+
+def send_aliyun_sms(
+    *,
+    access_key_id: str,
+    access_key_secret: str,
+    phone: str,
+    sign_name: str,
+    template_code: str,
+    template_param: dict,
+) -> dict:
+    """按阿里云 RPC 签名调用 SendSms，业务状态非 OK 时抛出错误。"""
+    body = call_aliyun_sms(
+        access_key_id=access_key_id,
+        access_key_secret=access_key_secret,
+        phone=phone,
+        sign_name=sign_name,
+        template_code=template_code,
+        template_param=template_param,
+    )
+    if body.get("Code") != "OK":
+        message = body.get("Message") or body.get("Code") or "发送失败"
         raise AppError("otp_send_failed", f"阿里云短信失败: {message}", status_code=502)
+    return body

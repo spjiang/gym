@@ -45,6 +45,7 @@ const testVisible = ref(false)
 const testing = ref(false)
 const testPhone = ref('')
 const testRow = ref<Template | null>(null)
+const testResult = ref<{ sent: boolean; message: string; response: unknown } | null>(null)
 const editingId = ref<number | null>(null)
 const form = reactive({
   provider: 'http',
@@ -141,6 +142,7 @@ async function saveTpl() {
 function openTest(row: Template) {
   testRow.value = row
   testPhone.value = ''
+  testResult.value = null
   testVisible.value = true
 }
 
@@ -152,15 +154,19 @@ async function sendTest() {
     return
   }
   testing.value = true
+  testResult.value = null
   try {
-    const { data } = await http.post<{ sent: boolean; code: string; message: string }>(
+    const { data } = await http.post<{ sent: boolean; code: string; message: string; response: unknown }>(
       `/site/sms/templates/${testRow.value.id}/test`,
       { phone },
     )
-    testVisible.value = false
-    ElMessage.success(data.message || '测试短信已发送')
+    testResult.value = { sent: data.sent, message: data.message, response: data.response }
   } catch (e: unknown) {
-    ElMessage.error(e instanceof Error ? e.message : '发送失败')
+    testResult.value = {
+      sent: false,
+      message: e instanceof Error ? e.message : '发送失败',
+      response: null,
+    }
   } finally {
     testing.value = false
   }
@@ -275,13 +281,17 @@ onMounted(load)
       />
     </div>
 
-    <el-dialog v-model="testVisible" title="测试短信" width="420px">
+    <el-dialog v-model="testVisible" title="测试短信" width="520px">
       <p class="test-tip">使用模版 {{ testRow?.name }}（{{ testRow?.code }}）向该手机号发送一条验证码。</p>
       <el-form label-width="80px">
         <el-form-item label="手机号">
           <el-input v-model="testPhone" maxlength="11" placeholder="11 位手机号" @keyup.enter="sendTest" />
         </el-form-item>
       </el-form>
+      <template v-if="testResult">
+        <el-alert :type="testResult.sent ? 'success' : 'error'" :title="testResult.message" :closable="false" show-icon />
+        <pre v-if="testResult.response" class="test-response">{{ JSON.stringify(testResult.response, null, 2) }}</pre>
+      </template>
       <template #footer>
         <el-button @click="testVisible = false">取消</el-button>
         <el-button type="primary" :loading="testing" @click="sendTest">发送</el-button>
@@ -345,6 +355,18 @@ h4 {
   margin: 0 0 16px;
   color: var(--el-text-color-secondary);
   line-height: 1.5;
+}
+.test-response {
+  margin: 12px 0 0;
+  padding: 12px;
+  max-height: 240px;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--el-fill-color-light);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 .filters {
   margin-bottom: 4px;

@@ -100,8 +100,9 @@ def test_sms_template_test_send(client: TestClient, admin_headers: dict, monkeyp
 
     def fake_send(**kwargs):
         sent.update(kwargs)
+        return {"Code": "OK", "Message": "OK", "BizId": "100000", "RequestId": "req-1"}
 
-    monkeypatch.setattr("app.systems.platform.api.sms.send_aliyun_sms", fake_send)
+    monkeypatch.setattr("app.systems.platform.api.sms.call_aliyun_sms", fake_send)
     client.put(
         "/api/v1/site/sms/settings",
         headers=admin_headers,
@@ -134,6 +135,8 @@ def test_sms_template_test_send(client: TestClient, admin_headers: dict, monkeyp
     assert sent["template_code"] == "SMS_TEST_SEND"
     assert sent["phone"] == "13800138000"
     assert sent["template_param"]["code"] == tested.json()["code"]
+    assert tested.json()["response"]["BizId"] == "100000"
+    assert tested.json()["response"]["RequestId"] == "req-1"
     bad = client.post(
         f"/api/v1/site/sms/templates/{template_id}/test",
         headers=admin_headers,

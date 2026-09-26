@@ -14,7 +14,7 @@ from app.core.db import get_db
 from app.core.deps import RequestContext, get_current_context
 from app.core.errors import AppError
 from app.systems.platform.models.sms import SiteSmsSettings, SmsTemplate
-from app.systems.platform.services.aliyun_sms import send_aliyun_sms
+from app.systems.platform.services.aliyun_sms import call_aliyun_sms
 from app.systems.platform.services.audit import write_audit
 
 router = APIRouter(prefix="/site/sms", tags=["sms"])
@@ -54,6 +54,7 @@ class SmsTemplateTestOut(BaseModel):
     sent: bool
     code: str
     message: str
+    response: dict
 
 
 class SmsTemplateOut(BaseModel):
@@ -240,7 +241,7 @@ def test_sms_template(
     ):
         raise AppError("sms_not_ready", "请先启用阿里云通道，并填写 AccessKey 与短信签名", status_code=503)
     code = "".join(random.choices(string.digits, k=6))
-    send_aliyun_sms(
+    provider = call_aliyun_sms(
         access_key_id=access_key_id,
         access_key_secret=access_key_secret,
         phone=phone,
@@ -248,17 +249,20 @@ def test_sms_template(
         template_code=row.code,
         template_param={"code": code},
     )
+    sent = provider.get("Code") == "OK"
     write_audit(
         db,
         action="sms_template.test",
         target_type="sms_template",
         target_id=row.id,
-        summary=f"测试短信模版 {row.code} phone={phone}",
+        summary=f"测试短信模版 {row.code} phone={phone} code={provider.get('Code')}",
         actor_staff_id=ctx.staff.id,
         site_id=ctx.site_id,
     )
     db.commit()
-    return SmsTemplateTestOut(sent=True, code=code, message=f"已向 {phone} 发送，验证码 {code}")
+    provider_message = str(provider.get("Message") or provider.get("Code") or "")
+    message = f"已向 {phone} 发送，验证码 {code}" if sent else f"阿里云未发送：{provider_message}"
+    return SmsTemplateTestOut(sent=sent, code=code, message=message, response=provider)
 
 
 @router.delete("/templates/{template_id}")
