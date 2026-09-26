@@ -54,6 +54,7 @@ class SmsTemplateTestOut(BaseModel):
     sent: bool
     code: str
     message: str
+    request: dict
     response: dict
 
 
@@ -241,13 +242,26 @@ def test_sms_template(
     ):
         raise AppError("sms_not_ready", "请先启用阿里云通道，并填写 AccessKey 与短信签名", status_code=503)
     code = "".join(random.choices(string.digits, k=6))
+    sign_name = (settings.sign_name or "").strip()
+    template_param = {"code": code}
+    request_view = {
+        "Url": "https://dysmsapi.aliyuncs.com/",
+        "Action": "SendSms",
+        "Version": "2017-05-25",
+        "RegionId": "cn-hangzhou",
+        "PhoneNumbers": phone,
+        "SignName": sign_name,
+        "TemplateCode": row.code,
+        "TemplateParam": template_param,
+        "AccessKeyId": access_key_id,
+    }
     provider = call_aliyun_sms(
         access_key_id=access_key_id,
         access_key_secret=access_key_secret,
         phone=phone,
-        sign_name=(settings.sign_name or "").strip(),
+        sign_name=sign_name,
         template_code=row.code,
-        template_param={"code": code},
+        template_param=template_param,
     )
     sent = provider.get("Code") == "OK"
     write_audit(
@@ -262,7 +276,7 @@ def test_sms_template(
     db.commit()
     provider_message = str(provider.get("Message") or provider.get("Code") or "")
     message = f"已向 {phone} 发送，验证码 {code}" if sent else f"阿里云未发送：{provider_message}"
-    return SmsTemplateTestOut(sent=sent, code=code, message=message, response=provider)
+    return SmsTemplateTestOut(sent=sent, code=code, message=message, request=request_view, response=provider)
 
 
 @router.delete("/templates/{template_id}")

@@ -135,6 +135,10 @@ def test_sms_template_test_send(client: TestClient, admin_headers: dict, monkeyp
     assert sent["template_code"] == "SMS_TEST_SEND"
     assert sent["phone"] == "13800138000"
     assert sent["template_param"]["code"] == tested.json()["code"]
+    assert tested.json()["request"]["TemplateCode"] == "SMS_TEST_SEND"
+    assert tested.json()["request"]["PhoneNumbers"] == "13800138000"
+    assert tested.json()["request"]["AccessKeyId"] == "ak-test"
+    assert "AccessKeySecret" not in tested.json()["request"]
     assert tested.json()["response"]["BizId"] == "100000"
     assert tested.json()["response"]["RequestId"] == "req-1"
     bad = client.post(

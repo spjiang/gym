@@ -45,7 +45,7 @@ const testVisible = ref(false)
 const testing = ref(false)
 const testPhone = ref('')
 const testRow = ref<Template | null>(null)
-const testResult = ref<{ sent: boolean; message: string; response: unknown } | null>(null)
+const testResult = ref<{ sent: boolean; message: string; request: unknown; response: unknown } | null>(null)
 const editingId = ref<number | null>(null)
 const form = reactive({
   provider: 'http',
@@ -156,15 +156,24 @@ async function sendTest() {
   testing.value = true
   testResult.value = null
   try {
-    const { data } = await http.post<{ sent: boolean; code: string; message: string; response: unknown }>(
-      `/site/sms/templates/${testRow.value.id}/test`,
-      { phone },
-    )
-    testResult.value = { sent: data.sent, message: data.message, response: data.response }
+    const { data } = await http.post<{
+      sent: boolean
+      code: string
+      message: string
+      request: unknown
+      response: unknown
+    }>(`/site/sms/templates/${testRow.value.id}/test`, { phone })
+    testResult.value = {
+      sent: data.sent,
+      message: data.message,
+      request: data.request,
+      response: data.response,
+    }
   } catch (e: unknown) {
     testResult.value = {
       sent: false,
       message: e instanceof Error ? e.message : '发送失败',
+      request: null,
       response: null,
     }
   } finally {
@@ -290,7 +299,14 @@ onMounted(load)
       </el-form>
       <template v-if="testResult">
         <el-alert :type="testResult.sent ? 'success' : 'error'" :title="testResult.message" :closable="false" show-icon />
-        <pre v-if="testResult.response" class="test-response">{{ JSON.stringify(testResult.response, null, 2) }}</pre>
+        <div v-if="testResult.request" class="test-block">
+          <div class="test-label">输入</div>
+          <pre class="test-response">{{ JSON.stringify(testResult.request, null, 2) }}</pre>
+        </div>
+        <div v-if="testResult.response" class="test-block">
+          <div class="test-label">输出</div>
+          <pre class="test-response">{{ JSON.stringify(testResult.response, null, 2) }}</pre>
+        </div>
       </template>
       <template #footer>
         <el-button @click="testVisible = false">取消</el-button>
@@ -356,8 +372,16 @@ h4 {
   color: var(--el-text-color-secondary);
   line-height: 1.5;
 }
+.test-block {
+  margin-top: 12px;
+}
+.test-label {
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
 .test-response {
-  margin: 12px 0 0;
+  margin: 0;
   padding: 12px;
   max-height: 240px;
   overflow: auto;
