@@ -445,7 +445,7 @@ def consume_membership(
     return record
 
 
-def void_membership(db: Session, membership: Membership, *, actor_staff_id: int, site_id: int) -> Membership:
+def void_membership(db: Session, membership: Membership, *, actor_staff_id: int | None, site_id: int) -> Membership:
     if membership.status == MembershipStatus.VOID.value:
         return membership
     membership.status = MembershipStatus.VOID.value

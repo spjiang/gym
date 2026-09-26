@@ -1080,6 +1080,10 @@ def list_my_orders(
         merchants = db.scalars(select(Merchant).where(Merchant.id.in_(merchant_ids))).all()
         names = {m.id: m.name for m in merchants}
     refunds = _latest_refunds(db, [row.id for row in rows])
+    from app.systems.platform.services.refunds import refresh_processing_refunds
+
+    if refresh_processing_refunds(db, list(refunds.values())):
+        db.commit()
     result: list[MemberOrderOut] = []
     for row in rows:
         item = OrderOut.model_validate(row)
@@ -1105,6 +1109,10 @@ def list_my_refunds(
         .offset(offset)
         .limit(limit)
     ).all()
+    from app.systems.platform.services.refunds import refresh_processing_refunds
+
+    if refresh_processing_refunds(db, [intent for intent, *_rest in rows]):
+        db.commit()
     return [
         MemberRefundOut(
             id=intent.id,

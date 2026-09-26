@@ -133,6 +133,12 @@ async def wechat_refund_notify(request: Request, db: Session = Depends(get_db)):
     if intent is None:
         return record_notify_failure(request, "refund intent not found", extra={"out_refund_no": out_refund_no})
     lock_order(db, intent.order_id, site_id=intent.site_id)
+    notify_raw = parsed.get("raw")
+    if isinstance(notify_raw, dict):
+        intent.wechat_payload = notify_raw
+        refund_id = notify_raw.get("refund_id")
+        if refund_id and not intent.provider_ref:
+            intent.provider_ref = str(refund_id)
     apply_refund_success(db, intent)
     db.commit()
     return {"code": "SUCCESS", "message": "成功"}

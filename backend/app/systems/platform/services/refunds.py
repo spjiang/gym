@@ -34,7 +34,7 @@ from app.systems.platform.services.payment_capture import new_out_refund_no
 from app.systems.platform.services.payment_settings import resolve_payment_settings
 from app.systems.platform.services.payouts import sync_open_commission_payouts
 from app.systems.platform.services.rebate import reverse_order_rebate
-from app.systems.platform.services.wechat_pay import create_wechat_refund
+from app.systems.platform.services.wechat_pay import create_wechat_refund, query_wechat_refund
 
 
 def _now() -> datetime:
@@ -353,10 +353,13 @@ def create_refund(
             reason=reason,
         )
         intent.provider_ref = result.provider_ref
+        if result.raw:
+            intent.wechat_payload = result.raw
         if result.status == "SUCCESS" or result.dry_run:
             apply_refund_success(db, intent, actor_staff_id=actor_staff_id)
         else:
             intent.status = "processing"
+            refresh_processing_refunds(db, [intent])
     else:
         apply_refund_success(db, intent, actor_staff_id=actor_staff_id)
 
@@ -463,6 +466,36 @@ def apply_refund_success(
     return order
 
 
+def refresh_processing_refunds(db: Session, intents: list[RefundIntent]) -> bool:
+    """处理中的微信退款向微信核对。客人已到账则落账，避免只等回调。"""
+    changed = False
+    for intent in intents:
+        if intent.status != "processing" or intent.channel != PaymentChannel.WECHAT_ORIGINAL.value:
+            continue
+        order = db.get(Order, intent.order_id)
+        if order is None:
+            continue
+        cfg = resolve_payment_settings(db, order.site_id)
+        try:
+            result = query_wechat_refund(cfg, out_refund_no=intent.out_refund_no)
+        except AppError:
+            continue
+        if result.provider_ref and not intent.provider_ref:
+            intent.provider_ref = result.provider_ref
+            changed = True
+        if result.raw:
+            intent.wechat_payload = result.raw
+            changed = True
+        if result.status == "SUCCESS":
+            apply_refund_success(db, intent, actor_staff_id=intent.actor_staff_id)
+            changed = True
+        elif result.status in ("CLOSED", "ABNORMAL"):
+            intent.status = "failed"
+            intent.error_message = "微信退款已关闭" if result.status == "CLOSED" else "微信退款异常"
+            changed = True
+    return changed
+
+
 def _cancel_activity_registration(db: Session, order: Order, *, actor_staff_id: int | None) -> None:
     """活动订单全额退款后释放名额；已签到保留到场事实，名额仍占。"""
     registration = db.scalar(
@@ -494,7 +527,7 @@ def _void_entitlements(db: Session, order: Order, *, actor_staff_id: int | None)
                 void_membership(
                     db,
                     m,
-                    actor_staff_id=actor_staff_id or 0,
+                    actor_staff_id=actor_staff_id,
                     site_id=order.site_id,
                 )
     elif order.order_type == "pt_package":

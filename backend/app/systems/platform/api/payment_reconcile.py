@@ -16,7 +16,7 @@ from app.systems.platform.models.member import Member
 from app.systems.platform.models.payment_settings import PaymentIntent, RefundIntent
 from app.systems.platform.services.audit import write_audit
 from app.systems.platform.services.order_fulfill import fulfill_paid_order, mark_intent_succeeded
-from app.systems.platform.services.refunds import apply_refund_success
+from app.systems.platform.services.refunds import apply_refund_success, refresh_processing_refunds
 
 router = APIRouter(prefix="/site/payment-reconcile", tags=["payment-reconcile"])
 
@@ -166,7 +166,11 @@ def list_reconcile_items(
                 RefundIntent.status.in_(("processing", "failed", "created")),
             )
         ).all()
+        if refresh_processing_refunds(db, list(rows)):
+            db.commit()
         for it in rows:
+            if it.status not in ("processing", "failed", "created"):
+                continue
             if it.status == "created" and it.succeeded_at is None:
                 # 线下应已成功；created 残留视为异常
                 pass

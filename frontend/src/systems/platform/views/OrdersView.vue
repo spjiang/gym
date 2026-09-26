@@ -473,8 +473,8 @@ onMounted(load)
       />
     </div>
 
-    <el-drawer v-model="detailVisible" title="订单详情" size="760px" destroy-on-close>
-      <div v-loading="detailLoading">
+    <el-dialog v-model="detailVisible" title="收款详情" width="920px" align-center destroy-on-close>
+      <div v-loading="detailLoading" class="detail-body">
         <template v-if="detail">
           <header class="detail-head">
             <div>
@@ -568,7 +568,7 @@ onMounted(load)
           </div>
         </template>
       </div>
-    </el-drawer>
+    </el-dialog>
 
     <el-dialog v-model="dialogVisible" title="创建订单（线下收款）" width="480px" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="90px">
@@ -624,6 +624,11 @@ onMounted(load)
   margin: 6px 0 0;
   font-size: 12px;
   color: var(--admin-ink-muted);
+}
+.detail-body {
+  max-height: 72vh;
+  overflow: auto;
+  padding-right: 4px;
 }
 .detail-head {
   display: flex;

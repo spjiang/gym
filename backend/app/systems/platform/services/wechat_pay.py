@@ -413,6 +413,7 @@ class WechatRefundResult:
     status: str  # SUCCESS / PROCESSING / …
     provider_ref: str | None
     dry_run: bool
+    raw: dict | None = None
 
 
 def create_wechat_refund(
@@ -463,4 +464,35 @@ def create_wechat_refund(
         status=data.get("status") or "PROCESSING",
         provider_ref=data.get("refund_id"),
         dry_run=False,
+        raw=data,
+    )
+
+
+def query_wechat_refund(cfg: EffectivePaymentSettings, *, out_refund_no: str) -> WechatRefundResult:
+    """按商户退款单号向微信查询退款结果。微信受理后常先返回处理中，到账以查询或回调为准。"""
+    if cfg.dry_run:
+        return WechatRefundResult(
+            out_refund_no=out_refund_no,
+            status="PROCESSING",
+            provider_ref=None,
+            dry_run=True,
+        )
+    if not cfg.mch_id or not cfg.mch_private_key or not cfg.mch_serial_no:
+        raise AppError("wechat_unconfigured", "查退款需商户私钥与证书序列号", status_code=503)
+    path = f"/v3/refund/domestic/refunds/{out_refund_no}"
+    auth = _authorization(cfg, "GET", path, "")
+    with httpx.Client(timeout=20.0) as client:
+        resp = client.get(
+            f"https://api.mch.weixin.qq.com{path}",
+            headers=_request_headers(cfg, auth, json_body=False),
+        )
+    if resp.status_code >= 300:
+        raise AppError("wechat_api_error", f"查询退款失败: {resp.text[:300]}", status_code=502)
+    data = resp.json()
+    return WechatRefundResult(
+        out_refund_no=out_refund_no,
+        status=data.get("status") or "PROCESSING",
+        provider_ref=data.get("refund_id"),
+        dry_run=False,
+        raw=data,
     )

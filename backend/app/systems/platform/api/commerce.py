@@ -358,6 +358,10 @@ def list_refunds(
     rows = db.execute(
         base.order_by(RefundIntent.id.desc()).offset((page - 1) * page_size).limit(page_size)
     ).all()
+    from app.systems.platform.services.refunds import refresh_processing_refunds
+
+    if refresh_processing_refunds(db, [intent for intent, *_rest in rows]):
+        db.commit()
     items = [
         RefundRecordOut(
             id=intent.id,
@@ -381,6 +385,64 @@ def list_refunds(
         for intent, order, merchant, member, staff in rows
     ]
     return PageOut(items=items, total=total, page=page, page_size=page_size)
+
+
+class RefundDetailOut(RefundRecordOut):
+    error_message: str | None = None
+    out_trade_no: str | None = None
+    suggested_amount: Decimal | None = None
+    force: bool = False
+    wechat_payload: dict | None = None
+    order: OrderDetailOut
+
+
+@router.get("/refunds/{refund_id}", response_model=RefundDetailOut)
+def get_refund(
+    refund_id: int,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    """退款详情：退款单、原收款订单、微信回传、店铺与会员。"""
+    ctx.require_permission("order:read", "order:write")
+    intent = db.get(RefundIntent, refund_id)
+    if intent is None or intent.site_id != ctx.site_id:
+        raise AppError("not_found", "退款记录不存在", status_code=404)
+    order = db.get(Order, intent.order_id)
+    if order is None:
+        raise AppError("not_found", "原订单不存在", status_code=404)
+    ctx.assert_merchant_access(order.merchant_id)
+    from app.systems.platform.services.refunds import refresh_processing_refunds
+
+    if refresh_processing_refunds(db, [intent]):
+        db.commit()
+    merchant = db.get(Merchant, order.merchant_id)
+    member = db.get(Member, order.member_id) if order.member_id is not None else None
+    staff = db.get(StaffUser, intent.actor_staff_id) if intent.actor_staff_id else None
+    return RefundDetailOut(
+        id=intent.id,
+        order_id=order.id,
+        order_no=order.order_no,
+        title=order.title,
+        merchant_id=order.merchant_id,
+        merchant_name=merchant.name if merchant is not None else None,
+        member_name=member.name if member is not None else None,
+        member_phone=member.phone if member is not None else None,
+        amount=intent.amount,
+        channel=intent.channel,
+        status=intent.status,
+        reason=intent.reason,
+        out_refund_no=intent.out_refund_no,
+        provider_ref=intent.provider_ref,
+        actor_name=staff.display_name if staff is not None else None,
+        created_at=intent.created_at,
+        succeeded_at=intent.succeeded_at,
+        error_message=intent.error_message,
+        out_trade_no=intent.out_trade_no,
+        suggested_amount=intent.suggested_amount,
+        force=bool(intent.force),
+        wechat_payload=intent.wechat_payload,
+        order=_order_detail(db, order),
+    )
 
 
 @router.get("/{order_id}", response_model=OrderDetailOut)
