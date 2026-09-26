@@ -178,7 +178,13 @@ function merchantStatusLabel(status?: string | null) {
 }
 
 function showText(value?: string | null) {
-  return value && value.trim() ? value : '—'
+  return value && value.trim() ? value : ''
+}
+
+function bankLabel(code: string) {
+  if (!code) return '—'
+  if (code === 'OTHERS') return '零钱或其他'
+  return code
 }
 
 const wechatSummary = computed(() => {
@@ -189,8 +195,8 @@ const wechatSummary = computed(() => {
   const fen = amount?.payer_total ?? amount?.total
   return [
     ['交易状态', String(raw.trade_state_desc || raw.trade_state || '—')],
-    ['支付完成时间', String(raw.success_time || '—')],
-    ['付款银行', String(raw.bank_type || '—')],
+    ['支付完成时间', formatTime(raw.success_time ? String(raw.success_time) : null)],
+    ['付款银行', bankLabel(String(raw.bank_type || ''))],
     ['用户支付', fen == null ? '—' : `¥${(Number(fen) / 100).toFixed(2)}`],
     ['付款人 OpenID', String(payer?.openid || '—')],
   ]
@@ -473,98 +479,114 @@ onMounted(load)
       />
     </div>
 
-    <el-dialog v-model="detailVisible" title="收款详情" width="920px" align-center destroy-on-close>
-      <div v-loading="detailLoading" class="detail-body">
+    <el-dialog v-model="detailVisible" title="收款详情" width="840px" align-center destroy-on-close>
+      <div v-loading="detailLoading" class="bill">
         <template v-if="detail">
-          <header class="detail-head">
+          <header class="bill-hero">
             <div>
-              <p class="detail-no">{{ detail.order_no || '—' }}</p>
-              <p class="detail-sub">{{ detail.title }} · {{ orderTypeLabel(detail.order_type) }}</p>
+              <p class="bill-kicker">{{ orderTypeLabel(detail.order_type) }} · {{ merchantName(detail) }}</p>
+              <h3>{{ detail.title }}</h3>
+              <p class="bill-no">{{ detail.order_no || '—' }}</p>
             </div>
-            <div class="detail-amount">
-              <el-tag :type="statusMeta(detail.status).type">{{ statusMeta(detail.status).label }}</el-tag>
+            <div class="bill-sum">
+              <span class="bill-status" :data-tone="statusMeta(detail.status).type">
+                {{ statusMeta(detail.status).label }}
+              </span>
               <strong>¥{{ detail.amount }}</strong>
+              <span>实付</span>
             </div>
           </header>
 
-          <section class="detail-block">
-            <h4>订单信息</h4>
-            <el-descriptions :column="2" border>
-              <el-descriptions-item label="下单时间">{{ formatTime(detail.created_at) }}</el-descriptions-item>
-              <el-descriptions-item label="支付时间">{{ formatTime(detail.paid_at) }}</el-descriptions-item>
-              <el-descriptions-item label="订单金额">¥{{ detail.original_amount || detail.amount }}</el-descriptions-item>
-              <el-descriptions-item label="优惠">¥{{ detail.promotion_discount_amount || '0.00' }}</el-descriptions-item>
-              <el-descriptions-item label="实付">¥{{ detail.amount }}</el-descriptions-item>
-              <el-descriptions-item label="已退">¥{{ detail.refunded_amount || '0.00' }}</el-descriptions-item>
-              <el-descriptions-item v-if="detail.pickup_code" label="取餐号">{{ detail.pickup_code }}</el-descriptions-item>
-              <el-descriptions-item v-if="detail.customer_note" label="顾客备注" :span="2">
-                {{ detail.customer_note }}
-              </el-descriptions-item>
-            </el-descriptions>
-          </section>
+          <div class="bill-metrics">
+            <div>
+              <span>订单金额</span>
+              <b>¥{{ detail.original_amount || detail.amount }}</b>
+            </div>
+            <div>
+              <span>优惠</span>
+              <b>¥{{ detail.promotion_discount_amount || '0.00' }}</b>
+            </div>
+            <div>
+              <span>已退</span>
+              <b>¥{{ detail.refunded_amount || '0.00' }}</b>
+            </div>
+            <div>
+              <span>下单</span>
+              <b>{{ formatTime(detail.created_at) }}</b>
+            </div>
+            <div>
+              <span>支付</span>
+              <b>{{ formatTime(detail.paid_at) }}</b>
+            </div>
+          </div>
 
-          <section class="detail-block">
-            <h4>支付信息</h4>
-            <el-descriptions :column="1" border>
-              <el-descriptions-item label="商户订单号">{{ detail.out_trade_no || '—' }}</el-descriptions-item>
-              <el-descriptions-item label="微信支付订单号">{{ detail.wechat_transaction_id || '—' }}</el-descriptions-item>
-            </el-descriptions>
-            <el-table v-if="detail.payments?.length" :data="detail.payments" size="small" class="pay-table">
-              <el-table-column label="类型" width="80">
-                <template #default="{ row }">{{ payKindLabel(row.kind) }}</template>
-              </el-table-column>
-              <el-table-column label="渠道" width="120">
-                <template #default="{ row }">{{ payChannelLabel(row.channel) }}</template>
-              </el-table-column>
-              <el-table-column label="金额" width="100">
-                <template #default="{ row }">¥{{ row.amount }}</template>
-              </el-table-column>
-              <el-table-column label="时间" min-width="160">
-                <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
-              </el-table-column>
-              <el-table-column prop="note" label="备注" min-width="120" />
-            </el-table>
+          <p v-if="detail.pickup_code || detail.customer_note" class="bill-note">
+            <template v-if="detail.pickup_code">取餐号 {{ detail.pickup_code }}</template>
+            <template v-if="detail.customer_note">{{ detail.pickup_code ? ' · ' : '' }}{{ detail.customer_note }}</template>
+          </p>
+
+          <section class="bill-card">
+            <h4>收退款流水</h4>
+            <ul v-if="detail.payments?.length" class="ledger">
+              <li v-for="row in detail.payments" :key="row.id">
+                <i :data-kind="row.kind" />
+                <div>
+                  <b>{{ payKindLabel(row.kind) }} · {{ payChannelLabel(row.channel) }}</b>
+                  <small>{{ formatTime(row.created_at) }}<template v-if="row.note"> · {{ row.note }}</template></small>
+                </div>
+                <em>¥{{ row.amount }}</em>
+              </li>
+            </ul>
             <p v-else class="empty-line">暂无收退款流水</p>
-            <template v-if="wechatSummary.length">
-              <h5>微信返回</h5>
-              <el-descriptions :column="1" border>
-                <el-descriptions-item v-for="item in wechatSummary" :key="item[0]" :label="item[0]">
-                  {{ item[1] }}
-                </el-descriptions-item>
-              </el-descriptions>
-              <el-collapse class="raw-fold">
-                <el-collapse-item title="查看微信原始数据" name="raw">
-                  <pre class="raw-json">{{ JSON.stringify(detail.wechat_payload, null, 2) }}</pre>
-                </el-collapse-item>
-              </el-collapse>
-            </template>
+            <div v-if="detail.out_trade_no || detail.wechat_transaction_id" class="id-row">
+              <span v-if="detail.out_trade_no">商户订单号 <code>{{ detail.out_trade_no }}</code></span>
+              <span v-if="detail.wechat_transaction_id">微信支付订单号 <code>{{ detail.wechat_transaction_id }}</code></span>
+            </div>
           </section>
 
-          <div class="detail-grid">
-            <section class="detail-block">
+          <section v-if="wechatSummary.length" class="bill-card">
+            <h4>微信返回</h4>
+            <dl class="kv">
+              <div v-for="item in wechatSummary" :key="item[0]">
+                <dt>{{ item[0] }}</dt>
+                <dd>{{ item[1] }}</dd>
+              </div>
+            </dl>
+            <el-collapse class="raw-fold">
+              <el-collapse-item title="查看微信原始数据" name="raw">
+                <pre class="raw-json">{{ JSON.stringify(detail.wechat_payload, null, 2) }}</pre>
+              </el-collapse-item>
+            </el-collapse>
+          </section>
+
+          <div class="people">
+            <article class="bill-card">
               <h4>店铺</h4>
-              <el-descriptions v-if="detail.store" :column="1" border>
-                <el-descriptions-item label="名称">{{ detail.store.name }}</el-descriptions-item>
-                <el-descriptions-item label="状态">{{ merchantStatusLabel(detail.store.status) }}</el-descriptions-item>
-                <el-descriptions-item label="主体">{{ showText(detail.store.legal_name) }}</el-descriptions-item>
-                <el-descriptions-item label="地址">{{ showText(detail.store.business_address) }}</el-descriptions-item>
-                <el-descriptions-item label="电话">{{ showText(detail.store.contact_phone) }}</el-descriptions-item>
-                <el-descriptions-item label="营业时间">{{ showText(detail.store.business_hours) }}</el-descriptions-item>
-              </el-descriptions>
+              <template v-if="detail.store">
+                <strong>{{ detail.store.name }}</strong>
+                <p class="people-sub">{{ merchantStatusLabel(detail.store.status) }}</p>
+                <ul>
+                  <li v-if="showText(detail.store.legal_name)"><span>主体</span>{{ detail.store.legal_name }}</li>
+                  <li v-if="showText(detail.store.business_address)"><span>地址</span>{{ detail.store.business_address }}</li>
+                  <li v-if="showText(detail.store.contact_phone)"><span>电话</span>{{ detail.store.contact_phone }}</li>
+                  <li v-if="showText(detail.store.business_hours)"><span>营业</span>{{ detail.store.business_hours }}</li>
+                </ul>
+              </template>
               <p v-else class="empty-line">{{ merchantName(detail) }}</p>
-            </section>
-            <section class="detail-block">
-              <h4>用户</h4>
-              <el-descriptions v-if="detail.buyer" :column="1" border>
-                <el-descriptions-item label="姓名">{{ detail.buyer.name }}</el-descriptions-item>
-                <el-descriptions-item label="手机">{{ detail.buyer.phone }}</el-descriptions-item>
-                <el-descriptions-item label="性别">{{ genderLabel(detail.buyer.gender) }}</el-descriptions-item>
-                <el-descriptions-item label="邮箱">{{ showText(detail.buyer.email) }}</el-descriptions-item>
-                <el-descriptions-item label="注册时间">{{ formatTime(detail.buyer.created_at) }}</el-descriptions-item>
-                <el-descriptions-item label="备注">{{ showText(detail.buyer.remark) }}</el-descriptions-item>
-              </el-descriptions>
+            </article>
+            <article class="bill-card">
+              <h4>会员</h4>
+              <template v-if="detail.buyer">
+                <strong>{{ detail.buyer.name }}</strong>
+                <p class="people-sub">{{ detail.buyer.phone }} · {{ genderLabel(detail.buyer.gender) }}</p>
+                <ul>
+                  <li v-if="showText(detail.buyer.email)"><span>邮箱</span>{{ detail.buyer.email }}</li>
+                  <li><span>注册</span>{{ formatTime(detail.buyer.created_at) }}</li>
+                  <li v-if="showText(detail.buyer.remark)"><span>备注</span>{{ detail.buyer.remark }}</li>
+                </ul>
+              </template>
               <p v-else class="empty-line">{{ memberLabel(detail) }}</p>
-            </section>
+            </article>
           </div>
         </template>
       </div>
@@ -625,60 +647,211 @@ onMounted(load)
   font-size: 12px;
   color: var(--admin-ink-muted);
 }
-.detail-body {
+.bill {
   max-height: 72vh;
   overflow: auto;
-  padding-right: 4px;
+  padding-right: 2px;
 }
-.detail-head {
+.bill-hero {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: 20px;
+  padding: 4px 2px 16px;
 }
-.detail-no {
+.bill-kicker,
+.people-sub,
+.empty-line {
   margin: 0;
-  font-size: 16px;
-  font-weight: 600;
+  color: var(--admin-ink-muted);
+  font-size: 13px;
 }
-.detail-sub {
+.bill-hero h3 {
+  margin: 4px 0 0;
+  font-size: 22px;
+  line-height: 1.3;
+}
+.bill-no {
   margin: 6px 0 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
   color: var(--admin-ink-muted);
 }
-.detail-amount {
+.bill-sum {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
+  gap: 4px;
+  min-width: 120px;
+}
+.bill-sum strong {
+  font-size: 32px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+.bill-sum > span:last-child {
+  color: var(--admin-ink-muted);
+  font-size: 12px;
+}
+.bill-status {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: #efe9e0;
+  color: #44403c;
+}
+.bill-status[data-tone='success'] {
+  background: #e7f6ee;
+  color: #0f7b45;
+}
+.bill-status[data-tone='warning'] {
+  background: #fff1e4;
+  color: #c2410c;
+}
+.bill-status[data-tone='danger'] {
+  background: #fdecec;
+  color: #b42318;
+}
+.bill-metrics {
+  display: grid;
+  grid-template-columns: 0.8fr 0.7fr 0.7fr 1.3fr 1.3fr;
   gap: 8px;
+  margin-bottom: 14px;
 }
-.detail-amount strong {
-  font-size: 22px;
+.bill-metrics div {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #f7f2ea;
 }
-.detail-block {
-  margin-bottom: 18px;
+.bill-metrics span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--admin-ink-muted);
+  font-size: 12px;
 }
-.detail-block h4,
-.detail-block h5 {
-  margin: 0 0 8px;
+.bill-metrics b {
+  font-size: 13px;
+  font-weight: 600;
 }
-.detail-grid {
+.bill-note {
+  margin: 0 0 14px;
+  color: #44403c;
+  font-size: 13px;
+}
+.bill-card {
+  margin-bottom: 12px;
+  padding: 14px 16px;
+  border: 1px solid #efe9e0;
+  border-radius: 14px;
+  background: #fff;
+}
+.bill-card h4 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #57534e;
+}
+.ledger {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ledger li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+}
+.ledger li + li {
+  border-top: 1px solid #f3eee6;
+}
+.ledger i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #0f7b45;
+  flex: none;
+}
+.ledger i[data-kind='refund'] {
+  background: #b42318;
+}
+.ledger div {
+  flex: 1;
+  min-width: 0;
+}
+.ledger b {
+  display: block;
+  font-size: 14px;
+}
+.ledger small,
+.id-row {
+  color: var(--admin-ink-muted);
+  font-size: 12px;
+}
+.ledger em {
+  font-style: normal;
+  font-weight: 650;
+}
+.id-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.id-row code,
+.kv dd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.kv {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: 10px 16px;
+  margin: 0;
 }
-.pay-table {
-  margin-top: 10px;
+.kv div {
+  min-width: 0;
 }
-.empty-line {
-  margin: 8px 0 0;
+.kv dt {
+  margin-bottom: 2px;
+  color: var(--admin-ink-muted);
+  font-size: 12px;
+}
+.kv dd {
+  margin: 0;
+  font-size: 13px;
+  word-break: break-all;
+}
+.people {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.people strong {
+  display: block;
+  font-size: 16px;
+}
+.people ul {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+.people li {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 13px;
+}
+.people li span {
+  flex: none;
+  width: 36px;
   color: var(--admin-ink-muted);
 }
 .raw-fold {
-  margin-top: 10px;
+  margin-top: 8px;
+  border: none;
 }
 .raw-json {
   margin: 0;
-  max-height: 240px;
+  max-height: 220px;
   overflow: auto;
   font-size: 12px;
   white-space: pre-wrap;

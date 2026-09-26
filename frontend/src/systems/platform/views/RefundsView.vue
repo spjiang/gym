@@ -166,7 +166,7 @@ function merchantStatusLabel(status?: string | null) {
 }
 
 function showText(value?: string | null) {
-  return value && value.trim() ? value : '—'
+  return value && value.trim() ? value : ''
 }
 
 function fenYuan(value: unknown) {
@@ -218,7 +218,7 @@ const refundWechatSummary = computed(() => {
   return [
     ['退款状态', wechatRefundStatus(status)],
     ['退款入账账户', String(raw.user_received_account || '—')],
-    ['退款成功时间', String(raw.success_time || '—')],
+    ['退款成功时间', formatTime(raw.success_time ? String(raw.success_time) : null)],
     ['微信退款单号', String(raw.refund_id || detail.value?.provider_ref || '—')],
     ['微信支付订单号', String(raw.transaction_id || '—')],
     ['商户退款单号', String(raw.out_refund_no || detail.value?.out_refund_no || '—')],
@@ -236,8 +236,8 @@ const payWechatSummary = computed(() => {
   const payer = raw.payer as { openid?: string } | undefined
   return [
     ['交易状态', String(raw.trade_state_desc || raw.trade_state || '—')],
-    ['支付完成时间', String(raw.success_time || '—')],
-    ['付款银行', String(raw.bank_type || '—')],
+    ['支付完成时间', formatTime(raw.success_time ? String(raw.success_time) : null)],
+    ['付款银行', String(raw.bank_type || '') === 'OTHERS' ? '零钱或其他' : String(raw.bank_type || '—')],
     ['用户支付', fenYuan(amount?.payer_total ?? amount?.total)],
     ['付款人 OpenID', String(payer?.openid || '—')],
   ]
@@ -407,139 +407,147 @@ onMounted(() => {
       />
     </div>
 
-    <el-dialog v-model="detailVisible" title="退款详情" width="920px" align-center destroy-on-close>
-      <div v-loading="detailLoading" class="detail-body">
+    <el-dialog v-model="detailVisible" title="退款详情" width="840px" align-center destroy-on-close>
+      <div v-loading="detailLoading" class="bill">
         <template v-if="detail">
-          <header class="detail-head">
+          <header class="bill-hero">
             <div>
-              <p class="detail-no">{{ detail.out_refund_no }}</p>
-              <p class="detail-sub">{{ detail.title }} · 原订单 {{ detail.order_no }}</p>
+              <p class="bill-kicker">{{ detail.merchant_name || '—' }} · {{ channelLabel(detail.channel) }}</p>
+              <h3>{{ detail.title }}</h3>
+              <p class="bill-no">{{ detail.out_refund_no }}</p>
             </div>
-            <div class="detail-amount">
-              <el-tag :type="statusOf(detail.status).type">{{ statusOf(detail.status).label }}</el-tag>
+            <div class="bill-sum">
+              <span class="bill-status" :data-tone="statusOf(detail.status).type">{{ statusOf(detail.status).label }}</span>
               <strong>¥{{ detail.amount }}</strong>
+              <span>退款</span>
             </div>
           </header>
 
-          <section class="detail-block">
-            <h4>退款信息</h4>
-            <el-descriptions :column="2" border>
-              <el-descriptions-item label="退款金额">¥{{ detail.amount }}</el-descriptions-item>
-              <el-descriptions-item label="建议退款">¥{{ detail.suggested_amount || '—' }}</el-descriptions-item>
-              <el-descriptions-item label="退款方式">{{ channelLabel(detail.channel) }}</el-descriptions-item>
-              <el-descriptions-item label="退款原因">{{ detail.reason || '—' }}</el-descriptions-item>
-              <el-descriptions-item label="商户退款单号">{{ detail.out_refund_no }}</el-descriptions-item>
-              <el-descriptions-item label="微信退款单号">{{ detail.provider_ref || '—' }}</el-descriptions-item>
-              <el-descriptions-item label="原商户订单号">{{ detail.out_trade_no || detail.order?.out_trade_no || '—' }}</el-descriptions-item>
-              <el-descriptions-item label="操作人">{{ detail.actor_name || '系统' }}</el-descriptions-item>
-              <el-descriptions-item label="发起时间">{{ formatTime(detail.created_at) }}</el-descriptions-item>
-              <el-descriptions-item label="到账时间">{{ formatTime(detail.succeeded_at) }}</el-descriptions-item>
-              <el-descriptions-item v-if="detail.error_message" label="失败原因" :span="2">
-                {{ detail.error_message }}
-              </el-descriptions-item>
-            </el-descriptions>
-          </section>
+          <div class="bill-metrics">
+            <div>
+              <span>建议退款</span>
+              <b>¥{{ detail.suggested_amount || '—' }}</b>
+            </div>
+            <div>
+              <span>原因</span>
+              <b>{{ detail.reason || '—' }}</b>
+            </div>
+            <div>
+              <span>操作人</span>
+              <b>{{ detail.actor_name || '系统' }}</b>
+            </div>
+            <div>
+              <span>发起</span>
+              <b>{{ formatTime(detail.created_at) }}</b>
+            </div>
+            <div>
+              <span>到账</span>
+              <b>{{ formatTime(detail.succeeded_at) }}</b>
+            </div>
+          </div>
+          <p v-if="detail.error_message" class="bill-note danger">{{ detail.error_message }}</p>
 
-          <section class="detail-block">
+          <section class="bill-card">
             <h4>微信退款返回</h4>
-            <template v-if="refundWechatSummary.length">
-              <el-descriptions :column="2" border>
-                <el-descriptions-item v-for="item in refundWechatSummary" :key="item[0]" :label="item[0]">
-                  {{ item[1] }}
-                </el-descriptions-item>
-              </el-descriptions>
-              <el-collapse class="raw-fold">
-                <el-collapse-item title="查看微信退款原始数据" name="refund-raw">
-                  <pre class="raw-json">{{ JSON.stringify(detail.wechat_payload, null, 2) }}</pre>
-                </el-collapse-item>
-              </el-collapse>
-            </template>
+            <dl v-if="refundWechatSummary.length" class="kv">
+              <div v-for="item in refundWechatSummary" :key="item[0]">
+                <dt>{{ item[0] }}</dt>
+                <dd>{{ item[1] }}</dd>
+              </div>
+            </dl>
             <p v-else class="empty-line">暂无微信退款回传。处理中的退款会在打开详情时向微信核对。</p>
+            <el-collapse v-if="detail.wechat_payload" class="raw-fold">
+              <el-collapse-item title="查看微信退款原始数据" name="refund-raw">
+                <pre class="raw-json">{{ JSON.stringify(detail.wechat_payload, null, 2) }}</pre>
+              </el-collapse-item>
+            </el-collapse>
           </section>
 
-          <section v-if="detail.order" class="detail-block">
+          <section v-if="detail.order" class="bill-card">
             <h4>原收款订单</h4>
-            <header class="detail-head inner">
+            <div class="origin">
               <div>
-                <p class="detail-no">{{ detail.order.order_no || '—' }}</p>
-                <p class="detail-sub">{{ detail.order.title }} · {{ orderTypeLabel(detail.order.order_type) }}</p>
+                <b>{{ detail.order.title }}</b>
+                <small>{{ detail.order.order_no }} · {{ orderTypeLabel(detail.order.order_type) }}</small>
               </div>
-              <div class="detail-amount">
-                <el-tag :type="orderStatusOf(detail.order.status).type">
+              <div class="origin-sum">
+                <span class="bill-status" :data-tone="orderStatusOf(detail.order.status).type">
                   {{ orderStatusOf(detail.order.status).label }}
-                </el-tag>
+                </span>
                 <strong>¥{{ detail.order.amount }}</strong>
               </div>
-            </header>
-            <el-descriptions :column="2" border>
-              <el-descriptions-item label="下单时间">{{ formatTime(detail.order.created_at) }}</el-descriptions-item>
-              <el-descriptions-item label="支付时间">{{ formatTime(detail.order.paid_at) }}</el-descriptions-item>
-              <el-descriptions-item label="订单金额">¥{{ detail.order.original_amount || detail.order.amount }}</el-descriptions-item>
-              <el-descriptions-item label="优惠">¥{{ detail.order.promotion_discount_amount || '0.00' }}</el-descriptions-item>
-              <el-descriptions-item label="实付">¥{{ detail.order.amount }}</el-descriptions-item>
-              <el-descriptions-item label="已退">¥{{ detail.order.refunded_amount || '0.00' }}</el-descriptions-item>
-              <el-descriptions-item label="商户订单号">{{ detail.order.out_trade_no || '—' }}</el-descriptions-item>
-              <el-descriptions-item label="微信支付订单号">{{ detail.order.wechat_transaction_id || '—' }}</el-descriptions-item>
-              <el-descriptions-item v-if="detail.order.pickup_code" label="取餐号">{{ detail.order.pickup_code }}</el-descriptions-item>
-              <el-descriptions-item v-if="detail.order.customer_note" label="顾客备注" :span="2">
-                {{ detail.order.customer_note }}
-              </el-descriptions-item>
-            </el-descriptions>
-            <el-table v-if="detail.order.payments?.length" :data="detail.order.payments" size="small" class="pay-table">
-              <el-table-column label="类型" width="80">
-                <template #default="{ row }">{{ payKindLabel(row.kind) }}</template>
-              </el-table-column>
-              <el-table-column label="渠道" width="120">
-                <template #default="{ row }">{{ payChannelLabel(row.channel) }}</template>
-              </el-table-column>
-              <el-table-column label="金额" width="100">
-                <template #default="{ row }">¥{{ row.amount }}</template>
-              </el-table-column>
-              <el-table-column label="时间" min-width="160">
-                <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
-              </el-table-column>
-              <el-table-column prop="note" label="备注" min-width="120" />
-            </el-table>
+            </div>
+            <dl class="kv">
+              <div>
+                <dt>下单</dt>
+                <dd>{{ formatTime(detail.order.created_at) }}</dd>
+              </div>
+              <div>
+                <dt>支付</dt>
+                <dd>{{ formatTime(detail.order.paid_at) }}</dd>
+              </div>
+              <div>
+                <dt>优惠</dt>
+                <dd>¥{{ detail.order.promotion_discount_amount || '0.00' }}</dd>
+              </div>
+              <div>
+                <dt>已退</dt>
+                <dd>¥{{ detail.order.refunded_amount || '0.00' }}</dd>
+              </div>
+            </dl>
+            <ul v-if="detail.order.payments?.length" class="ledger">
+              <li v-for="row in detail.order.payments" :key="row.id">
+                <i :data-kind="row.kind" />
+                <div>
+                  <b>{{ payKindLabel(row.kind) }} · {{ payChannelLabel(row.channel) }}</b>
+                  <small>{{ formatTime(row.created_at) }}<template v-if="row.note"> · {{ row.note }}</template></small>
+                </div>
+                <em>¥{{ row.amount }}</em>
+              </li>
+            </ul>
+            <div v-if="detail.order.out_trade_no || detail.order.wechat_transaction_id" class="id-row">
+              <span v-if="detail.order.out_trade_no">商户订单号 <code>{{ detail.order.out_trade_no }}</code></span>
+              <span v-if="detail.order.wechat_transaction_id">微信支付订单号 <code>{{ detail.order.wechat_transaction_id }}</code></span>
+            </div>
             <template v-if="payWechatSummary.length">
-              <h5>微信收款返回</h5>
-              <el-descriptions :column="1" border>
-                <el-descriptions-item v-for="item in payWechatSummary" :key="item[0]" :label="item[0]">
-                  {{ item[1] }}
-                </el-descriptions-item>
-              </el-descriptions>
-              <el-collapse class="raw-fold">
-                <el-collapse-item title="查看微信收款原始数据" name="pay-raw">
-                  <pre class="raw-json">{{ JSON.stringify(detail.order.wechat_payload, null, 2) }}</pre>
-                </el-collapse-item>
-              </el-collapse>
+              <h4 class="subhead">微信收款返回</h4>
+              <dl class="kv">
+                <div v-for="item in payWechatSummary" :key="item[0]">
+                  <dt>{{ item[0] }}</dt>
+                  <dd>{{ item[1] }}</dd>
+                </div>
+              </dl>
             </template>
           </section>
 
-          <div class="detail-grid">
-            <section class="detail-block">
+          <div class="people">
+            <article class="bill-card">
               <h4>店铺</h4>
-              <el-descriptions v-if="detail.order?.store" :column="1" border>
-                <el-descriptions-item label="名称">{{ detail.order.store.name }}</el-descriptions-item>
-                <el-descriptions-item label="状态">{{ merchantStatusLabel(detail.order.store.status) }}</el-descriptions-item>
-                <el-descriptions-item label="主体">{{ showText(detail.order.store.legal_name) }}</el-descriptions-item>
-                <el-descriptions-item label="地址">{{ showText(detail.order.store.business_address) }}</el-descriptions-item>
-                <el-descriptions-item label="电话">{{ showText(detail.order.store.contact_phone) }}</el-descriptions-item>
-                <el-descriptions-item label="营业时间">{{ showText(detail.order.store.business_hours) }}</el-descriptions-item>
-              </el-descriptions>
+              <template v-if="detail.order?.store">
+                <strong>{{ detail.order.store.name }}</strong>
+                <p class="people-sub">{{ merchantStatusLabel(detail.order.store.status) }}</p>
+                <ul>
+                  <li v-if="showText(detail.order.store.legal_name)"><span>主体</span>{{ detail.order.store.legal_name }}</li>
+                  <li v-if="showText(detail.order.store.business_address)"><span>地址</span>{{ detail.order.store.business_address }}</li>
+                  <li v-if="showText(detail.order.store.contact_phone)"><span>电话</span>{{ detail.order.store.contact_phone }}</li>
+                  <li v-if="showText(detail.order.store.business_hours)"><span>营业</span>{{ detail.order.store.business_hours }}</li>
+                </ul>
+              </template>
               <p v-else class="empty-line">{{ detail.merchant_name || '—' }}</p>
-            </section>
-            <section class="detail-block">
+            </article>
+            <article class="bill-card">
               <h4>会员</h4>
-              <el-descriptions v-if="detail.order?.buyer" :column="1" border>
-                <el-descriptions-item label="姓名">{{ detail.order.buyer.name }}</el-descriptions-item>
-                <el-descriptions-item label="手机">{{ detail.order.buyer.phone }}</el-descriptions-item>
-                <el-descriptions-item label="性别">{{ genderLabel(detail.order.buyer.gender) }}</el-descriptions-item>
-                <el-descriptions-item label="邮箱">{{ showText(detail.order.buyer.email) }}</el-descriptions-item>
-                <el-descriptions-item label="注册时间">{{ formatTime(detail.order.buyer.created_at) }}</el-descriptions-item>
-                <el-descriptions-item label="备注">{{ showText(detail.order.buyer.remark) }}</el-descriptions-item>
-              </el-descriptions>
+              <template v-if="detail.order?.buyer">
+                <strong>{{ detail.order.buyer.name }}</strong>
+                <p class="people-sub">{{ detail.order.buyer.phone }} · {{ genderLabel(detail.order.buyer.gender) }}</p>
+                <ul>
+                  <li v-if="showText(detail.order.buyer.email)"><span>邮箱</span>{{ detail.order.buyer.email }}</li>
+                  <li><span>注册</span>{{ formatTime(detail.order.buyer.created_at) }}</li>
+                  <li v-if="showText(detail.order.buyer.remark)"><span>备注</span>{{ detail.order.buyer.remark }}</li>
+                </ul>
+              </template>
               <p v-else class="empty-line">{{ memberLabel(detail) }}</p>
-            </section>
+            </article>
           </div>
         </template>
       </div>
@@ -569,66 +577,233 @@ onMounted(() => {
   display: flex;
   justify-content: flex-end;
 }
-.detail-body {
+.bill {
   max-height: 72vh;
   overflow: auto;
-  padding-right: 4px;
+  padding-right: 2px;
 }
-.detail-head {
+.bill-hero {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: 20px;
+  padding: 4px 2px 16px;
 }
-.detail-head.inner {
-  margin-top: 4px;
-}
-.detail-no {
+.bill-kicker,
+.people-sub,
+.empty-line {
   margin: 0;
-  font-size: 16px;
-  font-weight: 600;
+  color: var(--admin-ink-muted);
+  font-size: 13px;
 }
-.detail-sub {
+.bill-hero h3 {
+  margin: 4px 0 0;
+  font-size: 22px;
+  line-height: 1.3;
+}
+.bill-no {
   margin: 6px 0 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
   color: var(--admin-ink-muted);
 }
-.detail-amount {
+.bill-sum {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
+  gap: 4px;
+  min-width: 120px;
+}
+.bill-sum strong {
+  font-size: 32px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+.bill-sum > span:last-child {
+  color: var(--admin-ink-muted);
+  font-size: 12px;
+}
+.bill-status {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: #efe9e0;
+  color: #44403c;
+}
+.bill-status[data-tone='success'] {
+  background: #e7f6ee;
+  color: #0f7b45;
+}
+.bill-status[data-tone='warning'] {
+  background: #fff1e4;
+  color: #c2410c;
+}
+.bill-status[data-tone='danger'] {
+  background: #fdecec;
+  color: #b42318;
+}
+.bill-metrics {
+  display: grid;
+  grid-template-columns: 0.8fr 1fr 0.8fr 1.2fr 1.2fr;
   gap: 8px;
+  margin-bottom: 14px;
 }
-.detail-amount strong {
-  font-size: 22px;
+.bill-metrics div {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #f7f2ea;
 }
-.detail-block {
-  margin-bottom: 18px;
+.bill-metrics span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--admin-ink-muted);
+  font-size: 12px;
 }
-.detail-block h4,
-.detail-block h5 {
-  margin: 0 0 8px;
+.bill-metrics b {
+  font-size: 13px;
+  font-weight: 600;
 }
-.detail-block h5 {
-  margin-top: 12px;
+.bill-note {
+  margin: 0 0 14px;
+  color: #44403c;
+  font-size: 13px;
 }
-.detail-grid {
+.bill-note.danger {
+  color: #b42318;
+}
+.bill-card {
+  margin-bottom: 12px;
+  padding: 14px 16px;
+  border: 1px solid #efe9e0;
+  border-radius: 14px;
+  background: #fff;
+}
+.bill-card h4 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #57534e;
+}
+.subhead {
+  margin-top: 14px;
+}
+.origin {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.origin b {
+  display: block;
+}
+.origin small {
+  color: var(--admin-ink-muted);
+}
+.origin-sum {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.origin-sum strong {
+  font-size: 20px;
+}
+.ledger {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+.ledger li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+}
+.ledger li + li {
+  border-top: 1px solid #f3eee6;
+}
+.ledger i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #0f7b45;
+  flex: none;
+}
+.ledger i[data-kind='refund'] {
+  background: #b42318;
+}
+.ledger div {
+  flex: 1;
+  min-width: 0;
+}
+.ledger b {
+  display: block;
+  font-size: 14px;
+}
+.ledger small,
+.id-row {
+  color: var(--admin-ink-muted);
+  font-size: 12px;
+}
+.ledger em {
+  font-style: normal;
+  font-weight: 650;
+}
+.id-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.kv {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: 10px 16px;
+  margin: 0;
 }
-.pay-table {
-  margin-top: 10px;
+.kv dt {
+  margin-bottom: 2px;
+  color: var(--admin-ink-muted);
+  font-size: 12px;
 }
-.empty-line {
-  margin: 8px 0 0;
+.kv dd,
+.id-row code {
+  margin: 0;
+  font-size: 13px;
+  word-break: break-all;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.people {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.people strong {
+  display: block;
+  font-size: 16px;
+}
+.people ul {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+.people li {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 13px;
+}
+.people li span {
+  flex: none;
+  width: 36px;
   color: var(--admin-ink-muted);
 }
 .raw-fold {
-  margin-top: 10px;
+  margin-top: 8px;
+  border: none;
 }
 .raw-json {
   margin: 0;
-  max-height: 240px;
+  max-height: 220px;
   overflow: auto;
   font-size: 12px;
   white-space: pre-wrap;
