@@ -143,6 +143,7 @@ function menuIcon(path: string): Component {
     '/ops': DataAnalysis,
     '/reports': TrendCharts,
     '/orders': Document,
+    '/orders/refunds': Document,
     '/platform/payment-reconcile': Document,
     '/members': User,
     '/visits': Postcard,

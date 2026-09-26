@@ -1,7 +1,7 @@
 {
   "pages": [
-    "pages/login/index",
     "pages/stores/index",
+    "pages/login/index",
     "pages/home/index",
     "pages/memberships/index",
     "pages/memberships/detail",
@@ -18,13 +18,17 @@
     "pages/catering/detail",
     "pages/coupons/index",
     "pages/promotion/index",
+    "pages/orders/index",
     "pages/orders/detail",
+    "pages/refunds/index",
     "pages/me/index"
   ],
   "window": {
     "navigationBarTitleText": "观野SPACE",
-    "navigationBarBackgroundColor": "#171B1F",
-    "navigationBarTextStyle": "white"
+    "navigationBarBackgroundColor": "#FFFFFF",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#F5F6F8",
+    "backgroundTextStyle": "dark"
   },
   "style": "v2",
   "sitemapLocation": "sitemap.json"

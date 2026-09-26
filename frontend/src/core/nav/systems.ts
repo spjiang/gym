@@ -7,7 +7,7 @@ export const PLATFORM_MENU_GROUPS: { key: string; label: string; paths: string[]
   {
     key: 'order',
     label: '订单管理',
-    paths: ['/orders', '/platform/payment-reconcile'],
+    paths: ['/orders', '/orders/refunds', '/platform/payment-reconcile'],
   },
   {
     key: 'member',

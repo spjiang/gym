@@ -1,4 +1,4 @@
-<view class="portal">
+<view wx:if="{{ready}}" class="portal">
   <view class="hero">
     <block wx:if="{{slides.length}}">
       <image class="hero-bg" src="{{slides[slide]}}" mode="aspectFill"></image>
@@ -44,32 +44,34 @@
         </view>
       </view>
 
-      <view wx:if="{{!sections.length}}" class="muted empty">暂无可用门店，请联系门店开通业态。</view>
+      <view wx:if="{{!shops.length}}" class="muted empty">暂无可用门店，请联系门店开通业态。</view>
 
-      <view wx:for="{{sections}}" wx:for-item="section" wx:key="key">
-        <view class="sec-head">
-          <view class="sec-title">入驻品牌 · {{section.title}}</view>
-          <view class="sec-sub">{{section.subtitle}}</view>
+      <view
+        wx:for="{{shops}}"
+        wx:for-item="shop"
+        wx:key="id"
+        class="shop"
+        bindtap="enter"
+        data-id="{{shop.id}}"
+      >
+        <view class="shop-thumb">
+          <image wx:if="{{shop.coverUrl}}" src="{{shop.coverUrl}}" mode="aspectFill"></image>
+          <view wx:else class="shop-wash shop-wash-{{shop.sectionKey}}">{{shop.mark}}</view>
         </view>
-        <view
-          wx:for="{{section.items}}"
-          wx:for-item="brand"
-          wx:key="id"
-          class="merchant-card merchant-card-{{section.key}}"
-          bindtap="enter"
-          data-id="{{brand.id}}"
-        >
-          <view class="brand-visual">
-            <image wx:if="{{brand.coverUrl}}" src="{{brand.coverUrl}}" mode="aspectFill"></image>
-            <view wx:else class="brand-wash"><text class="brand-mark">{{brand.mark}}</text></view>
+        <view class="shop-main">
+          <view class="shop-name">{{shop.name}}</view>
+          <view class="shop-meta">
+            <text class="shop-badge shop-badge-{{shop.sectionKey}}">{{shop.badge}}</text>
+            <text wx:if="{{hours}}">{{hours}}</text>
           </view>
-          <view class="brand-body">
-            <view class="brand-top">
-              <text class="badge">{{section.title}}</text>
-              <text class="go">进入</text>
-            </view>
-            <view class="brand-name">{{brand.name}}</view>
-            <view class="brand-hint">{{brand.hint}}</view>
+          <view class="shop-quote">“{{shop.hint}}”</view>
+          <view class="shop-tags">
+            <text
+              wx:for="{{shop.tags}}"
+              wx:for-item="tag"
+              wx:key="*this"
+              class="chip chip-{{shop.sectionKey}}"
+            >{{tag}}</text>
           </view>
         </view>
       </view>

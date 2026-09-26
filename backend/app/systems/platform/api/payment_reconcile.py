@@ -12,6 +12,7 @@ from app.core.deps import RequestContext, get_current_context
 from app.core.errors import AppError
 from app.systems.platform.api.payment_notify import sync_pay_query
 from app.systems.platform.models.commerce import Order, OrderStatus, Payment, PaymentKind
+from app.systems.platform.models.member import Member
 from app.systems.platform.models.payment_settings import PaymentIntent, RefundIntent
 from app.systems.platform.services.audit import write_audit
 from app.systems.platform.services.order_fulfill import fulfill_paid_order, mark_intent_succeeded
@@ -20,6 +21,36 @@ from app.systems.platform.services.refunds import apply_refund_success
 router = APIRouter(prefix="/site/payment-reconcile", tags=["payment-reconcile"])
 
 STALE_MINUTES = 15
+
+
+def _order_brief(db: Session, order: Order | None) -> dict:
+    """给对账列表补上订单号、标题和会员，避免只显示内部编号。"""
+    if order is None:
+        return {
+            "order_no": None,
+            "title": None,
+            "member_name": None,
+            "member_phone": None,
+            "order_status": None,
+            "amount": None,
+        }
+    member = db.get(Member, order.member_id) if order.member_id else None
+    return {
+        "order_no": order.order_no,
+        "title": order.title,
+        "member_name": member.name if member is not None else None,
+        "member_phone": member.phone if member is not None else None,
+        "order_status": order.status,
+        "amount": str(order.amount),
+    }
+
+
+def _refund_issue(status: str, error_message: str | None) -> str:
+    if status == "processing":
+        return "退款已提交微信，系统仍停在处理中。若客人已收到退款，可确认为已退款。"
+    if status == "failed":
+        return error_message or "退款失败，钱可能还在原账户。"
+    return "退款没有完成。"
 
 
 class ReconcileActionIn(BaseModel):
@@ -60,6 +91,9 @@ def list_reconcile_items(
                         "wechat_transaction_id": it.wechat_transaction_id,
                         "amount": str(it.amount),
                         "created_at": it.created_at,
+                        "issue": "客人已发起支付，超过 15 分钟仍未到账。",
+                        **_order_brief(db, order),
+                        "amount": str(it.amount),
                     }
                 )
     elif kind == "pay_mismatch":
@@ -80,6 +114,10 @@ def list_reconcile_items(
                         "status": order.status,
                         "out_trade_no": it.out_trade_no,
                         "wechat_transaction_id": it.wechat_transaction_id,
+                        "created_at": it.succeeded_at or it.created_at,
+                        "issue": "微信已收款，订单还没记成已收款。",
+                        **_order_brief(db, order),
+                        "amount": str(it.amount),
                     }
                 )
         paid_orders = db.scalars(
@@ -93,7 +131,17 @@ def list_reconcile_items(
                 )
             )
             if has_charge is None:
-                items.append({"kind": "pay_mismatch", "order_id": order.id, "status": order.status, "note": "missing_charge"})
+                items.append(
+                    {
+                        "kind": "pay_mismatch",
+                        "order_id": order.id,
+                        "status": order.status,
+                        "note": "missing_charge",
+                        "created_at": order.created_at,
+                        "issue": "订单显示已收款，但没有收款记录。",
+                        **_order_brief(db, order),
+                    }
+                )
             succeeded_n = db.scalar(
                 select(func.count())
                 .select_from(PaymentIntent)
@@ -106,6 +154,9 @@ def list_reconcile_items(
                         "order_id": order.id,
                         "status": order.status,
                         "note": "duplicate_succeeded_intents",
+                        "created_at": order.created_at,
+                        "issue": "同一订单有多笔成功支付，需要核对是否重复收款。",
+                        **_order_brief(db, order),
                     }
                 )
     elif kind == "refund_abnormal":
@@ -119,15 +170,21 @@ def list_reconcile_items(
             if it.status == "created" and it.succeeded_at is None:
                 # 线下应已成功；created 残留视为异常
                 pass
+            order = db.get(Order, it.order_id)
             items.append(
                 {
                     "kind": "refund_abnormal",
                     "refund_intent_id": it.id,
                     "order_id": it.order_id,
                     "status": it.status,
+                    "refund_status": it.status,
                     "amount": str(it.amount),
                     "out_refund_no": it.out_refund_no,
                     "error_message": it.error_message,
+                    "created_at": it.created_at,
+                    "issue": _refund_issue(it.status, it.error_message),
+                    **_order_brief(db, order),
+                    "amount": str(it.amount),
                 }
             )
     else:

@@ -1,14 +1,139 @@
-.section {
-  margin: 24rpx 0 12rpx;
+.lead {
+  margin: -4rpx 0 28rpx;
+  font-size: 24rpx;
+  color: #8b939c;
+}
+
+.sec {
+  margin: 0 0 16rpx;
+  font-size: 26rpx;
   font-weight: 700;
+  color: #5c6570;
 }
-.row {
+
+.sec-gap {
+  margin-top: 12rpx;
+}
+
+.ticket {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16rpx;
+  margin-bottom: 20rpx;
+  border-radius: 24rpx;
+  overflow: hidden;
+  background: #fff;
+  border: 1rpx solid #eef0f3;
+  box-shadow: 0 8rpx 24rpx rgba(23, 27, 31, 0.04);
 }
-.main {
+
+.ticket-dim {
+  opacity: 0.72;
+}
+
+.stub {
+  width: 168rpx;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #fff7ec;
+  background: linear-gradient(160deg, #f36b21 0%, #c45a1c 48%, #7a3010 100%);
+}
+
+.stub-dim {
+  background: linear-gradient(160deg, #4a525a, #2a3138);
+}
+
+.stub-num {
+  font-size: 52rpx;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.stub-unit {
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  opacity: 0.9;
+}
+
+.stub-kind {
+  margin-top: 8rpx;
+  font-size: 20rpx;
+  letter-spacing: 0.12em;
+  opacity: 0.8;
+}
+
+.ticket-main {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 22rpx 22rpx 18rpx;
+}
+
+.ticket-name {
+  font-size: 32rpx;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.meta {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #8b939c;
+}
+
+.foot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 16rpx;
+}
+
+.until {
+  font-size: 22rpx;
+  color: #a0a7b0;
+}
+
+.buy {
+  padding: 10rpx 28rpx;
+  border-radius: 999rpx;
+  background: #f36b21;
+  color: #171b1f;
+  font-size: 26rpx;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.state {
+  padding: 4rpx 14rpx;
+  border-radius: 8rpx;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.state-ok {
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.14);
+}
+
+.state-used {
+  color: #8b939c;
+  background: #f3f4f6;
+}
+
+.state-off {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.14);
+}
+
+.empty {
+  margin-bottom: 24rpx;
+  padding: 48rpx 24rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: #7d8389;
+  border: 1rpx dashed #d8dce1;
+  border-radius: 16rpx;
 }

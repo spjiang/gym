@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import http from '../../../core/api/http'
 import RowActions from '../../../core/components/RowActions.vue'
 import { ORDER_TYPE_LABELS, orderTypeLabel as mapOrderType } from '../../../core/labels'
+
+const router = useRouter()
 
 type MemberBrief = { id: number; name: string; phone: string }
 type OrderStore = {
@@ -82,6 +85,8 @@ const query = reactive({
   status: '' as string,
   merchant_id: undefined as number | undefined,
   order_type: '' as string,
+  createdRange: null as [string, string] | null,
+  paidRange: null as [string, string] | null,
 })
 
 const form = reactive({
@@ -211,6 +216,10 @@ async function load() {
           status: query.status || undefined,
           merchant_id: query.merchant_id,
           order_type: query.order_type || undefined,
+          created_from: query.createdRange?.[0],
+          created_to: query.createdRange?.[1],
+          paid_from: query.paidRange?.[0],
+          paid_to: query.paidRange?.[1],
         },
       }),
       http.get('/merchants'),
@@ -235,6 +244,8 @@ function resetSearch() {
   query.status = ''
   query.merchant_id = undefined
   query.order_type = ''
+  query.createdRange = null
+  query.paidRange = null
   page.value = 1
   void load()
 }
@@ -337,7 +348,7 @@ async function refund(row: Order) {
       channel: 'wechat_original',
       reason: '管理端退款',
     })
-    ElMessage.success('已退款')
+    ElMessage.success('退款已提交，可在「退款记录」查看')
     await load()
   } catch (e: unknown) {
     if (e === 'cancel') return
@@ -352,7 +363,10 @@ onMounted(load)
   <div>
     <div class="toolbar">
       <h3>订单收款</h3>
-      <el-button type="primary" @click="openDialog">创建订单</el-button>
+      <div>
+        <el-button @click="router.push('/orders/refunds')">退款记录</el-button>
+        <el-button type="primary" @click="openDialog">创建订单</el-button>
+      </div>
     </div>
 
     <div class="filters">
@@ -375,6 +389,24 @@ onMounted(load)
       <el-select v-model="query.order_type" clearable placeholder="订单类型" style="width: 150px">
         <el-option v-for="(label, value) in ORDER_TYPE_LABELS" :key="value" :label="label" :value="value" />
       </el-select>
+      <el-date-picker
+        v-model="query.createdRange"
+        type="daterange"
+        value-format="YYYY-MM-DD"
+        start-placeholder="创建开始"
+        end-placeholder="创建结束"
+        range-separator="至"
+        style="width: 260px"
+      />
+      <el-date-picker
+        v-model="query.paidRange"
+        type="daterange"
+        value-format="YYYY-MM-DD"
+        start-placeholder="支付开始"
+        end-placeholder="支付结束"
+        range-separator="至"
+        style="width: 260px"
+      />
       <el-button type="primary" @click="search">查询</el-button>
       <el-button @click="resetSearch">重置</el-button>
     </div>
@@ -396,6 +428,12 @@ onMounted(load)
       </el-table-column>
       <el-table-column label="微信账单号" min-width="180">
         <template #default="{ row }">{{ row.wechat_transaction_id || '—' }}</template>
+      </el-table-column>
+      <el-table-column label="创建时间" min-width="170">
+        <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
+      </el-table-column>
+      <el-table-column label="支付时间" min-width="170">
+        <template #default="{ row }">{{ formatTime(row.paid_at) }}</template>
       </el-table-column>
       <el-table-column label="状态" width="100">
         <template #default="{ row }">

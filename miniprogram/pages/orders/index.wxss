@@ -1,0 +1,166 @@
+.err {
+  color: #f87171;
+  font-size: 26rpx;
+}
+
+.empty {
+  padding: 48rpx 24rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: #8b939c;
+  background: #fff;
+  border: 1rpx dashed #d8dce1;
+  border-radius: 20rpx;
+}
+
+.order-card {
+  margin-bottom: 16rpx;
+  padding: 24rpx;
+  background: #fff;
+  border: 1rpx solid #eef0f3;
+  border-radius: 20rpx;
+  color: #1c2128;
+  box-shadow: 0 8rpx 24rpx rgba(23, 27, 31, 0.04);
+}
+
+.order-head,
+.order-body,
+.order-shop {
+  display: flex;
+  align-items: center;
+}
+
+.order-head {
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.order-shop {
+  min-width: 0;
+  flex: 1;
+  gap: 8rpx;
+}
+
+.order-shop-mark {
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 8rpx;
+  background: #f36b21;
+  color: #fff;
+  font-size: 20rpx;
+  font-weight: 700;
+  line-height: 36rpx;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.order-shop-name {
+  max-width: 380rpx;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #1c2128;
+}
+
+.order-shop-arrow {
+  color: #7d8389;
+  font-size: 32rpx;
+  line-height: 1;
+}
+
+.order-status {
+  flex-shrink: 0;
+  font-size: 24rpx;
+  color: #7d8389;
+}
+
+.order-status.warn {
+  color: #f36b21;
+}
+
+.order-status.refund {
+  color: #b42318;
+}
+
+.order-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6rpx;
+  flex-shrink: 0;
+}
+
+.order-refund {
+  font-size: 22rpx;
+  font-weight: 600;
+  color: #b42318;
+}
+
+.order-body {
+  margin-top: 20rpx;
+  gap: 16rpx;
+  align-items: flex-start;
+}
+
+.order-thumb {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 12rpx;
+  background: #fff4ec;
+  color: #f36b21;
+  font-size: 36rpx;
+  font-weight: 700;
+  line-height: 96rpx;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.order-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.order-goods {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 28rpx;
+  color: #1c2128;
+}
+
+.order-date {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #7d8389;
+}
+
+.order-price {
+  flex-shrink: 0;
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #1c2128;
+}
+
+.order-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16rpx;
+}
+
+.order-pay {
+  padding: 8rpx 24rpx;
+  border: 1rpx solid #f36b21;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #f36b21;
+}
+
+.foot {
+  padding: 16rpx 0 32rpx;
+  text-align: center;
+  font-size: 24rpx;
+  color: #8b939c;
+}

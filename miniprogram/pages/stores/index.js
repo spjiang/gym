@@ -5,13 +5,15 @@ Page({
     siteName: '观野SPACE',
     siteTagline: '选择门店，进入对应业态',
     memberName: '',
-    phoneMasked: '',
     slides: [],
     slide: 0,
     facts: [],
     sections: [],
     aboutText: '',
     gallery: [],
+    shops: [],
+    hours: '',
+    ready: false,
   },
   _timer: null,
   async onShow() {
@@ -19,7 +21,7 @@ Page({
     const { systemOf } = require('../../utils/merchant')
     const { request, fileUrl } = require('../../utils/api')
     if (!requireLogin()) return
-    this.setData({ loading: true, err: '' })
+    this.setData({ ready: true, loading: true, err: '' })
     try {
       const me = await refreshMemberSession()
       let site = null
@@ -75,6 +77,18 @@ Page({
           items: buckets.other,
         })
       }
+      const shops = sections.reduce((list, section) => {
+        section.items.forEach((item) => {
+          list.push({
+            ...item,
+            tags: String(section.subtitle || '')
+              .split('·')
+              .map((text) => text.trim())
+              .filter(Boolean),
+          })
+        })
+        return list
+      }, [])
       const banners = (site && site.banner_image_urls) || []
       const slides = banners.length
         ? banners.map((u) => fileUrl(u))
@@ -91,17 +105,17 @@ Page({
       if (site && site.address) {
         facts.push({ key: '地址', value: site.address, wide: true, address: site.address })
       }
-      facts.push({ key: '会员', value: this.maskPhone(me.phone) })
       this.setData({
         loading: false,
         memberName: me.name || '',
-        phoneMasked: this.maskPhone(me.phone),
         siteName: (site && site.name) || '观野SPACE',
         siteTagline: (site && site.tagline) || '选择门店，进入对应业态',
         slides,
         slide: 0,
         facts,
         sections,
+        shops,
+        hours: (site && site.business_hours) || '',
         aboutText: (site && site.description) || '',
         gallery: ((site && site.gallery_image_urls) || []).map((u) => fileUrl(u)),
       })
@@ -116,10 +130,6 @@ Page({
   },
   onUnload() {
     this.stopSlide()
-  },
-  maskPhone(phone) {
-    if (!phone || phone.length < 7) return phone || ''
-    return `${phone.slice(0, 3)}****${phone.slice(-4)}`
   },
   startSlide() {
     this.stopSlide()

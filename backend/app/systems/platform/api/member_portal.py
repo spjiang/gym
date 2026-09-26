@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ from app.core.deps import MemberContext, get_current_member
 from app.core.errors import AppError
 from app.systems.platform.models.access import AccessEvent
 from app.systems.platform.models.commerce import Order, OrderStatus, Payment, PaymentChannel, PaymentKind
+from app.systems.platform.models.payment_settings import RefundIntent
 from app.systems.gym.models.course import (
     Coach,
     GroupBooking,
@@ -1009,31 +1010,120 @@ def order_pt_package(
     return order
 
 
-@router.get("/orders", response_model=list[OrderOut])
+class MemberOrderOut(OrderOut):
+    """会员订单，附最近一笔退款进度，便于「我的」展示退款成功或退款中。"""
+
+    refund_status: str | None = None
+    refund_channel: str | None = None
+    refund_reason: str | None = None
+    refunded_at: datetime | None = None
+
+
+class MemberRefundOut(BaseModel):
+    id: int
+    order_id: int
+    order_no: str
+    title: str
+    merchant_name: str | None = None
+    amount: Decimal
+    channel: str
+    status: str
+    reason: str | None = None
+    created_at: datetime
+    succeeded_at: datetime | None = None
+
+
+def _latest_refunds(db: Session, order_ids: list[int]) -> dict[int, RefundIntent]:
+    if not order_ids:
+        return {}
+    rows = db.scalars(
+        select(RefundIntent)
+        .where(RefundIntent.order_id.in_(order_ids))
+        .order_by(RefundIntent.id.desc())
+    ).all()
+    found: dict[int, RefundIntent] = {}
+    for row in rows:
+        found.setdefault(row.order_id, row)
+    return found
+
+
+def _member_order(item: OrderOut, intent: RefundIntent | None) -> MemberOrderOut:
+    data = item.model_dump()
+    if intent is not None:
+        data.update(
+            refund_status=intent.status,
+            refund_channel=intent.channel,
+            refund_reason=intent.reason,
+            refunded_at=intent.succeeded_at,
+        )
+    return MemberOrderOut(**data)
+
+
+@router.get("/orders", response_model=list[MemberOrderOut])
 def list_my_orders(
     db: Session = Depends(get_db),
     mctx: MemberContext = Depends(get_current_member),
+    limit: int = Query(50, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+    status: str | None = None,
 ):
-    """当前会员的订单，新的在前。门店名仅作下单来源展示。"""
+    """当前会员的订单，新的在前。用 offset 翻页可看完全部，单次最多 50 条。"""
+    filters = [Order.site_id == mctx.site_id, Order.member_id == mctx.member.id]
+    if status:
+        filters.append(Order.status == status)
     rows = db.scalars(
-        select(Order)
-        .where(Order.site_id == mctx.site_id, Order.member_id == mctx.member.id)
-        .order_by(Order.id.desc())
-        .limit(50)
+        select(Order).where(*filters).order_by(Order.id.desc()).offset(offset).limit(limit)
     ).all()
     merchant_ids = {row.merchant_id for row in rows}
     names: dict[int, str] = {}
     if merchant_ids:
         merchants = db.scalars(select(Merchant).where(Merchant.id.in_(merchant_ids))).all()
         names = {m.id: m.name for m in merchants}
-    result: list[OrderOut] = []
+    refunds = _latest_refunds(db, [row.id for row in rows])
+    result: list[MemberOrderOut] = []
     for row in rows:
         item = OrderOut.model_validate(row)
-        result.append(item.model_copy(update={"merchant_name": names.get(row.merchant_id)}))
+        item = item.model_copy(update={"merchant_name": names.get(row.merchant_id)})
+        result.append(_member_order(item, refunds.get(row.id)))
     return result
 
 
-@router.get("/orders/{order_id}", response_model=OrderOut)
+@router.get("/refunds", response_model=list[MemberRefundOut])
+def list_my_refunds(
+    db: Session = Depends(get_db),
+    mctx: MemberContext = Depends(get_current_member),
+    limit: int = Query(50, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+):
+    """当前会员的退款记录，新的在前。"""
+    rows = db.execute(
+        select(RefundIntent, Order, Merchant.name)
+        .join(Order, Order.id == RefundIntent.order_id)
+        .outerjoin(Merchant, Merchant.id == Order.merchant_id)
+        .where(RefundIntent.site_id == mctx.site_id, Order.member_id == mctx.member.id)
+        .order_by(RefundIntent.id.desc())
+        .offset(offset)
+        .limit(limit)
+    ).all()
+    return [
+        MemberRefundOut(
+            id=intent.id,
+            order_id=order.id,
+            order_no=order.order_no,
+            title=order.title,
+            merchant_name=merchant_name,
+            amount=intent.amount,
+            channel=intent.channel,
+            status=intent.status,
+            reason=intent.reason,
+            created_at=intent.created_at,
+            succeeded_at=intent.succeeded_at,
+        )
+        for intent, order, merchant_name in rows
+    ]
+
+
+@router.get("/orders/{order_id}", response_model=MemberOrderOut)
 def get_my_order(
     order_id: int,
     db: Session = Depends(get_db),
@@ -1044,7 +1134,8 @@ def get_my_order(
         raise AppError("not_found", "订单不存在", status_code=404)
     merchant = db.get(Merchant, order.merchant_id)
     item = OrderOut.model_validate(order)
-    return item.model_copy(update={"merchant_name": merchant.name if merchant is not None else None})
+    item = item.model_copy(update={"merchant_name": merchant.name if merchant is not None else None})
+    return _member_order(item, _latest_refunds(db, [order.id]).get(order.id))
 
 
 @router.post("/orders/{order_id}/pay/online")

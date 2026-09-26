@@ -4,7 +4,7 @@
   align-items: center;
 }
 .price {
-  color: #14b8d4;
+  color: #0c8fa3;
   font-weight: 700;
   margin-top: 8rpx;
 }
@@ -23,23 +23,25 @@
   padding: 16rpx 20rpx;
   border-radius: 8rpx;
   background: rgba(20, 184, 212, 0.16);
-  color: #14b8d4;
+  color: #0c8fa3;
   font-weight: 650;
 }
 .picker {
   margin-bottom: 16rpx;
   padding: 16rpx 20rpx;
   border-radius: 8rpx;
-  background: rgba(255, 255, 255, 0.06);
+  background: #fff;
+  border: 1rpx solid #eef0f3;
 }
 .coupon {
   margin-bottom: 12rpx;
   padding: 16rpx 20rpx;
   border-radius: 8rpx;
-  background: rgba(255, 255, 255, 0.06);
+  background: #fff;
+  border: 1rpx solid #eef0f3;
 }
 .coupon.on {
-  outline: 2rpx solid #14b8d4;
+  outline: 2rpx solid #0c8fa3;
 }
 .coupon.off {
   opacity: 0.55;
@@ -69,7 +71,7 @@
   width: 32rpx;
   height: 32rpx;
   margin-top: 4rpx;
-  border: 2rpx solid #4a525a;
+  border: 2rpx solid #c5cad0;
   border-radius: 6rpx;
   flex-shrink: 0;
 }
@@ -99,7 +101,7 @@
   max-height: 88vh;
   padding: 32rpx 32rpx calc(32rpx + env(safe-area-inset-bottom));
   border-radius: 24rpx 24rpx 0 0;
-  background: #1f2429;
+  background: #fff;
 }
 .head {
   display: flex;

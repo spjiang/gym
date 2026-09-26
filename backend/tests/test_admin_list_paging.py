@@ -61,6 +61,44 @@ def test_orders_page_with_member(client: TestClient, admin_headers: dict):
     row = next(o for o in body["items"] if o["id"] == order["id"])
     assert row["member"]["name"] == "订单会员"
     assert row["member"]["phone"] == "13980002201"
+    assert row["created_at"]
+    assert row["paid_at"] is None
+
+    today = client.get(
+        "/api/v1/orders",
+        headers=admin_headers,
+        params={"q": "分页订单样例", "created_from": "2020-01-01", "created_to": "2100-01-01"},
+    )
+    assert today.status_code == 200, today.text
+    assert any(o["id"] == order["id"] for o in today.json()["items"])
+    missed = client.get(
+        "/api/v1/orders",
+        headers=admin_headers,
+        params={"q": "分页订单样例", "created_from": "1999-01-01", "created_to": "1999-01-02"},
+    )
+    assert missed.status_code == 200, missed.text
+    assert all(o["id"] != order["id"] for o in missed.json()["items"])
+
+    paid = client.post(
+        f"/api/v1/orders/{order['id']}/pay/offline",
+        headers=admin_headers,
+        json={"channel": "offline_cash"},
+    )
+    assert paid.status_code == 200, paid.text
+    paid_hit = client.get(
+        "/api/v1/orders",
+        headers=admin_headers,
+        params={"q": "分页订单样例", "paid_from": "2020-01-01", "paid_to": "2100-01-01"},
+    )
+    assert paid_hit.status_code == 200, paid_hit.text
+    paid_row = next(o for o in paid_hit.json()["items"] if o["id"] == order["id"])
+    assert paid_row["paid_at"]
+    unpaid = client.get(
+        "/api/v1/orders",
+        headers=admin_headers,
+        params={"q": "分页订单样例", "paid_from": "1999-01-01", "paid_to": "1999-01-02"},
+    )
+    assert all(o["id"] != order["id"] for o in unpaid.json()["items"])
 
     detail = client.get(f"/api/v1/orders/{order['id']}", headers=admin_headers)
     assert detail.status_code == 200, detail.text
@@ -71,6 +109,33 @@ def test_orders_page_with_member(client: TestClient, admin_headers: dict):
     assert body["member"]["phone"] == "13980002201"
     assert body.get("merchant_name")
     assert "#" not in str(body["merchant_name"])
+
+    refunded = client.post(
+        f"/api/v1/orders/{order['id']}/refund",
+        headers=admin_headers,
+        json={"amount": "12.00", "channel": "offline_cash", "reason": "管理端退款"},
+    )
+    assert refunded.status_code == 200, refunded.text
+    records = client.get(
+        "/api/v1/orders/refunds",
+        headers=admin_headers,
+        params={"q": "分页订单样例", "created_from": "2020-01-01", "created_to": "2100-01-01"},
+    )
+    assert records.status_code == 200, records.text
+    refund_body = records.json()
+    assert refund_body["total"] >= 1
+    refund_row = next(r for r in refund_body["items"] if r["order_id"] == order["id"])
+    assert refund_row["amount"] == "12.00"
+    assert refund_row["status"] == "succeeded"
+    assert refund_row["reason"] == "管理端退款"
+    assert refund_row["member_name"] == "订单会员"
+    assert refund_row["succeeded_at"]
+    missed_refund = client.get(
+        "/api/v1/orders/refunds",
+        headers=admin_headers,
+        params={"q": "分页订单样例", "created_from": "1999-01-01", "created_to": "1999-01-02"},
+    )
+    assert all(r["order_id"] != order["id"] for r in missed_refund.json()["items"])
 
 
 def test_memberships_and_access_events_page(client: TestClient, admin_headers: dict):

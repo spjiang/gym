@@ -9,7 +9,7 @@
   justify-content: space-between;
   gap: 16rpx;
   padding: 16rpx 0;
-  border-bottom: 1rpx solid #343b42;
+  border-bottom: 1rpx solid #eef0f3;
   font-size: 28rpx;
 }
 .row:last-child {
@@ -28,6 +28,6 @@
 }
 .cancel {
   background: transparent !important;
-  color: #f2e6d2 !important;
-  border: 1rpx solid #7d8389 !important;
+  color: #1c2128 !important;
+  border: 1rpx solid #e0e3e7 !important;
 }

@@ -1,7 +1,7 @@
 .section {
   margin: 24rpx 0 12rpx;
   font-weight: 700;
-  color: #f2e6d2;
+  color: #1c2128;
 }
 .row {
   display: flex;
@@ -14,7 +14,7 @@
   min-width: 0;
 }
 .price {
-  color: #14b8d4;
+  color: #0c8fa3;
   font-weight: 700;
   margin-top: 8rpx;
 }
@@ -34,7 +34,7 @@
   padding: 16rpx 20rpx;
   border-radius: 8rpx;
   background: rgba(20, 184, 212, 0.16);
-  color: #14b8d4;
+  color: #0c8fa3;
   font-weight: 650;
 }
 .bar {
@@ -44,6 +44,6 @@
   justify-content: space-between;
   align-items: center;
   padding: 20rpx 0 8rpx;
-  background: #171b1f;
+  background: #f5f6f8;
   font-weight: 700;
 }

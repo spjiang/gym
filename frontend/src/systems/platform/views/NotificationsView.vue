@@ -106,6 +106,7 @@ onMounted(refresh)
       />
       <el-select v-model="query.event_type" clearable placeholder="事件类型" style="width: 180px">
         <el-option label="订单已收款" value="order.paid" />
+        <el-option label="订单已退款" value="order.refunded" />
         <el-option label="会籍履约" value="membership.fulfilled" />
         <el-option label="团课预约" value="group.booked" />
       </el-select>

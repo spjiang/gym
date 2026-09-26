@@ -16,7 +16,7 @@
   max-height: 80vh;
   padding: 32rpx 32rpx calc(32rpx + env(safe-area-inset-bottom));
   border-radius: 24rpx 24rpx 0 0;
-  background: #1f2429;
+  background: #fff;
 }
 .head {
   display: flex;
@@ -55,7 +55,7 @@
   width: 32rpx;
   height: 32rpx;
   margin-top: 4rpx;
-  border: 2rpx solid #4a525a;
+  border: 2rpx solid #c5cad0;
   border-radius: 6rpx;
   flex-shrink: 0;
 }
@@ -87,5 +87,5 @@
   max-height: 70vh;
   font-size: 28rpx;
   line-height: 1.7;
-  color: #f2e6d2;
+  color: #3d4450;
 }

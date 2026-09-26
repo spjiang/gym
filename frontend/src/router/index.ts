@@ -10,6 +10,7 @@ import StaffView from '../systems/platform/views/StaffView.vue'
 import MembersView from '../systems/platform/views/MembersView.vue'
 import AccessView from '../systems/platform/views/AccessView.vue'
 import OrdersView from '../systems/platform/views/OrdersView.vue'
+import RefundsView from '../systems/platform/views/RefundsView.vue'
 import ReportsView from '../systems/platform/views/ReportsView.vue'
 import VisitsView from '../systems/platform/views/VisitsView.vue'
 import NotificationsView from '../systems/platform/views/NotificationsView.vue'
@@ -195,6 +196,12 @@ const children: RouteRecordRaw[] = [
     meta: { system: 'platform', anyOf: ['access:manage', 'access:read', '*'] },
   },
   { path: 'orders', name: 'orders', component: OrdersView, meta: { system: 'platform', anyOf: ['order:read', '*'] } },
+  {
+    path: 'orders/refunds',
+    name: 'order-refunds',
+    component: RefundsView,
+    meta: { system: 'platform', anyOf: ['order:read', '*'] },
+  },
   {
     path: 'ops',
     name: 'ops',

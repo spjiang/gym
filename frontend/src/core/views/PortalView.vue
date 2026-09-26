@@ -9,6 +9,7 @@ import {
   Collection,
   Money,
   Plus,
+  RefreshLeft,
   TrendCharts,
   User,
   Warning,
@@ -20,7 +21,24 @@ import { orderStatusLabel, orderTypeLabel as mapOrderType } from '../labels'
 
 type Merchant = { id: number; name: string; subsystem_codes?: string[] }
 type Member = { id: number; name: string; phone: string }
-type OrderRow = { id: number; title: string; amount: string; status: string; order_type: string }
+type OrderRow = {
+  id: number
+  title: string
+  amount: string
+  refunded_amount?: string
+  status: string
+  order_type: string
+}
+type RefundRow = {
+  id: number
+  title: string
+  amount: string
+  status: string
+  channel: string
+  member_name?: string | null
+  reason?: string | null
+  created_at?: string | null
+}
 type NoteRow = {
   id: number
   event_type: string
@@ -63,6 +81,7 @@ const members = ref<Member[]>([])
 const memberTotal = ref(0)
 const orders = ref<OrderRow[]>([])
 const orderTotal = ref(0)
+const refunds = ref<RefundRow[]>([])
 const notes = ref<NoteRow[]>([])
 const commerce = ref<CommerceSummary | null>(null)
 const commerceTypes = computed(() => commerce.value?.by_order_type || [])
@@ -74,6 +93,7 @@ const sectionState = reactive({
   merchants: false,
   members: false,
   orders: false,
+  refunds: false,
   notes: false,
   commerce: false,
   membership: false,
@@ -123,6 +143,35 @@ function statusLabel(status: string) {
   return orderStatusLabel(status)
 }
 
+function refundStatusLabel(status: string) {
+  return (
+    {
+      succeeded: '已到账',
+      processing: '处理中',
+      created: '已发起',
+      failed: '失败',
+    }[status] || status
+  )
+}
+
+function refundStatusType(status: string) {
+  if (status === 'succeeded') return 'success'
+  if (status === 'processing' || status === 'created') return 'warning'
+  if (status === 'failed') return 'danger'
+  return 'info'
+}
+
+function refundChannelLabel(channel: string) {
+  return (
+    {
+      wechat_original: '退回微信',
+      offline_cash: '现金',
+      offline_transfer: '转账',
+      online: '线上',
+    }[channel] || channel
+  )
+}
+
 function go(path: string) {
   router.push(path)
 }
@@ -170,6 +219,12 @@ function quickActions() {
       icon: Collection,
       show: canAny(perms.value, ['order:write', '*']),
     },
+    {
+      label: '退款记录',
+      path: '/orders/refunds',
+      icon: RefreshLeft,
+      show: canAny(perms.value, ['order:read', '*']),
+    },
   ]
   return actions.filter((a) => a.show)
 }
@@ -206,6 +261,17 @@ async function loadOrders() {
     sectionState.orders = true
   } catch {
     sectionState.orders = false
+  }
+}
+
+async function loadRefunds() {
+  if (!canAny(perms.value, ['order:read', '*'])) return
+  try {
+    const { data } = await http.get('/orders/refunds', { params: { page: 1, page_size: 6 } })
+    refunds.value = data.items
+    sectionState.refunds = true
+  } catch {
+    sectionState.refunds = false
   }
 }
 
@@ -256,7 +322,7 @@ let timer: number | undefined
 
 async function refresh() {
   loading.value = true
-  await Promise.all([loadMerchants(), loadMembers(), loadOrders(), loadNotes(), loadReports()])
+  await Promise.all([loadMerchants(), loadMembers(), loadOrders(), loadRefunds(), loadNotes(), loadReports()])
   loading.value = false
 }
 
@@ -296,6 +362,13 @@ function kpi() {
       sub: '含退款前入账',
       icon: Money,
       tone: 'green',
+    })
+    items.push({
+      label: '今日退款',
+      value: formatMoney(commerce.value.refund_total),
+      sub: '原路退回与线下退款',
+      icon: RefreshLeft,
+      tone: 'danger',
     })
     items.push({
       label: '今日净收',
@@ -415,7 +488,12 @@ function maxCharge() {
             <div v-for="row in commerceTypes" :key="row.order_type" class="type-bar">
               <div class="type-bar-top">
                 <span class="type-name">{{ orderTypeLabel(row.order_type) }}</span>
-                <span class="type-amount">¥{{ Number(row.charge_total).toFixed(2) }}</span>
+                <span class="type-amount">
+                  ¥{{ Number(row.charge_total).toFixed(2) }}
+                  <span v-if="Number(row.refund_total) > 0" class="type-refund">
+                    退 ¥{{ Number(row.refund_total).toFixed(2) }}
+                  </span>
+                </span>
               </div>
               <el-progress
                 :percentage="Math.round((Number(row.charge_total) / maxCharge()) * 100)"
@@ -429,13 +507,34 @@ function maxCharge() {
             <p>今日暂无收款记录</p>
           </div>
 
+          <div class="sub-head">
+            <h4 class="sub-title">最近退款</h4>
+            <el-button v-if="sectionState.refunds" text type="primary" @click="go('/orders/refunds')">
+              全部退款
+            </el-button>
+          </div>
+          <div v-if="refunds.length" class="order-list">
+            <div v-for="r in refunds" :key="r.id" class="order-row" @click="go('/orders/refunds')">
+              <span class="order-title">{{ r.title }}</span>
+              <span class="order-type">{{ refundChannelLabel(r.channel) }}</span>
+              <el-tag size="small" :type="refundStatusType(r.status)">{{ refundStatusLabel(r.status) }}</el-tag>
+              <span class="order-amount refund-amount">-¥{{ r.amount }}</span>
+            </div>
+          </div>
+          <div v-else class="panel-empty compact">
+            <p>暂无退款记录</p>
+          </div>
+
           <h4 class="sub-title">最近订单</h4>
           <div v-if="orders.length" class="order-list">
             <div v-for="o in orders.slice(0, 6)" :key="o.id" class="order-row" @click="go('/orders')">
               <span class="order-title">{{ o.title }}</span>
               <span class="order-type">{{ orderTypeLabel(o.order_type) }}</span>
               <el-tag size="small" :type="statusType(o.status)">{{ statusLabel(o.status) }}</el-tag>
-              <span class="order-amount">¥{{ o.amount }}</span>
+              <span class="order-amount">
+                ¥{{ o.amount }}
+                <span v-if="Number(o.refunded_amount) > 0" class="type-refund">已退 ¥{{ o.refunded_amount }}</span>
+              </span>
             </div>
           </div>
           <div v-else class="panel-empty">
@@ -574,6 +673,11 @@ function maxCharge() {
   background: rgba(75, 85, 99, 0.12);
 }
 
+.kpi-card[data-tone='danger'] .kpi-icon {
+  color: #b42318;
+  background: rgba(180, 35, 24, 0.12);
+}
+
 .kpi-meta {
   min-width: 0;
   flex: 1;
@@ -649,9 +753,34 @@ function maxCharge() {
   font-size: 1.05rem;
 }
 
+.sub-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 18px;
+}
+
+.sub-head .sub-title {
+  margin-top: 0;
+}
+
 .sub-title {
   margin: 18px 0 10px;
   font-size: 0.92rem;
+}
+
+.type-refund {
+  margin-left: 8px;
+  color: #b42318;
+  font-weight: 600;
+}
+
+.refund-amount {
+  color: #b42318;
+}
+
+.panel-empty.compact {
+  padding: 8px 0 4px;
 }
 
 .type-bars {

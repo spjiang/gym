@@ -290,5 +290,31 @@ def test_member_lists_own_orders(client: TestClient, admin_headers: dict):
     hit = next(row for row in listed.json() if row["title"] == "我的零售单")
     assert hit["merchant_name"] == gym_name
     assert hit["status"] == "pending"
+    assert hit["refund_status"] is None
     assert str(hit["order_no"]).startswith("GY")
     assert len(hit["order_no"]) == 22
+
+    paid = client.post(
+        f"/api/v1/orders/{hit['id']}/pay/offline",
+        headers=admin_headers,
+        json={"channel": "offline_cash"},
+    )
+    assert paid.status_code == 200, paid.text
+    refunded = client.post(
+        f"/api/v1/orders/{hit['id']}/refund",
+        headers=admin_headers,
+        json={"amount": "12.50", "channel": "offline_cash", "reason": "管理端退款"},
+    )
+    assert refunded.status_code == 200, refunded.text
+    headers = _member_login(client, member["phone"])
+    refunds = client.get("/api/v1/member/refunds", headers=headers)
+    assert refunds.status_code == 200, refunds.text
+    refund_row = next(row for row in refunds.json() if row["order_id"] == hit["id"])
+    assert refund_row["status"] == "succeeded"
+    assert refund_row["reason"] == "管理端退款"
+    assert refund_row["title"] == "我的零售单"
+    detail = client.get(f"/api/v1/member/orders/{hit['id']}", headers=headers)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["status"] == "refunded"
+    assert detail.json()["refund_status"] == "succeeded"
+    assert detail.json()["refund_channel"] == "offline_cash"

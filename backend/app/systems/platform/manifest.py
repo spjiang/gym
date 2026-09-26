@@ -79,7 +79,7 @@ SYSTEM = {
         {
             "code": "platform.payment_reconcile",
             "path": "/platform/payment-reconcile",
-            "name": "支付对账",
+            "name": "收退款异常",
             "required_any": ["payment:reconcile", "*"],
             "sort_order": 21,
         },
@@ -131,6 +131,13 @@ SYSTEM = {
             "name": "订单收款",
             "required_any": ["order:read", "*"],
             "sort_order": 20,
+        },
+        {
+            "code": "platform.refunds",
+            "path": "/orders/refunds",
+            "name": "退款记录",
+            "required_any": ["order:read", "*"],
+            "sort_order": 21,
         },
         {
             "code": "platform.ops",

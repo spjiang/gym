@@ -1,6 +1,8 @@
 """订单与支付骨架。"""
 
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
@@ -33,7 +35,8 @@ from app.systems.gym.services.retail_fulfillment import (
     fulfill_retail_order,
 )
 from app.systems.platform.models.commerce import Order, OrderStatus, Payment, PaymentChannel, PaymentKind
-from app.systems.platform.models.payment_settings import PaymentIntent
+from app.systems.platform.models.identity import StaffUser
+from app.systems.platform.models.payment_settings import PaymentIntent, RefundIntent
 from app.systems.platform.models.member import Member
 from app.systems.platform.models.org import Merchant
 from app.systems.platform.services.audit import write_audit
@@ -42,6 +45,50 @@ from app.systems.platform.services.order_pricing import price_order
 from app.systems.platform.services.payments import get_online_provider
 
 router = APIRouter(prefix="/orders", tags=["commerce"])
+_SHANGHAI = ZoneInfo("Asia/Shanghai")
+
+
+def _shanghai_bounds(day_from: date, day_to: date) -> tuple[datetime, datetime]:
+    """按北京时间把日期区间收成 [开始日 0 点, 结束日次日 0 点)。"""
+    if day_to < day_from:
+        raise AppError("invalid_range", "结束日期不能早于开始日期", status_code=400)
+    start = datetime.combine(day_from, time.min, tzinfo=_SHANGHAI)
+    end = datetime.combine(day_to + timedelta(days=1), time.min, tzinfo=_SHANGHAI)
+    return start, end
+
+
+def _paid_at_expr():
+    """列表筛选用的支付时间：微信成功时间优先，否则取最早一笔收款流水。"""
+    succeeded_at = (
+        select(PaymentIntent.succeeded_at)
+        .where(
+            PaymentIntent.order_id == Order.id,
+            PaymentIntent.status == "succeeded",
+            PaymentIntent.succeeded_at.is_not(None),
+        )
+        .order_by(PaymentIntent.id.desc())
+        .limit(1)
+        .correlate(Order)
+        .scalar_subquery()
+    )
+    charge_at = (
+        select(func.min(Payment.created_at))
+        .where(Payment.order_id == Order.id, Payment.kind == PaymentKind.CHARGE.value)
+        .correlate(Order)
+        .scalar_subquery()
+    )
+    return func.coalesce(succeeded_at, charge_at)
+
+
+def _charge_paid_at(db: Session, order_ids: list[int]) -> dict[int, datetime]:
+    if not order_ids:
+        return {}
+    rows = db.execute(
+        select(Payment.order_id, func.min(Payment.created_at))
+        .where(Payment.order_id.in_(order_ids), Payment.kind == PaymentKind.CHARGE.value)
+        .group_by(Payment.order_id)
+    ).all()
+    return {order_id: paid_at for order_id, paid_at in rows}
 
 
 def _trade_by_order(db: Session, order_ids: list[int]) -> dict[int, PaymentIntent]:
@@ -63,7 +110,12 @@ def _trade_by_order(db: Session, order_ids: list[int]) -> dict[int, PaymentInten
     return picked
 
 
-def _order_out(db: Session, order: Order, trade: PaymentIntent | None = None) -> OrderOut:
+def _order_out(
+    db: Session,
+    order: Order,
+    trade: PaymentIntent | None = None,
+    charge_paid_at: datetime | None = None,
+) -> OrderOut:
     member_brief = None
     if order.member_id is not None:
         m = db.get(Member, order.member_id)
@@ -92,7 +144,11 @@ def _order_out(db: Session, order: Order, trade: PaymentIntent | None = None) ->
         member=member_brief,
         out_trade_no=trade.out_trade_no if trade is not None else None,
         wechat_transaction_id=trade.wechat_transaction_id if trade is not None else None,
-        paid_at=trade.succeeded_at if trade is not None and trade.status == "succeeded" else None,
+        paid_at=(
+            trade.succeeded_at
+            if trade is not None and trade.status == "succeeded" and trade.succeeded_at is not None
+            else charge_paid_at
+        ),
     )
 
 
@@ -105,6 +161,10 @@ def list_orders(
     status: str | None = None,
     dining_status: str | None = None,
     q: str | None = None,
+    created_from: date | None = None,
+    created_to: date | None = None,
+    paid_from: date | None = None,
+    paid_to: date | None = None,
     db: Session = Depends(get_db),
     ctx: RequestContext = Depends(get_current_context),
 ):
@@ -145,6 +205,15 @@ def list_orders(
                 Order.id.in_(trade_order_ids),
             )
         )
+    if created_from is not None or created_to is not None:
+        start, end = _shanghai_bounds(created_from or created_to, created_to or created_from)
+        filters.append(Order.created_at >= start)
+        filters.append(Order.created_at < end)
+    if paid_from is not None or paid_to is not None:
+        start, end = _shanghai_bounds(paid_from or paid_to, paid_to or paid_from)
+        paid_at = _paid_at_expr()
+        filters.append(paid_at >= start)
+        filters.append(paid_at < end)
 
     total = db.scalar(select(func.count()).select_from(Order).where(*filters)) or 0
     rows = list(
@@ -156,9 +225,11 @@ def list_orders(
             .limit(page_size)
         ).all()
     )
-    trades = _trade_by_order(db, [o.id for o in rows])
+    order_ids = [o.id for o in rows]
+    trades = _trade_by_order(db, order_ids)
+    charges = _charge_paid_at(db, order_ids)
     return PageOut(
-        items=[_order_out(db, o, trades.get(o.id)) for o in rows],
+        items=[_order_out(db, o, trades.get(o.id), charges.get(o.id)) for o in rows],
         total=total,
         page=page,
         page_size=page_size,
@@ -167,7 +238,7 @@ def list_orders(
 
 def _order_detail(db: Session, order: Order) -> OrderDetailOut:
     trade = _trade_by_order(db, [order.id]).get(order.id)
-    base = _order_out(db, order, trade)
+    base = _order_out(db, order, trade, _charge_paid_at(db, [order.id]).get(order.id))
     merchant = db.get(Merchant, order.merchant_id)
     store = None
     if merchant is not None:
@@ -214,6 +285,102 @@ def _order_detail(db: Session, order: Order) -> OrderDetailOut:
         ],
         wechat_payload=trade.wechat_payload if trade is not None else None,
     )
+
+
+class RefundRecordOut(BaseModel):
+    id: int
+    order_id: int
+    order_no: str
+    title: str
+    merchant_id: int
+    merchant_name: str | None = None
+    member_name: str | None = None
+    member_phone: str | None = None
+    amount: Decimal
+    channel: str
+    status: str
+    reason: str | None = None
+    out_refund_no: str
+    provider_ref: str | None = None
+    actor_name: str | None = None
+    created_at: datetime
+    succeeded_at: datetime | None = None
+
+
+@router.get("/refunds", response_model=PageOut[RefundRecordOut])
+def list_refunds(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    merchant_id: int | None = None,
+    status: str | None = None,
+    q: str | None = None,
+    created_from: date | None = None,
+    created_to: date | None = None,
+    db: Session = Depends(get_db),
+    ctx: RequestContext = Depends(get_current_context),
+):
+    """退款记录：按退款单列出，含处理中与已到账。"""
+    ctx.require_permission("order:read", "order:write")
+    filters = [RefundIntent.site_id == ctx.site_id]
+    if not ctx.is_site_wide:
+        filters.append(Order.merchant_id == ctx.resolve_merchant_id())
+    elif merchant_id is not None:
+        filters.append(Order.merchant_id == merchant_id)
+    if status:
+        filters.append(RefundIntent.status == status)
+    keyword = (q or "").strip()
+    if keyword:
+        like = f"%{keyword}%"
+        filters.append(
+            or_(
+                Order.order_no.ilike(like),
+                Order.title.ilike(like),
+                RefundIntent.out_refund_no.ilike(like),
+                RefundIntent.provider_ref.ilike(like),
+                Member.name.ilike(like),
+                Member.phone.ilike(like),
+            )
+        )
+    if created_from is not None or created_to is not None:
+        start, end = _shanghai_bounds(created_from or created_to, created_to or created_from)
+        filters.append(RefundIntent.created_at >= start)
+        filters.append(RefundIntent.created_at < end)
+
+    base = (
+        select(RefundIntent, Order, Merchant, Member, StaffUser)
+        .join(Order, Order.id == RefundIntent.order_id)
+        .outerjoin(Merchant, Merchant.id == Order.merchant_id)
+        .outerjoin(Member, Member.id == Order.member_id)
+        .outerjoin(StaffUser, StaffUser.id == RefundIntent.actor_staff_id)
+        .where(*filters)
+    )
+    total = db.scalar(select(func.count()).select_from(base.order_by(None).subquery())) or 0
+    rows = db.execute(
+        base.order_by(RefundIntent.id.desc()).offset((page - 1) * page_size).limit(page_size)
+    ).all()
+    items = [
+        RefundRecordOut(
+            id=intent.id,
+            order_id=order.id,
+            order_no=order.order_no,
+            title=order.title,
+            merchant_id=order.merchant_id,
+            merchant_name=merchant.name if merchant is not None else None,
+            member_name=member.name if member is not None else None,
+            member_phone=member.phone if member is not None else None,
+            amount=intent.amount,
+            channel=intent.channel,
+            status=intent.status,
+            reason=intent.reason,
+            out_refund_no=intent.out_refund_no,
+            provider_ref=intent.provider_ref,
+            actor_name=staff.display_name if staff is not None else None,
+            created_at=intent.created_at,
+            succeeded_at=intent.succeeded_at,
+        )
+        for intent, order, merchant, member, staff in rows
+    ]
+    return PageOut(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.get("/{order_id}", response_model=OrderDetailOut)

@@ -11,8 +11,9 @@
 }
 .kpi {
   flex: 1;
-  background: #22282e;
-  border: 1rpx solid #343b42;
+  background: #fff;
+  border: 1rpx solid #eef0f3;
+  box-shadow: 0 8rpx 24rpx rgba(23, 27, 31, 0.04);
   border-radius: 8rpx;
   padding: 20rpx 8rpx;
   text-align: center;
@@ -31,13 +32,15 @@
   height: 72rpx;
   line-height: 72rpx;
   text-align: center;
-  border: 1rpx solid #343b42;
-  border-radius: 8rpx;
-  color: #7d8389;
+  border: 1rpx solid #e6e8eb;
+  border-radius: 16rpx;
+  background: #fff;
+  color: #8b939c;
 }
 .tab.on {
   border-color: #f36b21;
-  color: #f2e6d2;
+  color: #f36b21;
+  background: rgba(243, 107, 33, 0.08);
 }
 .pending {
   color: #f59e0b;

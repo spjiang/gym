@@ -12,14 +12,15 @@
   flex: 1;
   text-align: center;
   padding: 16rpx 0;
-  border: 1rpx solid #343b42;
-  border-radius: 8rpx;
-  color: #7d8389;
+  border: 1rpx solid #e6e8eb;
+  border-radius: 16rpx;
+  background: #fff;
+  color: #8b939c;
 }
 .mode.is-active {
   border-color: #f36b21;
-  color: #f2e6d2;
-  background: rgba(243, 107, 33, 0.14);
+  color: #f36b21;
+  background: rgba(243, 107, 33, 0.1);
 }
 .row {
   display: flex;
@@ -38,7 +39,7 @@
 }
 .send-btn[disabled] {
   color: #7d8389;
-  background: #2a3036;
+  background: #eef0f3;
 }
 .links {
   display: flex;

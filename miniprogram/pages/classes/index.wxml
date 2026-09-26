@@ -16,13 +16,12 @@
 
   <view class="section">可约场次</view>
   <view wx:if="{{!sessions.length}}" class="muted">暂无可约场次</view>
-  <view class="card" wx:for="{{sessions}}" wx:key="id">
-    <view class="name" bindtap="goDetail" data-id="{{item.id}}">{{item.course_name}}</view>
+  <view class="card" wx:for="{{sessions}}" wx:key="id" bindtap="goDetail" data-id="{{item.id}}">
+    <view class="name">{{item.course_name}}</view>
     <view class="muted tight">{{item.timeText}} · {{item.coach_name || ''}}</view>
     <view class="muted tight">剩余 {{item.remaining}}/{{item.capacity}} <text wx:if="{{item.room}}">· {{item.room}}</text></view>
     <view class="row">
-      <button size="mini" bindtap="goDetail" data-id="{{item.id}}">详情</button>
-      <button bindtap="book" data-id="{{item.id}}">预约</button>
+      <button catchtap="book" data-id="{{item.id}}">预约</button>
     </view>
   </view>
 </view>

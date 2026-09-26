@@ -28,6 +28,7 @@ from app.systems.platform.models.access import AccessEvent
 from app.systems.platform.models.commerce import Order, OrderStatus, Payment, PaymentChannel, PaymentKind
 from app.systems.platform.models.payment_settings import PaymentIntent, RefundIntent
 from app.systems.platform.services.audit import write_audit
+from app.systems.platform.services.notifications import write_notification
 from app.systems.platform.services.order_lock import lock_order
 from app.systems.platform.services.payment_capture import new_out_refund_no
 from app.systems.platform.services.payment_settings import resolve_payment_settings
@@ -447,6 +448,17 @@ def apply_refund_success(
                 restock_retail_order(db, order, actor_staff_id=actor_staff_id)
             except Exception:  # noqa: BLE001 — 非零售无库存
                 pass
+
+    if order.member_id is not None:
+        write_notification(
+            db,
+            site_id=order.site_id,
+            merchant_id=order.merchant_id,
+            member_id=order.member_id,
+            event_type="order.refunded",
+            title="退款成功" if full else "部分退款",
+            body=f"订单 #{order.id} {order.title} 已退款 ¥{this_amount}",
+        )
 
     return order
 

@@ -32,11 +32,50 @@ Page({
         request({ url: `/member/catalog/pt-products?merchant_id=${mid}` }),
       ])
       this.setData({
-        cards: cards || [],
-        pts: pts || [],
+        cards: (cards || []).map((item) => this.presentCard(item)),
+        pts: (pts || []).map((item) => this.presentPt(item)),
       })
     } catch (e) {
       wx.showToast({ title: (e && e.message) || '加载失败', icon: 'none' })
+    }
+  },
+  money(raw) {
+    if (raw == null || raw === '') return ''
+    const n = Number(raw)
+    if (Number.isNaN(n)) return String(raw)
+    return Number.isInteger(n) ? String(n) : n.toFixed(2)
+  },
+  specOf(item, fallback) {
+    if (item.session_count) return { num: String(item.session_count), unit: '次' }
+    if (item.duration_days) return { num: String(item.duration_days), unit: '天' }
+    return { num: fallback, unit: '' }
+  },
+  priceOf(item) {
+    const current = item.effective_price != null && item.effective_price !== '' ? item.effective_price : item.price
+    const priceText = this.money(current)
+    const origin = this.money(item.price)
+    return {
+      priceText,
+      originText: origin && origin !== priceText ? origin : '',
+    }
+  },
+  presentCard(item) {
+    const { membershipTypeLabel } = require('../../utils/labels')
+    const spec = this.specOf(item, '会籍')
+    return {
+      ...item,
+      ...spec,
+      ...this.priceOf(item),
+      typeText: membershipTypeLabel(item.product_type),
+    }
+  },
+  presentPt(item) {
+    const spec = this.specOf(item, '课包')
+    return {
+      ...item,
+      ...spec,
+      ...this.priceOf(item),
+      typeText: item.valid_days ? `有效 ${item.valid_days} 天` : '私教课包',
     }
   },
   async buyCard(e) {

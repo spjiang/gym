@@ -142,7 +142,6 @@ onMounted(load)
         </div>
       </button>
       <div class="session__actions">
-        <button class="mw-btn mw-btn--ghost mw-btn--sm" type="button" @click="goDetail(s.id)">详情</button>
         <button
           class="mw-btn mw-btn--sm"
           type="button"

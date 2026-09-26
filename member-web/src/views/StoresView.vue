@@ -32,11 +32,6 @@ const site = ref<SiteProfile | null>(null)
 const slide = ref(0)
 let timer: number | null = null
 
-function maskPhone(phone?: string) {
-  if (!phone || phone.length < 7) return phone || ''
-  return `${phone.slice(0, 3)}****${phone.slice(-4)}`
-}
-
 function systemOf(m: MemberMerchant) {
   return m.primary_system || m.subsystem_codes[0] || 'other'
 }
@@ -47,6 +42,21 @@ const slides = computed(() => {
   if (site.value?.cover_image_url) return [site.value.cover_image_url]
   return []
 })
+
+const shops = computed(() =>
+  sections.value.flatMap((section) =>
+    section.items.map((item) => ({
+      ...item,
+      sectionKey: section.key,
+      badge: section.title,
+      mark: section.key === 'catering' ? 'BAR' : section.key === 'gym' ? 'FIT' : 'STORE',
+      hint:
+        item.tagline ||
+        (section.key === 'gym' ? '训练即生活' : section.key === 'catering' ? '夜色刚刚开始' : section.subtitle),
+      tags: section.subtitle.split('·').map((text) => text.trim()).filter(Boolean),
+    })),
+  ),
+)
 
 const sections = computed<Section[]>(() => {
   const list = auth.me?.merchants || []
@@ -141,40 +151,32 @@ onUnmounted(() => {
           <span class="fact__k">地址</span>
           <span>{{ site.address }}</span>
         </div>
-        <button class="fact" type="button" @click="goMe">
-          <span class="fact__k">会员</span>
-          <span>{{ maskPhone(auth.me?.phone) }}</span>
-        </button>
       </div>
 
       <div v-if="!sections.length" class="mw-empty">暂无可用门店，请联系门店开通业态。</div>
 
-      <section v-for="sec in sections" :key="sec.key" class="brands">
-        <div class="sec-head">
-          <h2>入驻品牌 · {{ sec.title }}</h2>
-          <p>{{ sec.subtitle }}</p>
-        </div>
+      <section class="shops">
         <button
-          v-for="m in sec.items"
-          :key="m.id"
+          v-for="shop in shops"
+          :key="shop.id"
           type="button"
-          class="brand"
-          :class="`brand--${sec.key}`"
-          @click="enter(m)"
+          class="shop"
+          @click="enter(shop)"
         >
-          <div class="brand__visual">
-            <img v-if="m.cover_image_url" :src="m.cover_image_url" alt="" />
-            <div v-else class="brand__wash">
-              <span class="brand__mark">{{ sec.key === 'catering' ? 'BAR' : sec.key === 'gym' ? 'FIT' : 'STORE' }}</span>
-            </div>
+          <div class="shop__thumb">
+            <img v-if="shop.cover_image_url" :src="shop.cover_image_url" alt="" />
+            <div v-else class="shop__wash" :class="`shop__wash--${shop.sectionKey}`">{{ shop.mark }}</div>
           </div>
-          <div class="brand__body">
-            <div class="brand__top">
-              <span class="brand__badge">{{ sec.title }}</span>
-              <span class="brand__go">进入</span>
+          <div class="shop__main">
+            <div class="shop__name">{{ shop.name }}</div>
+            <div class="shop__meta">
+              <span class="shop__badge" :class="`shop__badge--${shop.sectionKey}`">{{ shop.badge }}</span>
+              <span v-if="site?.business_hours">{{ site.business_hours }}</span>
             </div>
-            <div class="brand__name">{{ m.name }}</div>
-            <div class="brand__hint">{{ m.tagline || (sec.key === 'gym' ? '训练即生活' : sec.key === 'catering' ? '夜色刚刚开始' : sec.subtitle) }}</div>
+            <div class="shop__quote">“{{ shop.hint }}”</div>
+            <div class="shop__tags">
+              <span v-for="tag in shop.tags" :key="tag" class="chip" :class="`chip--${shop.sectionKey}`">{{ tag }}</span>
+            </div>
           </div>
         </button>
       </section>
@@ -511,5 +513,141 @@ onUnmounted(() => {
   text-align: center;
   font-size: 12px;
   color: var(--mw-text-tertiary);
+}
+
+.shops {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.shop {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  font: inherit;
+  text-align: left;
+  border: 1px solid rgba(242, 230, 210, 0.08);
+  border-radius: 14px;
+  background: #1f252b;
+  color: inherit;
+  cursor: pointer;
+}
+
+.shop__thumb,
+.shop__thumb img,
+.shop__wash {
+  width: 88px;
+  height: 88px;
+  flex: none;
+  border-radius: 10px;
+}
+
+.shop__thumb {
+  overflow: hidden;
+  background: #2a3138;
+}
+
+.shop__thumb img {
+  object-fit: cover;
+  display: block;
+}
+
+.shop__wash {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: rgba(255, 247, 236, 0.94);
+  background: linear-gradient(145deg, #f36b21 0%, #c45a1c 42%, #7a3010 100%);
+}
+
+.shop__wash--catering {
+  background: linear-gradient(145deg, #2dd4bf 0%, #0f8f9a 45%, #134e4a 100%);
+}
+
+.shop__wash--other {
+  background: linear-gradient(145deg, #4a525a, #2a3138);
+}
+
+.shop__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.shop__name {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.shop__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: rgba(242, 230, 210, 0.55);
+}
+
+.shop__badge {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #f36b21;
+  background: rgba(243, 107, 33, 0.16);
+}
+
+.shop__badge--catering {
+  color: #14b8d4;
+  background: rgba(20, 184, 212, 0.14);
+}
+
+.shop__badge--other {
+  color: rgba(242, 230, 210, 0.78);
+  background: rgba(242, 230, 210, 0.1);
+}
+
+.shop__quote {
+  margin-top: 6px;
+  font-size: 13px;
+  color: rgba(242, 230, 210, 0.72);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.shop__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.chip {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #f36b21;
+  background: rgba(243, 107, 33, 0.12);
+}
+
+.chip--catering {
+  color: #14b8d4;
+  background: rgba(20, 184, 212, 0.12);
+}
+
+.chip--other {
+  color: rgba(242, 230, 210, 0.72);
+  background: rgba(242, 230, 210, 0.08);
 }
 </style>

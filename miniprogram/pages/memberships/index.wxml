@@ -1,47 +1,55 @@
 <top-bar />
 <view class="wrap tab-page">
   <view class="title">会籍与课包</view>
-  <view class="muted">点击卡片查看详情</view>
+  <view class="lead">当前持有的会籍和私教课时</view>
   <view wx:if="{{loading}}" class="muted">加载中…</view>
   <view wx:elif="{{err}}" class="err">{{err}}</view>
   <block wx:else>
-    <view class="section">会籍</view>
+    <view class="sec">会籍</view>
+    <view wx:if="{{!memberships.length}}" class="empty">暂无会籍</view>
     <view
       wx:for="{{memberships}}"
       wx:key="id"
-      class="card card-btn"
+      class="pass {{item.dim ? 'pass-dim' : ''}}"
       bindtap="goMembership"
       data-id="{{item.id}}"
     >
-      <view class="row-main">
-        <view class="name">{{item.title}}</view>
-        <view class="muted tight">{{item.meta}}</view>
+      <view class="mark {{item.dim ? 'mark-dim' : ''}}">
+        <text class="mark-num">{{item.num}}</text>
+        <text wx:if="{{item.unit}}" class="mark-unit">{{item.unit}}</text>
       </view>
-      <view class="row-right">
-        <text class="status {{item.statusClass}}">{{item.statusText}}</text>
-        <text class="go">详情</text>
+      <view class="pass-main">
+        <view class="pass-top">
+          <text class="pass-name">{{item.title}}</text>
+          <text class="status {{item.statusClass}}">{{item.statusText}}</text>
+        </view>
+        <view class="meta">{{item.typeText}}</view>
+        <view class="meta">到期 {{item.until}}</view>
       </view>
     </view>
-    <view wx:if="{{!memberships.length}}" class="empty">暂无会籍</view>
 
-    <view class="section">私教课包</view>
+    <view class="sec sec-gap">私教课包</view>
+    <view wx:if="{{!packages.length}}" class="empty">暂无课包</view>
     <view
       wx:for="{{packages}}"
       wx:key="id"
-      class="card card-btn"
+      class="pass {{item.dim ? 'pass-dim' : ''}}"
       bindtap="goPackage"
       data-id="{{item.id}}"
     >
-      <view class="row-main">
-        <view class="name">{{item.title}}</view>
-        <view class="muted tight">{{item.meta}}</view>
+      <view class="mark mark-pt {{item.dim ? 'mark-dim' : ''}}">
+        <text class="mark-num">{{item.num}}</text>
+        <text wx:if="{{item.unit}}" class="mark-unit">{{item.unit}}</text>
       </view>
-      <view class="row-right">
-        <text class="status {{item.statusClass}}">{{item.statusText}}</text>
-        <text class="go">详情</text>
+      <view class="pass-main">
+        <view class="pass-top">
+          <text class="pass-name">{{item.title}}</text>
+          <text class="status {{item.statusClass}}">{{item.statusText}}</text>
+        </view>
+        <view class="meta">{{item.typeText}}</view>
+        <view class="meta">到期 {{item.until}}</view>
       </view>
     </view>
-    <view wx:if="{{!packages.length}}" class="empty">暂无课包</view>
   </block>
 </view>
 <bottom-nav active="/pages/memberships/index" />

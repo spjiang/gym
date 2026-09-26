@@ -6,7 +6,7 @@
         <view class="mark">店</view>
         <text class="shop-name">{{order.merchant_name || '门店'}}</text>
       </view>
-      <text class="status">{{statusText}}</text>
+      <text class="status {{statusTone}}">{{statusText}}</text>
     </view>
 
     <view class="card">
@@ -20,6 +20,30 @@
       <view class="pay-row">
         <text>实付款</text>
         <text class="pay-amount">¥{{amountText}}</text>
+      </view>
+    </view>
+
+    <view class="card" wx:if="{{showRefund}}">
+      <view class="block-title">退款信息</view>
+      <view class="refund-amount-row" wx:if="{{refundAmountText !== '0.00'}}">
+        <text>退款金额</text>
+        <text class="refund-amount">¥{{refundAmountText}}</text>
+      </view>
+      <view class="info-row">
+        <text class="label">退款状态</text>
+        <text class="value">{{statusText}}</text>
+      </view>
+      <view class="info-row" wx:if="{{refundChannelText}}">
+        <text class="label">退回方式</text>
+        <text class="value">{{refundChannelText}}</text>
+      </view>
+      <view class="info-row" wx:if="{{order.refund_reason}}">
+        <text class="label">退款原因</text>
+        <text class="value">{{order.refund_reason}}</text>
+      </view>
+      <view class="info-row" wx:if="{{order.refunded_at}}">
+        <text class="label">到账时间</text>
+        <text class="value">{{refundedAtText}}</text>
       </view>
     </view>
 

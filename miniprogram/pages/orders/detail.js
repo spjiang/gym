@@ -3,7 +3,12 @@ Page({
   data: {
     order: null,
     statusText: '',
+    statusTone: '',
     amountText: '',
+    refundAmountText: '',
+    refundChannelText: '',
+    refundedAtText: '',
+    showRefund: false,
     dateText: '',
     err: '',
     paying: false,
@@ -16,18 +21,25 @@ Page({
   },
   async load() {
     const { request } = require('../../utils/api')
-    const { orderStatusLabel, diningOrderLabel } = require('../../utils/labels')
+    const { memberOrderView, refundChannelLabel } = require('../../utils/labels')
     if (!this._id) {
       this.setData({ err: '订单不存在' })
       return
     }
     try {
       const order = await request({ url: `/member/orders/${this._id}` })
+      const view = memberOrderView(order)
+      const refunded = Number(order.refunded_amount || 0)
       this.setData({
         order,
         err: '',
-        statusText: order.dining_status ? diningOrderLabel(order) : orderStatusLabel(order.status),
+        statusText: view.statusText,
+        statusTone: view.statusTone,
         amountText: this.moneyText(order.amount),
+        refundAmountText: this.moneyText(refunded),
+        refundChannelText: refundChannelLabel(order.refund_channel),
+        refundedAtText: this.fmtTime(order.refunded_at),
+        showRefund: view.showRefund,
         dateText: this.fmtTime(order.created_at),
       })
     } catch (e) {

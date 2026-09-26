@@ -30,16 +30,21 @@ Page({
       goStores()
       return
     }
-    app.globalData.systemMode = 'catering'
-    wx.setStorageSync('system_mode', 'catering')
-    await refreshMemberSession()
-    const { request, fileUrl } = require('../../utils/api')
-    const cart = require('../../utils/cateringCart')
-    const mid = app.globalData.merchantId
-    if (!mid) {
-      this.setData({ loading: false, err: '请先选择门店' })
+    const me = await refreshMemberSession()
+    const { systemOf, setMerchantContext } = require('../../utils/merchant')
+    const list = (me && me.merchants) || []
+    let merchant = list.find((item) => item.id === Number(app.globalData.merchantId))
+    if (!merchant || systemOf(merchant) !== 'catering') {
+      merchant = list.find((item) => systemOf(item) === 'catering') || null
+    }
+    if (!merchant) {
+      this.setData({ loading: false, err: '请扫描观野BAR桌码后再点餐' })
       return
     }
+    setMerchantContext(merchant)
+    const { request, fileUrl } = require('../../utils/api')
+    const cart = require('../../utils/cateringCart')
+    const mid = merchant.id
     if (!app.globalData.token) {
       this.goLogin()
       return

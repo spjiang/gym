@@ -35,6 +35,21 @@ def test_order_paid_writes_notification(client: TestClient, admin_headers: dict)
     notes = client.get(f"/api/v1/notifications?merchant_id={gym_id}", headers=admin_headers).json()["items"]
     assert any(n["event_type"] == "order.paid" and n["member_id"] == member["id"] for n in notes)
 
+    refunded = client.post(
+        f"/api/v1/orders/{order['id']}/refund",
+        headers=admin_headers,
+        json={"amount": "10.00", "channel": "offline_cash", "reason": "管理端退款"},
+    )
+    assert refunded.status_code == 200, refunded.text
+    notes = client.get(
+        f"/api/v1/notifications?merchant_id={gym_id}&event_type=order.refunded",
+        headers=admin_headers,
+    ).json()["items"]
+    hit = next(n for n in notes if n["member_id"] == member["id"])
+    assert hit["title"] == "退款成功"
+    assert "水瓶" in hit["body"]
+    assert "¥10.00" in hit["body"]
+
 
 def test_membership_fulfill_writes_notification(client: TestClient, admin_headers: dict):
     gym_id = _gym_id(client, admin_headers)

@@ -1,21 +1,43 @@
 <top-bar />
 <view class="wrap tab-page">
   <view class="title">优惠卡券</view>
+  <view class="lead">领取后可在购卡或消费时使用</view>
   <view wx:if="{{err}}" class="muted">{{err}}</view>
-  <view class="section">可领取</view>
-  <view class="card row" wx:for="{{claimable}}" wx:key="id">
-    <view class="main">
-      <view class="name">{{item.name}}</view>
-      <view class="muted">满¥{{item.threshold_amount}}</view>
+
+  <view class="sec">可领取</view>
+  <view wx:if="{{!claimable.length}}" class="empty">暂无可领券</view>
+  <view class="ticket" wx:for="{{claimable}}" wx:key="id">
+    <view class="stub">
+      <text class="stub-num">{{item.num}}</text>
+      <text wx:if="{{item.unit}}" class="stub-unit">{{item.unit}}</text>
+      <text class="stub-kind">{{item.kind}}</text>
     </view>
-    <button size="mini" data-id="{{item.id}}" bindtap="claim">领取</button>
+    <view class="ticket-main">
+      <view class="ticket-name">{{item.title}}</view>
+      <view class="meta">{{item.rule}}<text wx:if="{{item.scope}}"> · {{item.scope}}</text></view>
+      <view class="foot">
+        <text class="until">{{item.until}}</text>
+        <view class="buy" data-id="{{item.id}}" bindtap="claim">领取</view>
+      </view>
+    </view>
   </view>
-  <view wx:if="{{!claimable.length}}" class="muted">暂无可领券</view>
-  <view class="section">我的券</view>
-  <view class="card" wx:for="{{mine}}" wx:key="id">
-    <view class="name">{{item.template_name || ('券 #' + item.id)}}</view>
-    <view class="muted">{{item.status}} · 至 {{item.ends_at}}</view>
+
+  <view class="sec sec-gap">我的券</view>
+  <view wx:if="{{!mine.length}}" class="empty">暂无卡券</view>
+  <view class="ticket {{item.statusClass === 'ok' ? '' : 'ticket-dim'}}" wx:for="{{mine}}" wx:key="id">
+    <view class="stub {{item.statusClass === 'ok' ? '' : 'stub-dim'}}">
+      <text class="stub-num">{{item.num}}</text>
+      <text wx:if="{{item.unit}}" class="stub-unit">{{item.unit}}</text>
+      <text class="stub-kind">{{item.kind}}</text>
+    </view>
+    <view class="ticket-main">
+      <view class="ticket-name">{{item.title}}</view>
+      <view class="meta">{{item.rule}}<text wx:if="{{item.scope}}"> · {{item.scope}}</text></view>
+      <view class="foot">
+        <text class="until">{{item.until}}</text>
+        <text class="state state-{{item.statusClass}}">{{item.statusText}}</text>
+      </view>
+    </view>
   </view>
-  <view wx:if="{{!mine.length}}" class="muted">暂无卡券</view>
 </view>
 <bottom-nav active="/pages/coupons/index" />

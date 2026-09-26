@@ -1,29 +1,67 @@
 <top-bar />
 <view class="wrap tab-page">
   <view class="title">{{title}}</view>
-  <view class="section">会籍卡种</view>
-  <block wx:for="{{cards}}" wx:key="id">
-    <view class="card row">
-      <view class="main">
-        <view>{{item.name}}{{item.is_trial ? '（体验）' : ''}}</view>
-        <view class="price">¥{{item.effective_price || item.price}}</view>
-      </view>
-      <button size="mini" data-id="{{item.id}}" data-name="{{item.name}}" data-price="{{item.effective_price || item.price}}" bindtap="buyCard">购买</button>
-    </view>
-  </block>
-  <view wx:if="{{!cards.length}}" class="muted">暂无卡种</view>
+  <view class="lead">会籍按天或按次，私教按课时购买</view>
 
-  <view class="section">私教课包</view>
-  <block wx:for="{{pts}}" wx:key="id">
-    <view class="card row">
-      <view class="main">
-        <view>{{item.name}}</view>
-        <view class="price">¥{{item.price}} · {{item.session_count}} 次</view>
-      </view>
-      <button size="mini" data-id="{{item.id}}" data-name="{{item.name}}" data-price="{{item.price}}" bindtap="buyPt">购买</button>
+  <view class="sec">会籍卡种</view>
+  <view wx:if="{{!cards.length}}" class="empty">暂无卡种</view>
+  <view class="goods" wx:for="{{cards}}" wx:key="id">
+    <view class="mark">
+      <text class="mark-num">{{item.num}}</text>
+      <text wx:if="{{item.unit}}" class="mark-unit">{{item.unit}}</text>
     </view>
-  </block>
-  <view wx:if="{{!pts.length}}" class="muted">暂无课包</view>
+    <view class="goods-main">
+      <view class="goods-top">
+        <text class="goods-name">{{item.name}}</text>
+        <text wx:if="{{item.is_trial}}" class="chip">体验</text>
+      </view>
+      <view class="meta">{{item.typeText}}</view>
+      <view class="foot">
+        <view class="price">
+          <text class="yen">¥</text>
+          <text class="amount">{{item.priceText}}</text>
+          <text wx:if="{{item.originText}}" class="origin">¥{{item.originText}}</text>
+        </view>
+        <view
+          class="buy"
+          data-id="{{item.id}}"
+          data-name="{{item.name}}"
+          data-price="{{item.priceText}}"
+          bindtap="buyCard"
+        >购买</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="sec sec-gap">私教课包</view>
+  <view wx:if="{{!pts.length}}" class="empty">暂无课包</view>
+  <view class="goods" wx:for="{{pts}}" wx:key="id">
+    <view class="mark mark-pt">
+      <text class="mark-num">{{item.num}}</text>
+      <text wx:if="{{item.unit}}" class="mark-unit">{{item.unit}}</text>
+    </view>
+    <view class="goods-main">
+      <view class="goods-top">
+        <text class="goods-name">{{item.name}}</text>
+      </view>
+      <view class="meta">{{item.typeText}}</view>
+      <view class="foot">
+        <view class="price price-pt">
+          <text class="yen">¥</text>
+          <text class="amount">{{item.priceText}}</text>
+          <text wx:if="{{item.originText}}" class="origin">¥{{item.originText}}</text>
+        </view>
+        <view
+          class="buy buy-pt"
+          data-id="{{item.id}}"
+          data-name="{{item.name}}"
+          data-price="{{item.priceText}}"
+          bindtap="buyPt"
+        >购买</view>
+      </view>
+    </view>
+  </view>
+
   <agreement-confirm
     show="{{agreeShow}}"
     summary="{{agreeSummary}}"

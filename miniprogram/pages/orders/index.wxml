@@ -1,0 +1,34 @@
+<view class="wrap">
+  <view wx:if="{{loading}}" class="muted">加载中…</view>
+  <view wx:elif="{{err}}" class="err">{{err}}</view>
+  <block wx:else>
+    <view wx:if="{{!orders.length}}" class="empty">暂无订单</view>
+    <view class="order-card" wx:for="{{orders}}" wx:key="id" bindtap="openOrder" data-id="{{item.id}}">
+      <view class="order-head">
+        <view class="order-shop">
+          <view class="order-shop-mark">店</view>
+          <text class="order-shop-name">{{item.merchant_name || '门店'}}</text>
+          <text class="order-shop-arrow">›</text>
+        </view>
+        <text class="order-status {{item.statusTone}}">{{item.statusText}}</text>
+      </view>
+      <view class="order-body">
+        <view class="order-thumb">{{item.thumb}}</view>
+        <view class="order-main">
+          <view class="order-goods">{{item.title}}</view>
+          <view class="order-date">{{item.order_no || ''}}</view>
+          <view class="order-date">下单：{{item.dateText}}</view>
+        </view>
+        <view class="order-side">
+          <text class="order-price">¥{{item.amountText}}</text>
+          <text wx:if="{{item.refundText}}" class="order-refund">{{item.refundText}}</text>
+        </view>
+      </view>
+      <view wx:if="{{item.status === 'pending'}}" class="order-foot">
+        <view class="order-pay" catchtap="payOrder" data-id="{{item.id}}">{{payingId === item.id ? '支付中…' : '去支付'}}</view>
+      </view>
+    </view>
+    <view wx:if="{{orders.length && finished}}" class="foot">没有更多了</view>
+    <view wx:elif="{{loadingMore}}" class="foot">加载中…</view>
+  </block>
+</view>
